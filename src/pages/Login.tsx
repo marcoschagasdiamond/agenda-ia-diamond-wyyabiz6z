@@ -49,7 +49,7 @@ export default function Login() {
 
   const fillDemo = () => {
     setEmail('marcoschagasdiamond@icloud.com')
-    setPassword('Skip@Pass')
+    setPassword('Mac318180')
   }
 
   return (
