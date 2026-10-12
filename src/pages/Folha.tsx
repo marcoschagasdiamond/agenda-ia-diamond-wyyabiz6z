@@ -325,15 +325,25 @@ export default function Folha() {
             Nova Captura / Lançamento Rápido
           </CardTitle>
           <CardDescription className="text-xs text-[#5B6470]">
-            Cole mensagens de clientes, resumos de reuniões ou ideias soltas.
+            Escreva como vier: ligações, conversas, prazos. A agenda separa por negócio, pessoa e
+            tarefa, e você confirma.
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleAdicionarRegistro}>
           <CardContent className="space-y-4 pt-4">
+            {/* Texto de apoio / orientação de uso visível acima do campo */}
+            <div className="rounded-lg bg-[#0F766E]/5 border border-[#0F766E]/20 p-3 text-xs text-[#0D5C56] leading-relaxed flex items-start gap-2.5">
+              <Sparkles className="w-4 h-4 text-[#0F766E] shrink-0 mt-0.5" />
+              <span>
+                Escreva como vier: ligações, conversas, prazos. A agenda separa por negócio, pessoa
+                e tarefa, e você confirma.
+              </span>
+            </div>
+
             <Textarea
               rows={3}
               required
-              placeholder="Digite ou cole aqui: Ex: Helena da Loja Y mandou msg no WhatsApp pedindo ajuste na cor do checkout até quinta-feira..."
+              placeholder="Escreva como vier: ligações, conversas, prazos. A agenda separa por negócio, pessoa e tarefa, e você confirma."
               value={novoRegistro}
               onChange={(e) => setNovoRegistro(e.target.value)}
               className="text-sm border-[#E5E1D8] resize-none"
@@ -433,9 +443,12 @@ export default function Folha() {
         </div>
 
         {pendentes.length === 0 ? (
-          <div className="bg-white border border-[#E5E1D8] rounded-xl p-8 text-center text-xs text-[#5B6470] space-y-1">
+          <div className="bg-white border border-[#E5E1D8] rounded-xl p-8 text-center text-xs text-[#5B6470] space-y-2">
             <p className="font-medium text-[#1A1D21]">Folha em branco limpa.</p>
-            <p>Lance novas demandas ou conversas para que a IA possa processá-las.</p>
+            <p className="text-[#0D5C56] max-w-md mx-auto">
+              Escreva como vier: ligações, conversas, prazos. A agenda separa por negócio, pessoa e
+              tarefa, e você confirma.
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
