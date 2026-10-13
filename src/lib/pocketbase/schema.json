@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-13T20:47:15.929Z",
+  "generatedAt": "2026-10-13T21:32:19.214Z",
   "collections": [
     {
       "name": "users",
@@ -472,24 +472,13 @@
           "system": false
         },
         {
-          "name": "fluxo",
-          "type": "select",
+          "name": "timeline",
+          "type": "text",
           "required": false,
-          "system": false,
-          "selectValues": [
-            "novo",
-            "em_andamento",
-            "bloqueado",
-            "concluido",
-            "em_revisao",
-            "aprovado",
-            "aguardando",
-            "prioritario",
-            "em_espera"
-          ]
+          "system": false
         },
         {
-          "name": "timeline",
+          "name": "fluxo",
           "type": "text",
           "required": false,
           "system": false
@@ -558,23 +547,6 @@
           "selectValues": ["baixa", "media", "alta", "urgente"]
         },
         {
-          "name": "status",
-          "type": "select",
-          "required": false,
-          "system": false,
-          "selectValues": [
-            "novo",
-            "em_andamento",
-            "bloqueado",
-            "concluido",
-            "em_revisao",
-            "aprovado",
-            "aguardando",
-            "prioritario",
-            "em_espera"
-          ]
-        },
-        {
           "name": "proximo_passo",
           "type": "text",
           "required": false,
@@ -613,6 +585,12 @@
           "required": false,
           "system": false,
           "collectionRef": "grupos_familia"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
