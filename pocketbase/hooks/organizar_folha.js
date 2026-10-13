@@ -57,9 +57,17 @@ routerAdd(
 
       const registrosTexto = folhaPendentes
         .map((f, i) => {
-          return `[ID: ${f.id}] [Origem: ${f.getString('tipo_origem')}] ${f.getString('registro')}`
+          const num = f.getInt('ordem') || i + 1
+          const dataHora = f.getString('data_hora') || f.getString('data') || ''
+          const proj = f.getString('projeto') ? `[ProjetoID: ${f.getString('projeto')}]` : ''
+          const cont = f.getString('contato') ? `[ContatoID: ${f.getString('contato')}]` : ''
+          const flx = f.getString('fluxo') ? `[Fluxo: ${f.getString('fluxo')}]` : ''
+          const time = f.getString('timeline') ? `[Timeline: ${f.getString('timeline')}]` : ''
+          const orig = f.getString('tipo_origem') ? `[Origem: ${f.getString('tipo_origem')}]` : ''
+          const dh = dataHora ? `[Data e Hora: ${dataHora}]` : ''
+          return `Assunto ${num}. [ID: ${f.id}] ${dh} ${orig} ${proj} ${cont} ${flx} ${time}\nConteúdo: ${f.getString('registro')}`
         })
-        .join('\n')
+        .join('\n\n')
 
       const prompt = `Você é o organizador de tarefas e Segundo Cérebro do sistema 'Agenda IA Diamond'.
 Analise os registros livres da folha de trabalho do usuário e converta-os em cards acionáveis para o Kanban, além de estruturar o Resumo Executivo do Dia.

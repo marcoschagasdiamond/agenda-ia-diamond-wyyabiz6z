@@ -100,6 +100,8 @@ export interface Contato {
 export interface FolhaDia {
   id: string
   data?: string
+  data_hora?: string
+  ordem?: number
   registro: string
   tipo_origem?: OrigemTipo
   origem_ref?: string
@@ -107,6 +109,8 @@ export interface FolhaDia {
   projeto?: string
   negocio?: string
   contato?: string
+  fluxo?: CardStatus
+  timeline?: string
   created: string
   updated: string
   expand?: {
@@ -147,11 +151,17 @@ export interface Demanda {
   atribuido_a?: string
   status?: DemandaStatus
   prazo?: string
+  projeto?: string
+  contato?: string
+  prioridade?: CardPrioridade
+  timeline?: string
   created: string
   updated: string
   expand?: {
     card_origem?: Card
     atribuido_a?: User
+    projeto?: Projeto
+    contato?: Contato
   }
 }
 

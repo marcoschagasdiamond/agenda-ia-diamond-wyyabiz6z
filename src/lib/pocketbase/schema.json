@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-12T00:21:53.120Z",
+  "generatedAt": "2026-10-13T00:06:19.723Z",
   "collections": [
     {
       "name": "users",
@@ -458,6 +458,31 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "data_hora",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ordem",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fluxo",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["novo", "em_andamento", "bloqueado", "concluido"]
+        },
+        {
+          "name": "timeline",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -632,6 +657,33 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "projeto",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "projetos"
+        },
+        {
+          "name": "contato",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "contatos"
+        },
+        {
+          "name": "prioridade",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["baixa", "media", "alta", "urgente"]
+        },
+        {
+          "name": "timeline",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

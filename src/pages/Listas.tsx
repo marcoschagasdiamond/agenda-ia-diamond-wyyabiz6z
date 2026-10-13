@@ -210,6 +210,16 @@ export default function Listas() {
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
+                      {demanda.expand?.projeto && (
+                        <span className="text-[10px] bg-[#F4F2EE] px-1.5 py-0.5 rounded text-[#5B6470] hidden sm:inline truncate max-w-[100px]">
+                          📁 {demanda.expand.projeto.nome}
+                        </span>
+                      )}
+                      {demanda.expand?.contato && (
+                        <span className="text-[10px] bg-[#F4F2EE] px-1.5 py-0.5 rounded text-[#5B6470] hidden sm:inline truncate max-w-[100px]">
+                          👤 {demanda.expand.contato.nome}
+                        </span>
+                      )}
                       {demanda.prazo && (
                         <span className="text-[10px] text-[#5B6470] flex items-center gap-1 bg-[#F4F2EE] px-2 py-0.5 rounded">
                           <Clock className="w-3 h-3" />

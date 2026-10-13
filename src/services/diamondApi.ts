@@ -126,7 +126,7 @@ export const diamondApi = {
     }
     return await pb.collection('folha_dia').getFullList<FolhaDia>({
       filter,
-      sort: '-created',
+      sort: 'ordem,created',
       expand: 'projeto,negocio,contato',
     })
   },
@@ -169,7 +169,7 @@ export const diamondApi = {
     return await pb.collection('demandas').getFullList<Demanda>({
       filter: filtroExtra || '',
       sort: '-created',
-      expand: 'card_origem,atribuido_a',
+      expand: 'card_origem,atribuido_a,projeto,contato',
     })
   },
 
