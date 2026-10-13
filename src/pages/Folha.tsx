@@ -8,6 +8,9 @@ import type {
   OrigemTipo,
   CardStatus,
   CardPrioridade,
+  ColunaFluxo,
+  MarcoTimeline,
+  ProjetoTipo,
 } from '@/types'
 import {
   FileEdit,
@@ -62,7 +65,7 @@ export interface ItemRascunhoAssunto {
   dataHora: string
   tipoOrigem: OrigemTipo
   origemRef: string
-  fluxo: CardStatus | 'none'
+  fluxo: string
   projetoId: string
   timeline: string
   contatoId: string
@@ -81,6 +84,39 @@ export default function Folha() {
   const [projetos, setProjetos] = useState<Projeto[]>([])
   const [contatos, setContatos] = useState<Contato[]>([])
   const [negocios, setNegocios] = useState<Negocio[]>([])
+  const [colunasFluxo, setColunasFluxo] = useState<ColunaFluxo[]>([])
+  const [marcosTimeline, setMarcosTimeline] = useState<MarcoTimeline[]>([])
+
+  // Estado para saber qual assunto acionou o modal de criação rápida
+  const [assuntoAlvoIdx, setAssuntoAlvoIdx] = useState<number | null>(null)
+
+  // 1. Modal Criar Projeto
+  const [modalCriarProjetoOpen, setModalCriarProjetoOpen] = useState(false)
+  const [novoProjetoNome, setNovoProjetoNome] = useState('')
+  const [novoProjetoTipo, setNovoProjetoTipo] = useState<ProjetoTipo>('cliente')
+  const [novoProjetoDescricao, setNovoProjetoDescricao] = useState('')
+  const [criandoProjeto, setCriandoProjeto] = useState(false)
+
+  // 2. Modal Criar Contato
+  const [modalCriarContatoOpen, setModalCriarContatoOpen] = useState(false)
+  const [novoContatoNome, setNovoContatoNome] = useState('')
+  const [novoContatoEmpresa, setNovoContatoEmpresa] = useState('')
+  const [novoContatoEmail, setNovoContatoEmail] = useState('')
+  const [novoContatoTelefone, setNovoContatoTelefone] = useState('')
+  const [novoContatoCargo, setNovoContatoCargo] = useState('')
+  const [criandoContato, setCriandoContato] = useState(false)
+
+  // 3. Modal Criar Coluna/Etapa de Fluxo
+  const [modalCriarFluxoOpen, setModalCriarFluxoOpen] = useState(false)
+  const [novoFluxoTitulo, setNovoFluxoTitulo] = useState('')
+  const [novoFluxoCor, setNovoFluxoCor] = useState('#0F766E')
+  const [criandoFluxo, setCriandoFluxo] = useState(false)
+
+  // 4. Modal Criar Marco de Timeline
+  const [modalCriarTimelineOpen, setModalCriarTimelineOpen] = useState(false)
+  const [novoTimelineNome, setNovoTimelineNome] = useState('')
+  const [novoTimelineDescricao, setNovoTimelineDescricao] = useState('')
+  const [criandoTimeline, setCriandoTimeline] = useState(false)
 
   // Lista de assuntos múltiplos em elaboração na sessão
   const [assuntos, setAssuntos] = useState<ItemRascunhoAssunto[]>([
@@ -152,17 +188,21 @@ export default function Folha() {
 
   const carregarDados = async () => {
     try {
-      const [f, p, c, n] = await Promise.all([
+      const [f, p, c, n, colunas, marcos] = await Promise.all([
         diamondApi.listFolhaDia(),
         diamondApi.listProjetos(),
         diamondApi.listContatos(),
         diamondApi.listNegocios(),
+        diamondApi.listColunasFluxo(),
+        diamondApi.listMarcosTimeline(),
       ])
       // Ordenação: pendentes por ordem ou created
       setFolhaItems(f)
       setProjetos(p)
       setContatos(c)
       setNegocios(n)
+      setColunasFluxo(colunas)
+      setMarcosTimeline(marcos)
     } catch (err) {
       console.error('Erro ao carregar folha:', err)
     }
@@ -232,6 +272,211 @@ export default function Folha() {
       copia[idx] = { ...copia[idx], [campo]: valor }
       return copia
     })
+  }
+
+  // Handlers para criação rápida a partir dos seletores
+  const handleAbrirCriarProjeto = (idx: number) => {
+    setAssuntoAlvoIdx(idx)
+    setNovoProjetoNome('')
+    setNovoProjetoTipo('cliente')
+    setNovoProjetoDescricao('')
+    setModalCriarProjetoOpen(true)
+  }
+
+  const handleSubmeterCriarProjeto = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!novoProjetoNome.trim()) return
+    setCriandoProjeto(true)
+    try {
+      const pasta = await diamondApi
+        .createPasta({ nome: `${novoProjetoNome.trim()} - Arquivos` })
+        .catch(() => null)
+
+      const criado = await diamondApi.createProjeto({
+        nome: novoProjetoNome.trim(),
+        tipo: novoProjetoTipo,
+        status: 'ativo',
+        descricao: novoProjetoDescricao.trim() || undefined,
+        pasta_raiz: pasta?.id,
+      })
+
+      toast({
+        title: 'Projeto criado com sucesso!',
+        description: `Projeto "${criado.nome}" agora está disponível e vinculado.`,
+      })
+
+      // Atualiza lista de projetos
+      setProjetos((prev) => [criado, ...prev])
+
+      // Auto-seleciona no assunto que disparou ou no modal de demanda
+      if (assuntoAlvoIdx !== null) {
+        handleAtualizarAssunto(assuntoAlvoIdx, 'projetoId', criado.id)
+      } else {
+        setDemandaProjeto(criado.id)
+      }
+
+      setModalCriarProjetoOpen(false)
+    } catch (err) {
+      toast({
+        title: 'Erro ao criar projeto',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setCriandoProjeto(false)
+    }
+  }
+
+  const handleAbrirCriarContato = (idx: number) => {
+    setAssuntoAlvoIdx(idx)
+    setNovoContatoNome('')
+    setNovoContatoEmpresa('')
+    setNovoContatoEmail('')
+    setNovoContatoTelefone('')
+    setNovoContatoCargo('')
+    setModalCriarContatoOpen(true)
+  }
+
+  const handleSubmeterCriarContato = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!novoContatoNome.trim()) return
+    setCriandoContato(true)
+    try {
+      const currentAssunto = assuntoAlvoIdx !== null ? assuntos[assuntoAlvoIdx] : null
+      const projId =
+        currentAssunto && currentAssunto.projetoId !== 'none' ? currentAssunto.projetoId : undefined
+
+      const criado = await diamondApi.createContato({
+        nome: novoContatoNome.trim(),
+        empresa: novoContatoEmpresa.trim() || undefined,
+        email: novoContatoEmail.trim() || undefined,
+        telefone: novoContatoTelefone.trim() || undefined,
+        cargo: novoContatoCargo.trim() || undefined,
+        origem: currentAssunto?.tipoOrigem || 'manual',
+        projetos: projId ? [projId] : [],
+      })
+
+      toast({
+        title: 'Contato criado com sucesso!',
+        description: `Contato "${criado.nome}" agora está disponível e vinculado.`,
+      })
+
+      setContatos((prev) => [criado, ...prev])
+
+      if (assuntoAlvoIdx !== null) {
+        handleAtualizarAssunto(assuntoAlvoIdx, 'contatoId', criado.id)
+      } else {
+        setDemandaContato(criado.id)
+      }
+
+      setModalCriarContatoOpen(false)
+    } catch (err) {
+      toast({
+        title: 'Erro ao criar contato',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setCriandoContato(false)
+    }
+  }
+
+  const handleAbrirCriarFluxo = (idx: number) => {
+    setAssuntoAlvoIdx(idx)
+    setNovoFluxoTitulo('')
+    setNovoFluxoCor('#0F766E')
+    setModalCriarFluxoOpen(true)
+  }
+
+  const handleSubmeterCriarFluxo = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!novoFluxoTitulo.trim()) return
+    setCriandoFluxo(true)
+    try {
+      const chaveSlug =
+        novoFluxoTitulo
+          .trim()
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_+|_+$/g, '') || `fluxo_${Date.now()}`
+
+      const novaColuna = await diamondApi.createColunaFluxo({
+        chave: chaveSlug,
+        titulo: novoFluxoTitulo.trim(),
+        cor: novoFluxoCor,
+        ordem: colunasFluxo.length + 1,
+      })
+
+      toast({
+        title: 'Coluna de fluxo criada com sucesso!',
+        description: `Etapa "${novaColuna.titulo}" adicionada ao fluxo Kanban e selecionada.`,
+      })
+
+      setColunasFluxo((prev) => [...prev, novaColuna])
+
+      if (assuntoAlvoIdx !== null) {
+        handleAtualizarAssunto(assuntoAlvoIdx, 'fluxo', novaColuna.chave)
+      }
+
+      setModalCriarFluxoOpen(false)
+    } catch (err) {
+      toast({
+        title: 'Erro ao criar fluxo',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setCriandoFluxo(false)
+    }
+  }
+
+  const handleAbrirCriarTimeline = (idx: number) => {
+    setAssuntoAlvoIdx(idx)
+    setNovoTimelineNome('')
+    setNovoTimelineDescricao('')
+    setModalCriarTimelineOpen(true)
+  }
+
+  const handleSubmeterCriarTimeline = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!novoTimelineNome.trim()) return
+    setCriandoTimeline(true)
+    try {
+      const currentAssunto = assuntoAlvoIdx !== null ? assuntos[assuntoAlvoIdx] : null
+      const projId =
+        currentAssunto && currentAssunto.projetoId !== 'none' ? currentAssunto.projetoId : undefined
+
+      const novoMarco = await diamondApi.createMarcoTimeline({
+        nome: novoTimelineNome.trim(),
+        descricao: novoTimelineDescricao.trim() || undefined,
+        projeto: projId,
+      })
+
+      toast({
+        title: 'Marco de timeline criado com sucesso!',
+        description: `Marco "${novoMarco.nome}" adicionado e selecionado no assunto.`,
+      })
+
+      setMarcosTimeline((prev) => [novoMarco, ...prev])
+
+      if (assuntoAlvoIdx !== null) {
+        handleAtualizarAssunto(assuntoAlvoIdx, 'timeline', novoMarco.nome)
+      } else {
+        setDemandaTimeline(novoMarco.nome)
+      }
+
+      setModalCriarTimelineOpen(false)
+    } catch (err) {
+      toast({
+        title: 'Erro ao criar marco',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setCriandoTimeline(false)
+    }
   }
 
   // Lançamento dos múltiplos assuntos salvando na coleção folha_dia
@@ -367,6 +612,32 @@ export default function Folha() {
     setDemandaContato(dados.contatoId && dados.contatoId !== 'none' ? dados.contatoId : 'none')
     setDemandaTimeline(dados.timeline || '')
     setModalDemandaOpen(true)
+  }
+
+  // Abertura de modais de criação a partir do modal de Demanda
+  const handleAbrirCriarProjetoEmDemanda = () => {
+    setAssuntoAlvoIdx(null)
+    setNovoProjetoNome('')
+    setNovoProjetoTipo('cliente')
+    setNovoProjetoDescricao('')
+    setModalCriarProjetoOpen(true)
+  }
+
+  const handleAbrirCriarContatoEmDemanda = () => {
+    setAssuntoAlvoIdx(null)
+    setNovoContatoNome('')
+    setNovoContatoEmpresa('')
+    setNovoContatoEmail('')
+    setNovoContatoTelefone('')
+    setNovoContatoCargo('')
+    setModalCriarContatoOpen(true)
+  }
+
+  const handleAbrirCriarTimelineEmDemanda = () => {
+    setAssuntoAlvoIdx(null)
+    setNovoTimelineNome('')
+    setNovoTimelineDescricao('')
+    setModalCriarTimelineOpen(true)
   }
 
   const handleConfirmarCriarDemanda = async (e: React.FormEvent) => {
@@ -522,8 +793,20 @@ export default function Folha() {
     }
   }
 
-  const getFluxoBadge = (fluxo?: CardStatus) => {
-    switch (fluxo) {
+  const getFluxoBadge = (fluxoChave?: string) => {
+    if (!fluxoChave) return null
+    const colFound = colunasFluxo.find((c) => c.chave === fluxoChave)
+    if (colFound) {
+      return (
+        <Badge
+          className="border-none text-[10px] font-medium text-white"
+          style={{ backgroundColor: colFound.cor || '#0F766E' }}
+        >
+          {colFound.titulo}
+        </Badge>
+      )
+    }
+    switch (fluxoChave) {
       case 'em_andamento':
         return (
           <Badge className="bg-[#0F766E]/15 text-[#0F766E] border-none text-[10px] font-medium">
@@ -546,7 +829,7 @@ export default function Folha() {
       default:
         return (
           <Badge className="bg-gray-100 text-gray-700 border-none text-[10px] font-medium">
-            Novo / Triagem
+            {fluxoChave.replace('_', ' ')}
           </Badge>
         )
     }
@@ -765,43 +1048,107 @@ export default function Folha() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                         {/* 1. Vincular a Fluxo */}
                         <div>
-                          <label className="text-[11px] font-semibold text-[#5B6470] block mb-1 flex items-center gap-1">
-                            <Layers className="w-3 h-3 text-[#0F766E]" />
-                            Vincular a Fluxo
-                          </label>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[11px] font-semibold text-[#5B6470] flex items-center gap-1">
+                              <Layers className="w-3 h-3 text-[#0F766E]" />
+                              Vincular a Fluxo
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleAbrirCriarFluxo(idx)}
+                              className="text-[10px] font-medium text-[#0F766E] hover:underline flex items-center gap-0.5"
+                              title="Adicionar nova etapa/coluna de fluxo"
+                            >
+                              <Plus className="w-3 h-3" />
+                              Criar
+                            </button>
+                          </div>
                           <Select
                             value={item.fluxo}
-                            onValueChange={(v) =>
-                              handleAtualizarAssunto(idx, 'fluxo', v as CardStatus | 'none')
-                            }
+                            onValueChange={(v) => {
+                              if (v === '__create_new__') {
+                                handleAbrirCriarFluxo(idx)
+                              } else {
+                                handleAtualizarAssunto(idx, 'fluxo', v)
+                              }
+                            }}
                           >
                             <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
                               <SelectValue placeholder="Automático (IA)" />
                             </SelectTrigger>
                             <SelectContent>
+                              <SelectItem
+                                value="__create_new__"
+                                className="text-[#0F766E] font-semibold bg-[#0F766E]/5 hover:bg-[#0F766E]/15 focus:bg-[#0F766E]/15 cursor-pointer border-b border-[#E5E1D8] mb-1"
+                              >
+                                + Criar nova coluna / fluxo...
+                              </SelectItem>
                               <SelectItem value="none">Automático (Deixar para IA)</SelectItem>
-                              <SelectItem value="novo">Novo / Triagem</SelectItem>
-                              <SelectItem value="em_andamento">Em Andamento</SelectItem>
-                              <SelectItem value="bloqueado">Bloqueado</SelectItem>
-                              <SelectItem value="concluido">Concluído</SelectItem>
+                              {colunasFluxo.map((col) => (
+                                <SelectItem key={col.id || col.chave} value={col.chave}>
+                                  <span className="flex items-center gap-1.5">
+                                    <span
+                                      className="w-2 h-2 rounded-full shrink-0"
+                                      style={{ backgroundColor: col.cor || '#0F766E' }}
+                                    />
+                                    {col.titulo}
+                                  </span>
+                                </SelectItem>
+                              ))}
+                              {/* Fallbacks padrão se não estiverem na lista */}
+                              {!colunasFluxo.some((c) => c.chave === 'novo') && (
+                                <SelectItem value="novo">Novo / Triagem</SelectItem>
+                              )}
+                              {!colunasFluxo.some((c) => c.chave === 'em_andamento') && (
+                                <SelectItem value="em_andamento">Em Andamento</SelectItem>
+                              )}
+                              {!colunasFluxo.some((c) => c.chave === 'bloqueado') && (
+                                <SelectItem value="bloqueado">Bloqueado</SelectItem>
+                              )}
+                              {!colunasFluxo.some((c) => c.chave === 'concluido') && (
+                                <SelectItem value="concluido">Concluído</SelectItem>
+                              )}
                             </SelectContent>
                           </Select>
                         </div>
 
                         {/* 2. Vincular a Projeto */}
                         <div>
-                          <label className="text-[11px] font-semibold text-[#5B6470] block mb-1 flex items-center gap-1">
-                            <FolderGit2 className="w-3 h-3 text-[#0F766E]" />
-                            Vincular a Projeto
-                          </label>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[11px] font-semibold text-[#5B6470] flex items-center gap-1">
+                              <FolderGit2 className="w-3 h-3 text-[#0F766E]" />
+                              Vincular a Projeto
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleAbrirCriarProjeto(idx)}
+                              className="text-[10px] font-medium text-[#0F766E] hover:underline flex items-center gap-0.5"
+                              title="Cadastrar novo projeto imediatamente"
+                            >
+                              <Plus className="w-3 h-3" />
+                              Criar
+                            </button>
+                          </div>
                           <Select
                             value={item.projetoId}
-                            onValueChange={(v) => handleAtualizarAssunto(idx, 'projetoId', v)}
+                            onValueChange={(v) => {
+                              if (v === '__create_new__') {
+                                handleAbrirCriarProjeto(idx)
+                              } else {
+                                handleAtualizarAssunto(idx, 'projetoId', v)
+                              }
+                            }}
                           >
                             <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
                               <SelectValue placeholder="Automático (IA)" />
                             </SelectTrigger>
                             <SelectContent>
+                              <SelectItem
+                                value="__create_new__"
+                                className="text-[#0F766E] font-semibold bg-[#0F766E]/5 hover:bg-[#0F766E]/15 focus:bg-[#0F766E]/15 cursor-pointer border-b border-[#E5E1D8] mb-1"
+                              >
+                                + Criar novo projeto...
+                              </SelectItem>
                               <SelectItem value="none">Automático (Deixar para IA)</SelectItem>
                               {projetos.map((p) => (
                                 <SelectItem key={p.id} value={p.id}>
@@ -814,34 +1161,97 @@ export default function Folha() {
 
                         {/* 3. Vincular a Timeline */}
                         <div>
-                          <label className="text-[11px] font-semibold text-[#5B6470] block mb-1 flex items-center gap-1">
-                            <CalendarDays className="w-3 h-3 text-[#0F766E]" />
-                            Vincular a Timeline
-                          </label>
-                          <Input
-                            placeholder="Ex: Fase 2 / Sprint Maio"
-                            value={item.timeline}
-                            onChange={(e) =>
-                              handleAtualizarAssunto(idx, 'timeline', e.target.value)
-                            }
-                            className="text-xs h-8 bg-white border-[#E5E1D8]"
-                          />
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[11px] font-semibold text-[#5B6470] flex items-center gap-1">
+                              <CalendarDays className="w-3 h-3 text-[#0F766E]" />
+                              Vincular a Timeline
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleAbrirCriarTimeline(idx)}
+                              className="text-[10px] font-medium text-[#0F766E] hover:underline flex items-center gap-0.5"
+                              title="Criar novo marco de timeline"
+                            >
+                              <Plus className="w-3 h-3" />
+                              Criar
+                            </button>
+                          </div>
+                          <Select
+                            value={item.timeline || '__empty__'}
+                            onValueChange={(v) => {
+                              if (v === '__create_new__') {
+                                handleAbrirCriarTimeline(idx)
+                              } else if (v === '__empty__') {
+                                handleAtualizarAssunto(idx, 'timeline', '')
+                              } else {
+                                handleAtualizarAssunto(idx, 'timeline', v)
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
+                              <SelectValue placeholder="Selecione ou crie um marco" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem
+                                value="__create_new__"
+                                className="text-[#0F766E] font-semibold bg-[#0F766E]/5 hover:bg-[#0F766E]/15 focus:bg-[#0F766E]/15 cursor-pointer border-b border-[#E5E1D8] mb-1"
+                              >
+                                + Criar novo marco de timeline...
+                              </SelectItem>
+                              <SelectItem value="__empty__">Nenhum (Livre)</SelectItem>
+                              {marcosTimeline.map((m) => (
+                                <SelectItem key={m.id} value={m.nome}>
+                                  ⏳ {m.nome}
+                                </SelectItem>
+                              ))}
+                              {/* Se o usuário digitou ou tem um valor customizado que não está na lista de marcos */}
+                              {item.timeline &&
+                                !marcosTimeline.some((m) => m.nome === item.timeline) && (
+                                  <SelectItem value={item.timeline}>
+                                    ⏳ {item.timeline} (Personalizado)
+                                  </SelectItem>
+                                )}
+                            </SelectContent>
+                          </Select>
                         </div>
 
                         {/* 4. Vincular a Contato */}
                         <div>
-                          <label className="text-[11px] font-semibold text-[#5B6470] block mb-1 flex items-center gap-1">
-                            <UserCheck className="w-3 h-3 text-[#0F766E]" />
-                            Vincular a Contato
-                          </label>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[11px] font-semibold text-[#5B6470] flex items-center gap-1">
+                              <UserCheck className="w-3 h-3 text-[#0F766E]" />
+                              Vincular a Contato
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleAbrirCriarContato(idx)}
+                              className="text-[10px] font-medium text-[#0F766E] hover:underline flex items-center gap-0.5"
+                              title="Cadastrar novo contato imediatamente"
+                            >
+                              <Plus className="w-3 h-3" />
+                              Criar
+                            </button>
+                          </div>
                           <Select
                             value={item.contatoId}
-                            onValueChange={(v) => handleAtualizarAssunto(idx, 'contatoId', v)}
+                            onValueChange={(v) => {
+                              if (v === '__create_new__') {
+                                handleAbrirCriarContato(idx)
+                              } else {
+                                handleAtualizarAssunto(idx, 'contatoId', v)
+                              }
+                            }}
                           >
                             <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
                               <SelectValue placeholder="Automático (IA)" />
                             </SelectTrigger>
                             <SelectContent>
+                              <SelectItem
+                                value="__create_new__"
+                                className="text-[#0F766E] font-semibold bg-[#0F766E]/5 hover:bg-[#0F766E]/15 focus:bg-[#0F766E]/15 cursor-pointer border-b border-[#E5E1D8] mb-1"
+                              >
+                                + Criar novo contato...
+                              </SelectItem>
                               <SelectItem value="none">Automático (Deixar para IA)</SelectItem>
                               {contatos.map((c) => (
                                 <SelectItem key={c.id} value={c.id}>
@@ -990,14 +1400,20 @@ export default function Folha() {
                   <div className="pt-2 border-t border-[#E5E1D8]/60 space-y-2">
                     <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-[#5B6470]">
                       {item.fluxo && getFluxoBadge(item.fluxo)}
-                      {item.expand?.projeto && (
+                      {(item.expand?.projeto ||
+                        (item.projeto && projetos.find((p) => p.id === item.projeto))) && (
                         <span className="bg-[#F4F2EE] px-2 py-0.5 rounded font-medium truncate max-w-[140px]">
-                          📁 {item.expand.projeto.nome}
+                          📁{' '}
+                          {item.expand?.projeto?.nome ||
+                            projetos.find((p) => p.id === item.projeto)?.nome}
                         </span>
                       )}
-                      {item.expand?.contato && (
+                      {(item.expand?.contato ||
+                        (item.contato && contatos.find((c) => c.id === item.contato))) && (
                         <span className="bg-[#F4F2EE] px-2 py-0.5 rounded font-medium truncate max-w-[140px]">
-                          👤 {item.expand.contato.nome}
+                          👤{' '}
+                          {item.expand?.contato?.nome ||
+                            contatos.find((c) => c.id === item.contato)?.nome}
                         </span>
                       )}
                       {item.timeline && (
@@ -1006,7 +1422,6 @@ export default function Folha() {
                         </span>
                       )}
                     </div>
-
                     <div className="flex items-center justify-between pt-1">
                       <span className="text-[10px] text-[#5B6470]">
                         Salvo em {item.created?.slice(11, 16)}
@@ -1138,12 +1553,37 @@ export default function Folha() {
 
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#5B6470]">Vínculo: Projeto</label>
-                <Select value={demandaProjeto} onValueChange={setDemandaProjeto}>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-[#5B6470]">Vínculo: Projeto</label>
+                  <button
+                    type="button"
+                    onClick={handleAbrirCriarProjetoEmDemanda}
+                    className="text-[10px] text-[#0F766E] hover:underline flex items-center gap-0.5"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Criar
+                  </button>
+                </div>
+                <Select
+                  value={demandaProjeto}
+                  onValueChange={(v) => {
+                    if (v === '__create_new__') {
+                      handleAbrirCriarProjetoEmDemanda()
+                    } else {
+                      setDemandaProjeto(v)
+                    }
+                  }}
+                >
                   <SelectTrigger className="text-xs border-[#E5E1D8]">
                     <SelectValue placeholder="Nenhum" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem
+                      value="__create_new__"
+                      className="text-[#0F766E] font-semibold bg-[#0F766E]/5 hover:bg-[#0F766E]/15 cursor-pointer border-b border-[#E5E1D8] mb-1"
+                    >
+                      + Criar novo projeto...
+                    </SelectItem>
                     <SelectItem value="none">Nenhum</SelectItem>
                     {projetos.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
@@ -1155,12 +1595,37 @@ export default function Folha() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#5B6470]">Vínculo: Contato</label>
-                <Select value={demandaContato} onValueChange={setDemandaContato}>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-[#5B6470]">Vínculo: Contato</label>
+                  <button
+                    type="button"
+                    onClick={handleAbrirCriarContatoEmDemanda}
+                    className="text-[10px] text-[#0F766E] hover:underline flex items-center gap-0.5"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Criar
+                  </button>
+                </div>
+                <Select
+                  value={demandaContato}
+                  onValueChange={(v) => {
+                    if (v === '__create_new__') {
+                      handleAbrirCriarContatoEmDemanda()
+                    } else {
+                      setDemandaContato(v)
+                    }
+                  }}
+                >
                   <SelectTrigger className="text-xs border-[#E5E1D8]">
                     <SelectValue placeholder="Nenhum" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem
+                      value="__create_new__"
+                      className="text-[#0F766E] font-semibold bg-[#0F766E]/5 hover:bg-[#0F766E]/15 cursor-pointer border-b border-[#E5E1D8] mb-1"
+                    >
+                      + Criar novo contato...
+                    </SelectItem>
                     <SelectItem value="none">Nenhum</SelectItem>
                     {contatos.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
@@ -1172,13 +1637,52 @@ export default function Folha() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#5B6470]">Timeline</label>
-                <Input
-                  placeholder="Ex: Sprint 1"
-                  value={demandaTimeline}
-                  onChange={(e) => setDemandaTimeline(e.target.value)}
-                  className="text-xs border-[#E5E1D8]"
-                />
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-[#5B6470]">Timeline</label>
+                  <button
+                    type="button"
+                    onClick={handleAbrirCriarTimelineEmDemanda}
+                    className="text-[10px] text-[#0F766E] hover:underline flex items-center gap-0.5"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Criar
+                  </button>
+                </div>
+                <Select
+                  value={demandaTimeline || '__empty__'}
+                  onValueChange={(v) => {
+                    if (v === '__create_new__') {
+                      handleAbrirCriarTimelineEmDemanda()
+                    } else if (v === '__empty__') {
+                      setDemandaTimeline('')
+                    } else {
+                      setDemandaTimeline(v)
+                    }
+                  }}
+                >
+                  <SelectTrigger className="text-xs border-[#E5E1D8]">
+                    <SelectValue placeholder="Selecione marco" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem
+                      value="__create_new__"
+                      className="text-[#0F766E] font-semibold bg-[#0F766E]/5 hover:bg-[#0F766E]/15 cursor-pointer border-b border-[#E5E1D8] mb-1"
+                    >
+                      + Criar novo marco...
+                    </SelectItem>
+                    <SelectItem value="__empty__">Nenhum</SelectItem>
+                    {marcosTimeline.map((m) => (
+                      <SelectItem key={m.id} value={m.nome}>
+                        ⏳ {m.nome}
+                      </SelectItem>
+                    ))}
+                    {demandaTimeline && !marcosTimeline.some((m) => m.nome === demandaTimeline) && (
+                      <SelectItem value={demandaTimeline}>
+                        ⏳ {demandaTimeline} (Personalizado)
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -1207,6 +1711,365 @@ export default function Folha() {
                   <>
                     <Check className="w-3.5 h-3.5 mr-1.5" />
                     Confirmar Demanda
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal 1: Criar Novo Projeto Rapidamente */}
+      <Dialog open={modalCriarProjetoOpen} onOpenChange={setModalCriarProjetoOpen}>
+        <DialogContent className="max-w-md bg-white border border-[#E5E1D8]">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-[#1A1D21] flex items-center gap-2">
+              <FolderGit2 className="w-4 h-4 text-[#0F766E]" />
+              Criar Novo Projeto
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[#5B6470]">
+              Cadastre o projeto sem sair da Folha. Ele será automaticamente vinculado ao assunto
+              atual.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmeterCriarProjeto} className="space-y-3.5 pt-2">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-[#1A1D21]">Nome do Projeto *</label>
+              <Input
+                required
+                autoFocus
+                placeholder="Ex: Campanha Q3, Reformulação Web..."
+                value={novoProjetoNome}
+                onChange={(e) => setNovoProjetoNome(e.target.value)}
+                className="text-xs border-[#E5E1D8]"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-[#5B6470]">Tipo de Projeto</label>
+              <Select
+                value={novoProjetoTipo}
+                onValueChange={(v) => setNovoProjetoTipo(v as ProjetoTipo)}
+              >
+                <SelectTrigger className="text-xs border-[#E5E1D8]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cliente">Cliente</SelectItem>
+                  <SelectItem value="interno">Interno</SelectItem>
+                  <SelectItem value="parceria">Parceria</SelectItem>
+                  <SelectItem value="outro">Outro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-[#5B6470]">Descrição / Objetivo</label>
+              <Textarea
+                rows={2}
+                placeholder="Breve descrição do projeto..."
+                value={novoProjetoDescricao}
+                onChange={(e) => setNovoProjetoDescricao(e.target.value)}
+                className="text-xs border-[#E5E1D8]"
+              />
+            </div>
+
+            <DialogFooter className="flex justify-end gap-2 pt-3 border-t border-[#E5E1D8]">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setModalCriarProjetoOpen(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={criandoProjeto || !novoProjetoNome.trim()}
+                className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs px-4"
+              >
+                {criandoProjeto ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-3.5 h-3.5 mr-1.5" />
+                    Criar & Selecionar
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal 2: Criar Novo Contato Rapidamente */}
+      <Dialog open={modalCriarContatoOpen} onOpenChange={setModalCriarContatoOpen}>
+        <DialogContent className="max-w-md bg-white border border-[#E5E1D8]">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-[#1A1D21] flex items-center gap-2">
+              <UserCheck className="w-4 h-4 text-[#0F766E]" />
+              Criar Novo Contato
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[#5B6470]">
+              Cadastre o contato e vincule-o imediatamente a este assunto da folha.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmeterCriarContato} className="space-y-3 pt-2">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-[#1A1D21]">Nome Completo *</label>
+              <Input
+                required
+                autoFocus
+                placeholder="Ex: Dra. Mariana Silva"
+                value={novoContatoNome}
+                onChange={(e) => setNovoContatoNome(e.target.value)}
+                className="text-xs border-[#E5E1D8]"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-[#5B6470]">
+                  Empresa / Organização
+                </label>
+                <Input
+                  placeholder="Ex: Grupo Diamond"
+                  value={novoContatoEmpresa}
+                  onChange={(e) => setNovoContatoEmpresa(e.target.value)}
+                  className="text-xs border-[#E5E1D8]"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-[#5B6470]">Cargo / Função</label>
+                <Input
+                  placeholder="Ex: Diretora de Operações"
+                  value={novoContatoCargo}
+                  onChange={(e) => setNovoContatoCargo(e.target.value)}
+                  className="text-xs border-[#E5E1D8]"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-[#5B6470]">E-mail</label>
+                <Input
+                  type="email"
+                  placeholder="contato@empresa.com"
+                  value={novoContatoEmail}
+                  onChange={(e) => setNovoContatoEmail(e.target.value)}
+                  className="text-xs border-[#E5E1D8]"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-[#5B6470]">Telefone / WhatsApp</label>
+                <Input
+                  placeholder="(11) 99999-9999"
+                  value={novoContatoTelefone}
+                  onChange={(e) => setNovoContatoTelefone(e.target.value)}
+                  className="text-xs border-[#E5E1D8]"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="flex justify-end gap-2 pt-3 border-t border-[#E5E1D8]">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setModalCriarContatoOpen(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={criandoContato || !novoContatoNome.trim()}
+                className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs px-4"
+              >
+                {criandoContato ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-3.5 h-3.5 mr-1.5" />
+                    Criar & Selecionar
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal 3: Criar Nova Etapa/Coluna de Fluxo */}
+      <Dialog open={modalCriarFluxoOpen} onOpenChange={setModalCriarFluxoOpen}>
+        <DialogContent className="max-w-sm bg-white border border-[#E5E1D8]">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-[#1A1D21] flex items-center gap-2">
+              <Layers className="w-4 h-4 text-[#0F766E]" />
+              Nova Etapa / Coluna de Fluxo
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[#5B6470]">
+              Adicione uma nova coluna ao fluxo Kanban e vincule a este assunto.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmeterCriarFluxo} className="space-y-3.5 pt-2">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-[#1A1D21]">Nome da Etapa *</label>
+              <Input
+                required
+                autoFocus
+                placeholder="Ex: Em Revisão, Validação Cliente, Aguardando Financeiro..."
+                value={novoFluxoTitulo}
+                onChange={(e) => setNovoFluxoTitulo(e.target.value)}
+                className="text-xs border-[#E5E1D8]"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-[#5B6470]">Cor do Identificador</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={novoFluxoCor}
+                  onChange={(e) => setNovoFluxoCor(e.target.value)}
+                  className="w-8 h-8 rounded border border-[#E5E1D8] cursor-pointer p-0.5 bg-white"
+                />
+                <div className="flex gap-1.5">
+                  {[
+                    '#0F766E',
+                    '#0284C7',
+                    '#8B5CF6',
+                    '#F59E0B',
+                    '#DC2626',
+                    '#16A34A',
+                    '#5B6470',
+                  ].map((cor) => (
+                    <button
+                      key={cor}
+                      type="button"
+                      onClick={() => setNovoFluxoCor(cor)}
+                      className={`w-6 h-6 rounded-full border ${
+                        novoFluxoCor === cor
+                          ? 'border-2 border-black scale-110'
+                          : 'border-transparent'
+                      }`}
+                      style={{ backgroundColor: cor }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="flex justify-end gap-2 pt-3 border-t border-[#E5E1D8]">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setModalCriarFluxoOpen(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={criandoFluxo || !novoFluxoTitulo.trim()}
+                className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs px-4"
+              >
+                {criandoFluxo ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-3.5 h-3.5 mr-1.5" />
+                    Criar & Selecionar
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal 4: Criar Novo Marco de Timeline */}
+      <Dialog open={modalCriarTimelineOpen} onOpenChange={setModalCriarTimelineOpen}>
+        <DialogContent className="max-w-sm bg-white border border-[#E5E1D8]">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-[#1A1D21] flex items-center gap-2">
+              <CalendarDays className="w-4 h-4 text-[#0F766E]" />
+              Novo Marco de Timeline
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[#5B6470]">
+              Crie um marco, sprint ou etapa de entrega para associar ao assunto.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmeterCriarTimeline} className="space-y-3.5 pt-2">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-[#1A1D21]">Nome do Marco *</label>
+              <Input
+                required
+                autoFocus
+                placeholder="Ex: Sprint 2 / Entrega de Protótipo"
+                value={novoTimelineNome}
+                onChange={(e) => setNovoTimelineNome(e.target.value)}
+                className="text-xs border-[#E5E1D8]"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-[#5B6470]">Descrição / Observação</label>
+              <Textarea
+                rows={2}
+                placeholder="Opcional: objetivo desta etapa ou marco..."
+                value={novoTimelineDescricao}
+                onChange={(e) => setNovoTimelineDescricao(e.target.value)}
+                className="text-xs border-[#E5E1D8]"
+              />
+            </div>
+
+            <DialogFooter className="flex justify-end gap-2 pt-3 border-t border-[#E5E1D8]">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setModalCriarTimelineOpen(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={criandoTimeline || !novoTimelineNome.trim()}
+                className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs px-4"
+              >
+                {criandoTimeline ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-3.5 h-3.5 mr-1.5" />
+                    Criar & Selecionar
                   </>
                 )}
               </Button>

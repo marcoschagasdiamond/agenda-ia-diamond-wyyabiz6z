@@ -109,7 +109,7 @@ export interface FolhaDia {
   projeto?: string
   negocio?: string
   contato?: string
-  fluxo?: CardStatus
+  fluxo?: CardStatus | string
   timeline?: string
   created: string
   updated: string
@@ -129,7 +129,7 @@ export interface Card {
   contato?: string
   tags?: string[]
   prioridade?: CardPrioridade
-  status?: CardStatus
+  status?: CardStatus | string
   proximo_passo?: string
   responsavel?: string
   criado_por_ia?: boolean
@@ -243,4 +243,23 @@ export interface RespostaTemplate {
   contato?: string
   created: string
   updated: string
+}
+
+export interface ColunaFluxo {
+  id: string
+  chave: string
+  titulo: string
+  cor?: string
+  ordem?: number
+  created?: string
+  updated?: string
+}
+
+export interface MarcoTimeline {
+  id: string
+  nome: string
+  descricao?: string
+  projeto?: string
+  created?: string
+  updated?: string
 }

@@ -60,6 +60,8 @@ export default function Fluxo() {
   const [projetos, setProjetos] = useState<Projeto[]>([])
   const [negocios, setNegocios] = useState<Negocio[]>([])
   const [contatos, setContatos] = useState<Contato[]>([])
+  const [colunas, setColunas] =
+    useState<{ key: string; title: string; color: string }[]>(STATUS_COLUMNS)
 
   // Filtros
   const [filtroTexto, setFiltroTexto] = useState(buscaParam)
@@ -75,7 +77,7 @@ export default function Fluxo() {
   const [formNegocio, setFormNegocio] = useState('none')
   const [formContato, setFormContato] = useState('none')
   const [formPrioridade, setFormPrioridade] = useState<CardPrioridade>('media')
-  const [formStatus, setFormStatus] = useState<CardStatus>('novo')
+  const [formStatus, setFormStatus] = useState<string>('novo')
   const [formProximoPasso, setFormProximoPasso] = useState('')
   const [formTags, setFormTags] = useState('')
   const [salvando, setSalvando] = useState(false)
@@ -85,16 +87,27 @@ export default function Fluxo() {
 
   const carregarDados = async () => {
     try {
-      const [c, p, n, ct] = await Promise.all([
+      const [c, p, n, ct, customCols] = await Promise.all([
         diamondApi.listCards(),
         diamondApi.listProjetos(),
         diamondApi.listNegocios(),
         diamondApi.listContatos(),
+        diamondApi.listColunasFluxo().catch(() => []),
       ])
       setCards(c)
       setProjetos(p)
       setNegocios(n)
       setContatos(ct)
+
+      if (customCols && customCols.length > 0) {
+        setColunas(
+          customCols.map((col) => ({
+            key: col.chave,
+            title: col.titulo,
+            color: col.cor || '#0F766E',
+          })),
+        )
+      }
     } catch (err) {
       console.error('Erro ao carregar dados do kanban:', err)
     }
@@ -200,7 +213,7 @@ export default function Fluxo() {
     e.preventDefault()
   }
 
-  const handleDrop = async (e: React.DragEvent, targetStatus: CardStatus) => {
+  const handleDrop = async (e: React.DragEvent, targetStatus: string) => {
     e.preventDefault()
     const id = draggedCardId || e.dataTransfer.getData('text/plain')
     if (!id) return
@@ -327,7 +340,7 @@ export default function Fluxo() {
 
       {/* Colunas do Kanban */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
-        {STATUS_COLUMNS.map((col) => {
+        {colunas.map((col) => {
           const colCards = cardsFiltrados.filter((c) => c.status === col.key)
 
           return (
@@ -473,15 +486,28 @@ export default function Fluxo() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-[#5B6470]">Status</label>
-                <Select value={formStatus} onValueChange={(v) => setFormStatus(v as CardStatus)}>
+                <Select value={formStatus} onValueChange={(v) => setFormStatus(v)}>
                   <SelectTrigger className="text-xs border-[#E5E1D8]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="novo">Novo / Triagem</SelectItem>
-                    <SelectItem value="em_andamento">Em Andamento</SelectItem>
-                    <SelectItem value="bloqueado">Bloqueado</SelectItem>
-                    <SelectItem value="concluido">Concluído</SelectItem>
+                    {colunas.map((col) => (
+                      <SelectItem key={col.key} value={col.key}>
+                        {col.title}
+                      </SelectItem>
+                    ))}
+                    {!colunas.some((c) => c.key === 'novo') && (
+                      <SelectItem value="novo">Novo / Triagem</SelectItem>
+                    )}
+                    {!colunas.some((c) => c.key === 'em_andamento') && (
+                      <SelectItem value="em_andamento">Em Andamento</SelectItem>
+                    )}
+                    {!colunas.some((c) => c.key === 'bloqueado') && (
+                      <SelectItem value="bloqueado">Bloqueado</SelectItem>
+                    )}
+                    {!colunas.some((c) => c.key === 'concluido') && (
+                      <SelectItem value="concluido">Concluído</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>

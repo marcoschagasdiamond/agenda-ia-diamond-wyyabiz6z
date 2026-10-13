@@ -13,6 +13,8 @@ import type {
   Cliente,
   ClienteProjeto,
   Profile,
+  ColunaFluxo,
+  MarcoTimeline,
 } from '@/types'
 
 export const diamondApi = {
@@ -352,5 +354,45 @@ export const diamondApi = {
       throw new Error(err.error || 'Falha ao resumir documento')
     }
     return await res.json()
+  },
+
+  // Colunas do Fluxo
+  async listColunasFluxo(): Promise<ColunaFluxo[]> {
+    try {
+      return await pb.collection('colunas_fluxo').getFullList<ColunaFluxo>({
+        sort: 'ordem,created',
+      })
+    } catch {
+      return [
+        { id: '1', chave: 'novo', titulo: 'Novo / Triagem', cor: '#5B6470', ordem: 1 },
+        { id: '2', chave: 'em_andamento', titulo: 'Em Andamento', cor: '#0F766E', ordem: 2 },
+        { id: '3', chave: 'bloqueado', titulo: 'Bloqueado', cor: '#DC2626', ordem: 3 },
+        { id: '4', chave: 'concluido', titulo: 'Concluído', cor: '#16A34A', ordem: 4 },
+      ]
+    }
+  },
+
+  async createColunaFluxo(data: Partial<ColunaFluxo>): Promise<ColunaFluxo> {
+    return await pb.collection('colunas_fluxo').create<ColunaFluxo>(data)
+  },
+
+  // Marcos da Timeline
+  async listMarcosTimeline(projetoId?: string): Promise<MarcoTimeline[]> {
+    try {
+      let filter = ''
+      if (projetoId && projetoId !== 'none') {
+        filter = `projeto = "${projetoId}" || projeto = null || projeto = ""`
+      }
+      return await pb.collection('marcos_timeline').getFullList<MarcoTimeline>({
+        filter,
+        sort: '-created',
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async createMarcoTimeline(data: Partial<MarcoTimeline>): Promise<MarcoTimeline> {
+    return await pb.collection('marcos_timeline').create<MarcoTimeline>(data)
   },
 }
