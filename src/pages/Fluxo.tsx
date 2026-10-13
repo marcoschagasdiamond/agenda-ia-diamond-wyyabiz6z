@@ -620,6 +620,8 @@ export default function Fluxo() {
     if (!catNome.trim()) return
     setSalvandoCat(true)
 
+    // O nome da categoria é independente de titulo_fases.
+    // Ao editar ou criar, preservamos ou atualizamos titulo_fases apenas se explicitamente fornecido.
     const payload: Partial<CategoriaFluxo> = {
       nome: catNome.trim(),
       descricao: catDescricao.trim() || undefined,
@@ -719,6 +721,8 @@ export default function Fluxo() {
         .replace(/^_+|_+$/g, '') ||
       `fluxo_${Date.now()}`
 
+    // O título do fluxo NÃO sobrescreve nem altera titulo_fases.
+    // Criar ou renomear o fluxo NÃO altera o "nome das fases".
     const payload: Partial<ColunaFluxo> = {
       titulo: fluxoTitulo.trim(),
       chave: chaveGerada,
@@ -756,7 +760,7 @@ export default function Fluxo() {
     }
   }
 
-  // Renomeação inline da coluna direto no board
+  // Renomeação inline da coluna direto no board — altera APENAS o título da coluna (fluxo), NUNCA o nome das fases
   const handleIniciarEdicaoColuna = (col: ColunaFluxo) => {
     setColunaEditandoId(col.id)
     setColunaEditandoTitulo(col.titulo)
@@ -776,7 +780,7 @@ export default function Fluxo() {
       return
     }
 
-    // Atualização otimista local
+    // Atualização otimista local: altera APENAS col.titulo, mantendo intacto col.titulo_fases
     setColunas((prev) => prev.map((c) => (c.id === col.id ? { ...c, titulo: novoTitulo } : c)))
 
     try {
@@ -988,26 +992,31 @@ export default function Fluxo() {
     return contatos.filter((ct) => ids.has(ct.id))
   }, [cardsFiltrados, contatos])
 
-  // Entidade ativa que é dona do "Nome das fases" exibido no cabeçalho
+  // Entidade ativa que é dona do "Nome das fases" exibido no cabeçalho:
+  // Se houver um fluxo específico ativo, usa o fluxo.
+  // Se uma categoria estiver selecionada (com todos os seus fluxos), usa a categoria.
+  // Se estiver em "Todas as Categorias", usa a categoria do primeiro fluxo ou o primeiro fluxo.
   const entidadeFasesAtiva = useMemo(() => {
     if (fluxoAtivo) return { tipo: 'coluna' as const, item: fluxoAtivo }
-    if (colunasOrdenadas.length > 0 && !(categoriaAtivaId === 'all' && fluxoAtivoChave === 'all')) {
-      return { tipo: 'coluna' as const, item: colunasOrdenadas[0] }
-    }
     if (categoriaAtiva) return { tipo: 'categoria' as const, item: categoriaAtiva }
+    if (colunasFiltradas.length > 0) {
+      return { tipo: 'coluna' as const, item: colunasFiltradas[0] }
+    }
     if (colunasOrdenadas.length > 0) {
       return { tipo: 'coluna' as const, item: colunasOrdenadas[0] }
     }
+    if (categorias.length > 0) {
+      return { tipo: 'categoria' as const, item: categorias[0] }
+    }
     return null
-  }, [fluxoAtivo, categoriaAtiva, colunasOrdenadas, categoriaAtivaId, fluxoAtivoChave])
+  }, [fluxoAtivo, categoriaAtiva, colunasFiltradas, colunasOrdenadas, categorias])
 
   // "Nome das fases" para o cabeçalho do board DiamondGroup:
-  // Independente do nome do fluxo ou da categoria. Se ainda não houver valor,
-  // exibe "Nome das fases" como placeholder neutro e clicável.
+  // Totalmente independente do nome do fluxo ou da categoria.
+  // Quando o campo está vazio, exibe o placeholder neutro "Nome das fases" (clicável para editar) — nunca "Fluxo sem nome".
   const tituloFasesExibicao = useMemo(() => {
-    if (entidadeFasesAtiva?.item?.titulo_fases?.trim()) {
-      return entidadeFasesAtiva.item.titulo_fases.trim()
-    }
+    const valor = entidadeFasesAtiva?.item?.titulo_fases?.trim()
+    if (valor) return valor
     return 'Nome das fases'
   }, [entidadeFasesAtiva])
 
@@ -1026,37 +1035,64 @@ export default function Fluxo() {
     setEditandoTituloFases(false)
     const novoValor = valorTituloFases.trim()
 
-    if (!entidadeFasesAtiva) {
-      // Se não há fluxo/categoria ainda, não há onde persistir
-      return
+    let entidadeAlvo = entidadeFasesAtiva
+
+    // Se ainda não existir nenhuma categoria ou fluxo, cria uma categoria padrão para ancorar o nome das fases
+    if (!entidadeAlvo) {
+      try {
+        const novaCat = await diamondApi.createCategoriaFluxo({
+          nome: 'Geral',
+          cor: '#0F766E',
+          titulo_fases: novoValor,
+        })
+        setCategorias((prev) => [...prev, novaCat])
+        setCategoriaAtivaId(novaCat.id)
+        toast({
+          title: 'Nome das fases salvo',
+          description: novoValor ? `Definido como "${novoValor}"` : 'Nome das fases definido.',
+        })
+        await Promise.all([
+          recarregarFluxoGlobal().catch(() => {}),
+          carregarDados().catch(() => {}),
+        ])
+        return
+      } catch (err) {
+        toast({
+          title: 'Erro ao salvar nome das fases',
+          description: (err as Error)?.message,
+          variant: 'destructive',
+        })
+        return
+      }
     }
 
-    const valorAnterior = entidadeFasesAtiva.item.titulo_fases || ''
+    const valorAnterior = entidadeAlvo.item.titulo_fases || ''
     if (novoValor === valorAnterior) {
       return
     }
 
     try {
-      if (entidadeFasesAtiva.tipo === 'coluna') {
-        const colId = entidadeFasesAtiva.item.id
-        // Atualização otimista local
+      if (entidadeAlvo.tipo === 'coluna') {
+        const colId = entidadeAlvo.item.id
+        // Atualização otimista local — NÃO altera o título do fluxo (col.titulo)
         setColunas((prev) =>
           prev.map((c) => (c.id === colId ? { ...c, titulo_fases: novoValor } : c)),
         )
         await diamondApi.updateColunaFluxo(colId, { titulo_fases: novoValor })
         toast({
           title: 'Nome das fases atualizado',
-          description: novoValor ? `Definido como "${novoValor}"` : 'Nome das fases redefinido.',
+          description: novoValor ? `Definido como "${novoValor}"` : 'Nome das fases limpo.',
         })
       } else {
-        const catId = entidadeFasesAtiva.item.id
+        const catId = entidadeAlvo.item.id
+        // Atualização otimista local — NÃO altera o nome da categoria (cat.nome)
         setCategorias((prev) =>
           prev.map((cat) => (cat.id === catId ? { ...cat, titulo_fases: novoValor } : cat)),
         )
         await diamondApi.updateCategoriaFluxo(catId, { titulo_fases: novoValor })
         toast({
           title: 'Nome das fases da categoria atualizado',
-          description: novoValor ? `Definido como "${novoValor}"` : 'Nome das fases redefinido.',
+          description: novoValor ? `Definido como "${novoValor}"` : 'Nome das fases limpo.',
         })
       }
       await Promise.all([recarregarFluxoGlobal().catch(() => {}), carregarDados().catch(() => {})])
@@ -1219,7 +1255,7 @@ export default function Fluxo() {
             <span className="hidden sm:inline">Filtro</span>
           </button>
 
-          {/* Menu "..." com ações do fluxo */}
+          {/* Menu "..." com ações do fluxo e visibilidade clara do nome do fluxo ativo */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -1231,6 +1267,27 @@ export default function Fluxo() {
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="text-xs">
+              {/* Se houver fluxo ou categoria ativa, exibe o nome real do fluxo para consulta */}
+              {fluxoAtivo && (
+                <div className="px-2 py-1.5 border-b border-[#E5E1D8]/70 mb-1">
+                  <span className="text-[10px] text-[#5B6470] block uppercase tracking-wider font-semibold">
+                    Fluxo Ativo
+                  </span>
+                  <span className="text-xs font-bold text-[#1A1D21] block truncate">
+                    {fluxoAtivo.titulo}
+                  </span>
+                </div>
+              )}
+              {categoriaAtiva && !fluxoAtivo && (
+                <div className="px-2 py-1.5 border-b border-[#E5E1D8]/70 mb-1">
+                  <span className="text-[10px] text-[#5B6470] block uppercase tracking-wider font-semibold">
+                    Categoria Ativa
+                  </span>
+                  <span className="text-xs font-bold text-[#1A1D21] block truncate">
+                    {categoriaAtiva.nome}
+                  </span>
+                </div>
+              )}
               <DropdownMenuItem onClick={() => abrirModalCriarCard()}>
                 <Plus className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
                 Novo Card
@@ -1238,13 +1295,13 @@ export default function Fluxo() {
               {fluxoAtivo && (
                 <DropdownMenuItem onClick={() => abrirModalEditarFluxo(fluxoAtivo)}>
                   <Edit2 className="w-3.5 h-3.5 mr-2 text-blue-600" />
-                  Editar Fluxo Selecionado
+                  Editar Fluxo: {fluxoAtivo.titulo}
                 </DropdownMenuItem>
               )}
               {categoriaAtiva && (
                 <DropdownMenuItem onClick={() => abrirModalEditarCategoria(categoriaAtiva)}>
                   <FolderTree className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
-                  Editar Categoria
+                  Editar Categoria: {categoriaAtiva.nome}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={handleExportarCsv}>
@@ -1253,7 +1310,6 @@ export default function Fluxo() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-
           {/* Sino de Notificação com badge vermelho no canto */}
           <button
             type="button"
