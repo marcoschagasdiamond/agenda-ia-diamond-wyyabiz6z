@@ -1,6 +1,7 @@
 import React from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/hooks/use-auth'
+import { NavegacaoProvider } from '@/contexts/NavegacaoContext'
 import Layout from '@/components/Layout'
 import { Toaster } from '@/components/ui/toaster'
 
@@ -48,153 +49,155 @@ export default function App() {
   return (
     <AuthProvider>
       <Router>
-        <Layout>
-          <Routes>
-            {/* Rotas Públicas */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/verify-email" element={<VerifyEmail />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
+        <NavegacaoProvider>
+          <Layout>
+            <Routes>
+              {/* Rotas Públicas */}
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Signup />} />
+              <Route path="/verify-email" element={<VerifyEmail />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
 
-            {/* Onboarding Obrigatório Fixo */}
-            <Route
-              path="/onboarding"
-              element={
-                <ProtectedRoute>
-                  <Onboarding />
-                </ProtectedRoute>
-              }
-            />
+              {/* Onboarding Obrigatório Fixo */}
+              <Route
+                path="/onboarding"
+                element={
+                  <ProtectedRoute>
+                    <Onboarding />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Rotas Principais do Sistema */}
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/folha"
-              element={
-                <ProtectedRoute>
-                  <Folha />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/fluxo"
-              element={
-                <ProtectedRoute>
-                  <Fluxo />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/projetos"
-              element={
-                <ProtectedRoute>
-                  <Projetos />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/projetos/:id"
-              element={
-                <ProtectedRoute>
-                  <ProjetoDetalhes />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/contatos"
-              element={
-                <ProtectedRoute>
-                  <Contatos />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/contatos/:id"
-              element={
-                <ProtectedRoute>
-                  <ContatoDetalhes />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/arquivos"
-              element={
-                <ProtectedRoute>
-                  <Arquivos />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/listas"
-              element={
-                <ProtectedRoute>
-                  <Listas />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/clientes"
-              element={
-                <ProtectedRoute>
-                  <Clientes />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/agente"
-              element={
-                <ProtectedRoute>
-                  <Agente />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/resumos"
-              element={
-                <ProtectedRoute>
-                  <Resumos />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/config"
-              element={
-                <ProtectedRoute>
-                  <Config />
-                </ProtectedRoute>
-              }
-            />
+              {/* Rotas Principais do Sistema */}
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/folha"
+                element={
+                  <ProtectedRoute>
+                    <Folha />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/fluxo"
+                element={
+                  <ProtectedRoute>
+                    <Fluxo />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/projetos"
+                element={
+                  <ProtectedRoute>
+                    <Projetos />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/projetos/:id"
+                element={
+                  <ProtectedRoute>
+                    <ProjetoDetalhes />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/contatos"
+                element={
+                  <ProtectedRoute>
+                    <Contatos />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/contatos/:id"
+                element={
+                  <ProtectedRoute>
+                    <ContatoDetalhes />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/arquivos"
+                element={
+                  <ProtectedRoute>
+                    <Arquivos />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/listas"
+                element={
+                  <ProtectedRoute>
+                    <Listas />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/clientes"
+                element={
+                  <ProtectedRoute>
+                    <Clientes />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/agente"
+                element={
+                  <ProtectedRoute>
+                    <Agente />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/resumos"
+                element={
+                  <ProtectedRoute>
+                    <Resumos />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/config"
+                element={
+                  <ProtectedRoute>
+                    <Config />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Portal do Cliente */}
-            <Route
-              path="/portal"
-              element={
-                <ProtectedRoute>
-                  <PortalCliente />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/portal/demandas"
-              element={
-                <ProtectedRoute>
-                  <PortalCliente />
-                </ProtectedRoute>
-              }
-            />
+              {/* Portal do Cliente */}
+              <Route
+                path="/portal"
+                element={
+                  <ProtectedRoute>
+                    <PortalCliente />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/portal/demandas"
+                element={
+                  <ProtectedRoute>
+                    <PortalCliente />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* 404 */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Layout>
+              {/* 404 */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Layout>
+        </NavegacaoProvider>
         <Toaster />
       </Router>
     </AuthProvider>

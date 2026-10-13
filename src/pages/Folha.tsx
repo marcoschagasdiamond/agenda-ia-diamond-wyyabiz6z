@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { diamondApi } from '@/services/diamondApi'
+import { useNavegacao } from '@/contexts/NavegacaoContext'
 import type {
   FolhaDia,
   Projeto,
@@ -127,6 +128,7 @@ const carregarRascunhoSalvo = (): ItemRascunhoAssunto[] => {
 
 export default function Folha() {
   const { toast } = useToast()
+  const { recarregarDadosGlobais } = useNavegacao()
   const [folhaItems, setFolhaItems] = useState<FolhaDia[]>([])
   const [projetos, setProjetos] = useState<Projeto[]>([])
   const [contatos, setContatos] = useState<Contato[]>([])
@@ -240,6 +242,7 @@ export default function Folha() {
       setNegocios(n)
       setColunasFluxo(colunas)
       setMarcosTimeline(marcos)
+      recarregarDadosGlobais().catch(() => {})
     } catch (err) {
       console.error('Erro ao carregar folha:', err)
     }

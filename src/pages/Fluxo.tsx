@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { diamondApi } from '@/services/diamondApi'
+import { useNavegacao } from '@/contexts/NavegacaoContext'
 import type {
   Card as CardType,
   Projeto,
@@ -69,6 +70,28 @@ export default function Fluxo() {
   const buscaParam = searchParams.get('busca') || ''
   const { toast } = useToast()
 
+  // Integração com o NavegacaoContext (Segunda coluna global do Layout)
+  const navGlobal = useNavegacao()
+  const {
+    categoriaAtivaId: globalCatId,
+    setCategoriaAtivaId: setGlobalCatId,
+    fluxoAtivoChave: globalFluxoChave,
+    setFluxoAtivoChave: setGlobalFluxoChave,
+    recarregarFluxo: recarregarFluxoGlobal,
+    colunaSecundariaAberta,
+    modalNovaCategoriaOpen: globalModalNovaCat,
+    setModalNovaCategoriaOpen: setGlobalModalNovaCat,
+    modalNovoFluxoOpen: globalModalNovoFluxo,
+    setModalNovoFluxoOpen: setGlobalModalNovoFluxo,
+    modalNovoFluxoCatId: globalModalNovoFluxoCatId,
+    modalNovoCardOpen: globalModalNovoCard,
+    setModalNovoCardOpen: setGlobalModalNovoCard,
+    modalNovoCardChave: globalModalNovoCardChave,
+    modalNovaFamiliaOpen: globalModalNovaFamilia,
+    setModalNovaFamiliaOpen: setGlobalModalNovaFamilia,
+    modalNovaFamiliaColunaId: globalModalNovaFamiliaColId,
+  } = navGlobal
+
   // Dados principais
   const [cards, setCards] = useState<CardType[]>([])
   const [projetos, setProjetos] = useState<Projeto[]>([])
@@ -80,17 +103,17 @@ export default function Fluxo() {
   const [colunas, setColunas] = useState<ColunaFluxo[]>([])
   const [familias, setFamilias] = useState<GrupoFamilia[]>([])
 
-  // Navegação no painel lateral
-  // categoriaAtivaId: 'all' ou ID de categoria
-  const [categoriaAtivaId, setCategoriaAtivaId] = useState<string>('all')
-  // fluxoAtivoChave: 'all' para ver todas as colunas da categoria, ou a chave da coluna focada
-  const [fluxoAtivoChave, setFluxoAtivoChave] = useState<string>('all')
+  // Usamos as seleções ativas sincronizadas com o estado global
+  const categoriaAtivaId = globalCatId
+  const setCategoriaAtivaId = setGlobalCatId
+  const fluxoAtivoChave = globalFluxoChave
+  const setFluxoAtivoChave = setGlobalFluxoChave
 
   // Controle de expansão das categorias no painel lateral: { [catId]: boolean }
   const [categoriasExpandidas, setCategoriasExpandidas] = useState<Record<string, boolean>>({})
 
-  // Painel lateral visível/recolhido (permite maximizar área de trabalho)
-  const [sidebarAberta, setSidebarAberta] = useState<boolean>(true)
+  // Painel lateral embutido: visível apenas se a segunda coluna global estiver fechada
+  const [sidebarAberta, setSidebarAberta] = useState<boolean>(false)
 
   // Alternância de visualização: 'colunas' (Kanban) ou 'lista' (Linhas empilhadas)
   const [modoVisualizacao, setModoVisualizacao] = useState<'colunas' | 'lista'>('colunas')
@@ -168,6 +191,7 @@ export default function Fluxo() {
       setCategorias(cats)
       setColunas(cols)
       setFamilias(fams)
+      recarregarFluxoGlobal().catch(() => {})
 
       // Inicializa expansão de todas as categorias como abertas
       setCategoriasExpandidas((prev) => {
@@ -192,6 +216,35 @@ export default function Fluxo() {
   useEffect(() => {
     carregarDados()
   }, [])
+
+  // Sincroniza abertura de modais disparados a partir da segunda coluna global
+  useEffect(() => {
+    if (globalModalNovaCat) {
+      abrirModalNovaCategoria()
+      setGlobalModalNovaCat(false)
+    }
+  }, [globalModalNovaCat])
+
+  useEffect(() => {
+    if (globalModalNovoFluxo) {
+      abrirModalNovoFluxo(globalModalNovoFluxoCatId)
+      setGlobalModalNovoFluxo(false)
+    }
+  }, [globalModalNovoFluxo, globalModalNovoFluxoCatId])
+
+  useEffect(() => {
+    if (globalModalNovoCard) {
+      abrirModalCriarCard(globalModalNovoCardChave)
+      setGlobalModalNovoCard(false)
+    }
+  }, [globalModalNovoCard, globalModalNovoCardChave])
+
+  useEffect(() => {
+    if (globalModalNovaFamilia) {
+      abrirModalNovaFamilia(globalModalNovaFamiliaColId)
+      setGlobalModalNovaFamilia(false)
+    }
+  }, [globalModalNovaFamilia, globalModalNovaFamiliaColId])
 
   useEffect(() => {
     if (buscaParam) setFiltroTexto(buscaParam)
@@ -851,8 +904,9 @@ export default function Fluxo() {
       <div className="flex flex-col lg:flex-row gap-4 items-start">
         {/* ======================================================== */}
         {/* PAINEL LATERAL DE SEGUNDO NÍVEL: CATEGORIAS & FLUXOS */}
+        {/* Exibido se a sidebar interna estiver aberta OU se a coluna global estiver recolhida */}
         {/* ======================================================== */}
-        {sidebarAberta && (
+        {(sidebarAberta || !colunaSecundariaAberta) && (
           <aside className="w-full lg:w-[280px] shrink-0 bg-white rounded-xl border border-[#E5E1D8] p-3 shadow-xs space-y-3">
             {/* Topo do painel lateral com menu Adicionar */}
             <div className="flex items-center justify-between pb-2 border-b border-[#E5E1D8]">

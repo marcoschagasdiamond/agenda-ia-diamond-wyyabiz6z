@@ -1,6 +1,8 @@
 import React, { useState } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
+import { useNavegacao } from '@/contexts/NavegacaoContext'
+import NavContextColumn from '@/components/NavContextColumn'
 import {
   LayoutDashboard,
   FileEdit,
@@ -18,8 +20,9 @@ import {
   X,
   Search,
   Sparkles,
-  ShieldCheck,
-  Building2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ChevronRight,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,25 +34,32 @@ interface LayoutProps {
 }
 
 export default function Layout({ children }: LayoutProps) {
-  const { user, profile, clienteProfile, isClientPortal, signOut } = useAuth()
+  const { user, clienteProfile, isClientPortal, signOut } = useAuth()
+  const { colunaSecundariaAberta, setColunaSecundariaAberta, toggleColunaSecundaria, folhaItems } =
+    useNavegacao()
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchModalOpen, setSearchModalOpen] = useState(false)
 
-  interface NavItem {
+  interface NavRailItem {
     name: string
     path: string
     icon: React.ElementType
-    badge?: string
+    badgeCount?: number
     highlight?: boolean
   }
 
-  // Navegação para Usuário Interno (Dono / Equipe)
-  const navItemsInternal: NavItem[] = [
+  // Itens do Rail Lateral Esquerdo Fixo: Dashboard até Configurações
+  const navItemsInternal: NavRailItem[] = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-    { name: 'Folha do Dia', path: '/folha', icon: FileEdit, badge: 'Captura' },
+    {
+      name: 'Folha do Dia',
+      path: '/folha',
+      icon: FileEdit,
+      badgeCount: folhaItems.filter((f) => f.status === 'pendente').length,
+    },
     { name: 'Fluxo Kanban', path: '/fluxo', icon: KanbanSquare },
     { name: 'Projetos', path: '/projetos', icon: FolderKanban },
     { name: 'Contatos', path: '/contatos', icon: Users },
@@ -61,8 +71,8 @@ export default function Layout({ children }: LayoutProps) {
     { name: 'Configurações', path: '/config', icon: Settings },
   ]
 
-  // Navegação para o Portal do Cliente
-  const navItemsClient: NavItem[] = [
+  // Navegação Portal do Cliente
+  const navItemsClient: NavRailItem[] = [
     { name: 'Meus Projetos', path: '/portal', icon: FolderKanban },
     { name: 'Demandas & Entregas', path: '/portal/demandas', icon: ListTodo },
     { name: 'Resumos & Estado', path: '/resumos', icon: History },
@@ -86,121 +96,152 @@ export default function Layout({ children }: LayoutProps) {
     '/onboarding',
   ].includes(location.pathname)
 
-  // Se for tela de autenticação ou onboarding sem login ainda, renderiza limpo sem sidebar
   if (isAuthRoute) {
     return <main className="min-h-screen bg-[#F4F2EE]">{children}</main>
   }
 
+  // Verifica se o item do rail está ativo
+  const isItemActive = (path: string) => {
+    if (path === '/') return location.pathname === '/'
+    return location.pathname.startsWith(path)
+  }
+
   return (
     <div className="flex min-h-screen bg-[#F4F2EE] text-[#1A1D21]">
-      {/* Sidebar Desktop (220px) */}
-      <aside className="hidden md:flex flex-col w-[230px] border-r border-[#E5E1D8] bg-white shadow-sm shrink-0">
-        <div className="p-4 border-b border-[#E5E1D8] flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-[#0F766E] flex items-center justify-center text-white shadow-sm font-bold">
-              <Sparkles className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="font-bold tracking-tight text-sm text-[#0F766E] block leading-none">
-                DIAMOND
-              </span>
-              <span className="text-[10px] text-[#5B6470] tracking-wider uppercase font-semibold">
-                Segundo Cérebro
-              </span>
-            </div>
-          </div>
-          {isClientPortal && (
-            <Badge
-              variant="outline"
-              className="text-[10px] bg-amber-50 text-amber-700 border-amber-200"
-            >
-              Portal
-            </Badge>
-          )}
+      {/* ======================================================== */}
+      {/* 1. RAIL FIXO DA ESQUERDA (ÍCONES DO DASHBOARD A CONFIG)  */}
+      {/* ======================================================== */}
+      <aside className="hidden md:flex flex-col w-[68px] border-r border-[#E5E1D8] bg-[#1A1D21] text-white shrink-0 z-30 select-none">
+        {/* Logo Diamond no topo do rail */}
+        <div className="h-14 flex items-center justify-center border-b border-white/10 shrink-0">
+          <button
+            onClick={() => {
+              navigate('/')
+              setColunaSecundariaAberta(true)
+            }}
+            title="Agenda IA Diamond"
+            className="w-10 h-10 rounded-xl bg-[#0F766E] flex items-center justify-center text-white shadow-sm hover:scale-105 transition-transform"
+          >
+            <Sparkles className="w-5 h-5 text-white" />
+          </button>
         </div>
 
-        {/* Links de Navegação */}
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+        {/* Lista de Ícones do Rail */}
+        <nav className="flex-1 py-3 px-1.5 space-y-1 overflow-y-auto flex flex-col items-center">
           {currentNavItems.map((item) => {
             const Icon = item.icon
-            const isActive =
-              location.pathname === item.path ||
-              (item.path !== '/' && location.pathname.startsWith(item.path))
+            const active = isItemActive(item.path)
+
             return (
               <NavLink
                 key={item.path}
                 to={item.path}
-                className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                  isActive
-                    ? 'bg-[#0F766E] text-white shadow-sm'
-                    : 'text-[#5B6470] hover:bg-[#F4F2EE] hover:text-[#1A1D21]'
+                onClick={() => {
+                  // Ao clicar em qualquer ícone do rail, garante que a segunda coluna abre
+                  setColunaSecundariaAberta(true)
+                }}
+                title={item.name}
+                className={`relative group flex flex-col items-center justify-center w-12 h-12 rounded-xl transition-all ${
+                  active
+                    ? 'bg-[#0F766E] text-white shadow-md'
+                    : 'text-zinc-400 hover:text-white hover:bg-white/10'
                 }`}
               >
-                <div className="flex items-center gap-2.5 truncate">
-                  <Icon
-                    className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-[#5B6470]'}`}
-                  />
-                  <span className="truncate">{item.name}</span>
-                </div>
-                {item.badge && (
-                  <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                      isActive ? 'bg-white/20 text-white' : 'bg-[#E5E1D8] text-[#5B6470]'
-                    }`}
-                  >
-                    {item.badge}
+                <Icon
+                  className={`w-5 h-5 ${active ? 'text-white' : 'text-zinc-400 group-hover:text-white'}`}
+                />
+                <span className="text-[9px] mt-0.5 tracking-tight font-medium truncate max-w-[44px] leading-none opacity-85">
+                  {item.name.split(' ')[0]}
+                </span>
+
+                {/* Badge numérica (ex: pendentes da folha) */}
+                {typeof item.badgeCount === 'number' && item.badgeCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-white font-bold text-[9px] rounded-full flex items-center justify-center shadow-xs">
+                    {item.badgeCount > 9 ? '9+' : item.badgeCount}
                   </span>
                 )}
-                {item.highlight && !isActive && (
-                  <span className="w-2 h-2 rounded-full bg-[#0F766E] animate-pulse" />
+
+                {/* Pulso do Agente IA */}
+                {item.highlight && !active && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#0F766E] animate-pulse" />
                 )}
               </NavLink>
             )
           })}
         </nav>
 
-        {/* Rodapé do Usuário / Sair */}
-        <div className="p-3 border-t border-[#E5E1D8] bg-[#FAFAF9]">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2 truncate">
-              <div className="w-7 h-7 rounded-full bg-[#E5E1D8] flex items-center justify-center font-bold text-xs text-[#0F766E] shrink-0">
-                {user?.name?.[0] || user?.email?.[0]?.toUpperCase() || 'U'}
-              </div>
-              <div className="truncate text-left">
-                <p className="text-xs font-semibold text-[#1A1D21] truncate">
-                  {user?.name || user?.email?.split('@')[0]}
-                </p>
-                <p className="text-[10px] text-[#5B6470] truncate">
-                  {isClientPortal ? clienteProfile?.empresa || 'Cliente' : 'Estrategista'}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => signOut()}
-              title="Sair"
-              className="p-1.5 text-[#5B6470] hover:text-red-600 rounded-md hover:bg-white transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+        {/* Rodapé do Rail: Usuário & Sair */}
+        <div className="p-2 border-t border-white/10 flex flex-col items-center gap-2 shrink-0">
+          <div
+            title={`${user?.name || user?.email} (${isClientPortal ? clienteProfile?.empresa || 'Cliente' : 'Estrategista'})`}
+            className="w-9 h-9 rounded-full bg-white/15 border border-white/20 flex items-center justify-center text-xs font-bold text-white cursor-default"
+          >
+            {user?.name?.[0] || user?.email?.[0]?.toUpperCase() || 'U'}
           </div>
+          <button
+            onClick={() => signOut()}
+            title="Sair da Conta"
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-zinc-400 hover:text-red-400 hover:bg-white/10 transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </aside>
 
-      {/* Main Content Area */}
+      {/* ======================================================== */}
+      {/* 2. SEGUNDA COLUNA CONTEXTUAL (DIAMONDGROUP MODEL)        */}
+      {/* ======================================================== */}
+      {colunaSecundariaAberta && (
+        <aside className="hidden md:flex flex-col w-[260px] lg:w-[280px] border-r border-[#E5E1D8] bg-white shadow-xs shrink-0 z-20">
+          <NavContextColumn />
+        </aside>
+      )}
+
+      {/* ======================================================== */}
+      {/* 3. ÁREA DE CONTEÚDO PRINCIPAL (DIREITA DAS DUAS COLUNAS) */}
+      {/* ======================================================== */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Topbar */}
-        <header className="h-14 border-b border-[#E5E1D8] bg-white flex items-center justify-between px-4 sticky top-0 z-20">
-          <div className="flex items-center gap-3">
+        {/* Topbar Superior */}
+        <header className="h-14 border-b border-[#E5E1D8] bg-white flex items-center justify-between px-4 sticky top-0 z-10">
+          <div className="flex items-center gap-2.5">
+            {/* Botão Mobile para abrir navegação completa */}
             <button
               className="md:hidden p-1.5 rounded-lg border border-[#E5E1D8] text-[#5B6470]"
               onClick={() => setMobileMenuOpen(true)}
+              aria-label="Abrir menu"
             >
               <Menu className="w-5 h-5" />
             </button>
+
+            {/* Toggle Desktop para recolher/expandir a segunda coluna contextual */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={toggleColunaSecundaria}
+              className="hidden md:inline-flex text-xs h-8 px-2 text-[#5B6470] hover:text-[#1A1D21] hover:bg-[#F4F2EE] gap-1.5 border border-[#E5E1D8]"
+              title={
+                colunaSecundariaAberta ? 'Recolher coluna contextual' : 'Expandir coluna contextual'
+              }
+            >
+              {colunaSecundariaAberta ? (
+                <>
+                  <PanelLeftClose className="w-4 h-4 text-[#0F766E]" />
+                  <span className="text-[11px] font-medium hidden lg:inline">Recolher Coluna</span>
+                </>
+              ) : (
+                <>
+                  <PanelLeftOpen className="w-4 h-4 text-[#0F766E]" />
+                  <span className="text-[11px] font-medium hidden lg:inline">Abrir Coluna</span>
+                </>
+              )}
+            </Button>
+
+            {/* Breadcrumb da rota ativa */}
             <div className="hidden sm:flex items-center text-xs text-[#5B6470] gap-1.5">
-              <span className="font-medium text-[#1A1D21]">Agenda IA Diamond</span>
+              <span className="font-semibold text-[#1A1D21]">Agenda IA Diamond</span>
               <span>/</span>
-              <span className="capitalize">
+              <span className="capitalize font-medium text-[#0F766E]">
                 {location.pathname.replace('/', '') || 'Dashboard'}
               </span>
             </div>
@@ -214,7 +255,7 @@ export default function Layout({ children }: LayoutProps) {
                 className="flex items-center gap-2 px-3 py-1.5 text-xs text-[#5B6470] bg-[#F4F2EE] hover:bg-[#E5E1D8]/60 rounded-lg border border-[#E5E1D8] transition-colors"
               >
                 <Search className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Buscar cards, contatos, projetos...</span>
+                <span className="hidden sm:inline">Buscar cards, contatos...</span>
                 <kbd className="hidden sm:inline text-[10px] bg-white border border-[#E5E1D8] px-1 rounded text-[#5B6470]">
                   Ctrl+K
                 </kbd>
@@ -239,76 +280,75 @@ export default function Layout({ children }: LayoutProps) {
         <main className="flex-1 p-4 md:p-6 overflow-y-auto">{children}</main>
       </div>
 
-      {/* Drawer Mobile */}
+      {/* ======================================================== */}
+      {/* 4. DRAWER MOBILE COMPLETO COM RAIL E SEGUNDA COLUNA      */}
+      {/* ======================================================== */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-50 flex md:hidden">
           <div
-            className="fixed inset-0 bg-black/40 backdrop-blur-xs transition-opacity"
+            className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity"
             onClick={() => setMobileMenuOpen(false)}
           />
-          <div className="relative flex flex-col w-64 max-w-xs bg-white h-full shadow-2xl z-10 border-r border-[#E5E1D8]">
-            <div className="p-4 border-b border-[#E5E1D8] flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-[#0F766E] flex items-center justify-center text-white font-bold">
-                  <Sparkles className="w-4 h-4" />
-                </div>
-                <span className="font-bold text-sm text-[#0F766E]">AGENDA DIAMOND</span>
+          <div className="relative flex flex-row w-full max-w-sm bg-white h-full shadow-2xl z-10 border-r border-[#E5E1D8] overflow-hidden">
+            {/* Rail Mobile Esquerdo */}
+            <div className="w-[60px] bg-[#1A1D21] flex flex-col items-center py-3 border-r border-white/10 shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-[#0F766E] flex items-center justify-center text-white mb-3">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div className="flex-1 space-y-1 overflow-y-auto">
+                {currentNavItems.map((item) => {
+                  const Icon = item.icon
+                  const active = isItemActive(item.path)
+                  return (
+                    <button
+                      key={item.path}
+                      onClick={() => {
+                        navigate(item.path)
+                      }}
+                      className={`w-11 h-11 rounded-lg flex items-center justify-center transition-colors ${
+                        active ? 'bg-[#0F766E] text-white' : 'text-zinc-400 hover:text-white'
+                      }`}
+                      title={item.name}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </button>
+                  )
+                })}
               </div>
               <button
-                onClick={() => setMobileMenuOpen(false)}
-                className="p-1 rounded-md text-[#5B6470] hover:bg-[#F4F2EE]"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-              {currentNavItems.map((item) => {
-                const Icon = item.icon
-                const isActive = location.pathname === item.path
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium ${
-                      isActive
-                        ? 'bg-[#0F766E] text-white'
-                        : 'text-[#5B6470] hover:bg-[#F4F2EE] hover:text-[#1A1D21]'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon className="w-4 h-4" />
-                      <span>{item.name}</span>
-                    </div>
-                    {item.badge && (
-                      <span className="text-xs px-1.5 py-0.5 rounded bg-black/10">
-                        {item.badge}
-                      </span>
-                    )}
-                  </NavLink>
-                )
-              })}
-            </nav>
-
-            <div className="p-4 border-t border-[#E5E1D8] bg-[#FAFAF9]">
-              <Button
-                variant="outline"
-                className="w-full text-xs text-red-600 border-red-200 hover:bg-red-50 justify-center"
                 onClick={() => {
                   setMobileMenuOpen(false)
                   signOut()
                 }}
+                className="w-10 h-10 rounded-lg flex items-center justify-center text-zinc-400 hover:text-red-400"
+                title="Sair"
               >
-                <LogOut className="w-4 h-4 mr-2" />
-                Sair da Conta
-              </Button>
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Segunda Coluna Mobile */}
+            <div className="flex-1 flex flex-col bg-white overflow-hidden">
+              <div className="p-3 border-b border-[#E5E1D8] flex items-center justify-between bg-[#FAFAF9]">
+                <span className="font-bold text-xs text-[#0F766E] uppercase tracking-wider">
+                  Menu Contextual
+                </span>
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="p-1 rounded text-[#5B6470] hover:bg-[#E5E1D8]"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                <NavContextColumn onCloseMobile={() => setMobileMenuOpen(false)} />
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal de Busca Rápida */}
+      {/* Modal de Busca Global */}
       <Dialog open={searchModalOpen} onOpenChange={setSearchModalOpen}>
         <DialogContent className="sm:max-w-md p-4 bg-white border border-[#E5E1D8]">
           <DialogHeader>
