@@ -128,7 +128,7 @@ const carregarRascunhoSalvo = (): ItemRascunhoAssunto[] => {
 
 export default function Folha() {
   const { toast } = useToast()
-  const { recarregarDadosGlobais } = useNavegacao()
+  const { colunas: colunasGlobal, recarregarDadosGlobais } = useNavegacao()
   const [folhaItems, setFolhaItems] = useState<FolhaDia[]>([])
   const [projetos, setProjetos] = useState<Projeto[]>([])
   const [contatos, setContatos] = useState<Contato[]>([])
@@ -251,6 +251,13 @@ export default function Folha() {
   useEffect(() => {
     carregarDados()
   }, [])
+
+  // Sincroniza colunas locais com a lista global do NavegacaoContext quando atualizada
+  useEffect(() => {
+    if (colunasGlobal && colunasGlobal.length > 0) {
+      setColunasFluxo(colunasGlobal)
+    }
+  }, [colunasGlobal])
 
   // Sincroniza rascunho com o localStorage sempre que os assuntos mudarem
   useEffect(() => {

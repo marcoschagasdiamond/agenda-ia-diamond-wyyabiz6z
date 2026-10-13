@@ -179,6 +179,10 @@ export default function Fluxo() {
   const [fluxoCategoriaId, setFluxoCategoriaId] = useState<string>('')
   const [salvandoFluxo, setSalvandoFluxo] = useState(false)
 
+  // Renomeação inline do título da coluna direto no board
+  const [colunaEditandoId, setColunaEditandoId] = useState<string | null>(null)
+  const [colunaEditandoTitulo, setColunaEditandoTitulo] = useState('')
+
   // 4. Modal Grupo de Família
   const [modalFamiliaOpen, setModalFamiliaOpen] = useState(false)
   const [editingFamilia, setEditingFamilia] = useState<GrupoFamilia | null>(null)
@@ -719,8 +723,14 @@ export default function Fluxo() {
         await diamondApi.updateColunaFluxo(editingFluxo.id, payload)
         toast({ title: 'Fluxo atualizado com sucesso!' })
       } else {
-        await diamondApi.createColunaFluxo(payload)
+        const novo = await diamondApi.createColunaFluxo(payload)
         toast({ title: `Fluxo "${fluxoTitulo}" criado com sucesso!` })
+        if (novo?.categoria || fluxoCategoriaId) {
+          setCategoriaAtivaId(novo?.categoria || fluxoCategoriaId)
+        }
+        if (novo?.chave) {
+          setFluxoAtivoChave(novo.chave)
+        }
       }
       setModalFluxoOpen(false)
       await carregarDados()
@@ -732,6 +742,43 @@ export default function Fluxo() {
       })
     } finally {
       setSalvandoFluxo(false)
+    }
+  }
+
+  // Renomeação inline da coluna direto no board
+  const handleIniciarEdicaoColuna = (col: ColunaFluxo) => {
+    setColunaEditandoId(col.id)
+    setColunaEditandoTitulo(col.titulo)
+  }
+
+  const handleCancelarEdicaoColuna = () => {
+    setColunaEditandoId(null)
+    setColunaEditandoTitulo('')
+  }
+
+  const handleSalvarEdicaoColunaInline = async (col: ColunaFluxo) => {
+    const novoTitulo = colunaEditandoTitulo.trim()
+    setColunaEditandoId(null)
+    setColunaEditandoTitulo('')
+
+    if (!novoTitulo || novoTitulo === col.titulo) {
+      return
+    }
+
+    // Atualização otimista local
+    setColunas((prev) => prev.map((c) => (c.id === col.id ? { ...c, titulo: novoTitulo } : c)))
+
+    try {
+      await diamondApi.updateColunaFluxo(col.id, { titulo: novoTitulo })
+      toast({ title: `Coluna renomeada para "${novoTitulo}"` })
+      await recarregarFluxoGlobal().catch(() => {})
+    } catch (err) {
+      toast({
+        title: 'Erro ao renomear coluna',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+      await carregarDados()
     }
   }
 
@@ -846,7 +893,7 @@ export default function Fluxo() {
     const id = draggedCardId || e.dataTransfer.getData('text/plain')
     if (!id) return
 
-    // Atualização otimista
+    // Atualização otimista irrestrita: qualquer card pode ser solto em qualquer coluna visível
     setCards((prev) =>
       prev.map((c) =>
         c.id === id
@@ -869,6 +916,8 @@ export default function Fluxo() {
       toast({
         title: `Card movido para "${nomeColuna}"`,
       })
+      // Sincroniza contagens no NavegacaoContext / painel lateral
+      recarregarFluxoGlobal().catch(() => {})
     } catch {
       toast({ title: 'Erro ao mover card', variant: 'destructive' })
       await carregarDados()
@@ -1680,15 +1729,41 @@ export default function Fluxo() {
                   >
                     {/* CABEÇALHO DA COLUNA MODELO DIAMONDGROUP: */}
                     {/* NOME EM MAIÚSCULAS + CONTAGEM + ÍCONES DE OBSERVAÇÃO / OPÇÕES */}
-                    <div className="flex items-center justify-between pb-2 mb-2 px-1">
-                      <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="flex items-center justify-between pb-2 mb-2 px-1 gap-1">
+                      <div className="flex items-center gap-1.5 min-w-0 flex-1">
                         <span
                           className="w-2 h-2 rounded-full shrink-0"
                           style={{ backgroundColor: col.cor || '#0F766E' }}
                         />
-                        <h3 className="text-xs font-bold text-[#1A1D21] uppercase tracking-wider truncate">
-                          {col.titulo} {colCards.length}
-                        </h3>
+                        {colunaEditandoId === col.id ? (
+                          <Input
+                            autoFocus
+                            value={colunaEditandoTitulo}
+                            onChange={(e) => setColunaEditandoTitulo(e.target.value)}
+                            onBlur={() => handleSalvarEdicaoColunaInline(col)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                handleSalvarEdicaoColunaInline(col)
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault()
+                                handleCancelarEdicaoColuna()
+                              }
+                            }}
+                            className="h-6 text-xs font-bold uppercase tracking-wider px-1.5 py-0 bg-white border-[#0F766E] text-[#1A1D21]"
+                          />
+                        ) : (
+                          <h3
+                            onClick={() => handleIniciarEdicaoColuna(col)}
+                            title="Clique para renomear coluna"
+                            className="text-xs font-bold text-[#1A1D21] uppercase tracking-wider truncate cursor-pointer hover:text-[#0F766E] hover:underline transition-colors flex items-center gap-1 group/title"
+                          >
+                            <span>{col.titulo}</span>
+                            <span className="text-[#5B6470] font-normal group-hover/title:text-[#0F766E]">
+                              {colCards.length}
+                            </span>
+                          </h3>
+                        )}
                       </div>
 
                       {/* Ícone de comentário/observações + menu "..." */}
