@@ -134,8 +134,8 @@ export default function Folha() {
   const [colunasFluxo, setColunasFluxo] = useState<ColunaFluxo[]>([])
   const [marcosTimeline, setMarcosTimeline] = useState<MarcoTimeline[]>([])
 
-  // Estado para saber qual assunto acionou o modal de criação rápida
-  const [assuntoAlvoIdx, setAssuntoAlvoIdx] = useState<number | null>(null)
+  // Estado para saber qual assunto acionou o modal de criação rápida (por idTemp para manter estabilidade)
+  const [assuntoAlvoIdTemp, setAssuntoAlvoIdTemp] = useState<string | null>(null)
 
   // 1. Modal Criar Projeto
   const [modalCriarProjetoOpen, setModalCriarProjetoOpen] = useState(false)
@@ -170,10 +170,13 @@ export default function Folha() {
 
   const [loadingAdd, setLoadingAdd] = useState(false)
 
+  const [loadingLancarId, setLoadingLancarId] = useState<string | null>(null)
+
   // Modal para Criar Demanda direta a partir de um assunto
   const [modalDemandaOpen, setModalDemandaOpen] = useState(false)
   const [demandaAssuntoOrigem, setDemandaAssuntoOrigem] = useState<{
     id?: string
+    idTemp?: string
     numero: number
     texto: string
     projetoId?: string
@@ -274,13 +277,26 @@ export default function Folha() {
     ])
   }
 
-  const handleRemoverAssunto = (idx: number) => {
+  const handleRemoverAssuntoPorId = (idTemp: string) => {
     if (assuntos.length <= 1) {
       // Limpa o único assunto existente em vez de deixar vazio
       setAssuntos([criarItemAssuntoVazio()])
       return
     }
-    setAssuntos((prev) => prev.filter((_, i) => i !== idx))
+    setAssuntos((prev) => prev.filter((a) => a.idTemp !== idTemp))
+  }
+
+  const handleRemoverAssunto = (idx: number) => {
+    const item = assuntos[idx]
+    if (item?.idTemp) {
+      handleRemoverAssuntoPorId(item.idTemp)
+    } else {
+      if (assuntos.length <= 1) {
+        setAssuntos([criarItemAssuntoVazio()])
+        return
+      }
+      setAssuntos((prev) => prev.filter((_, i) => i !== idx))
+    }
   }
 
   const handleLimparTodosAssuntos = () => {
@@ -308,6 +324,12 @@ export default function Folha() {
     })
   }
 
+  const handleMoverAssuntoPorId = (idTemp: string, direcao: 'cima' | 'baixo') => {
+    const idx = assuntos.findIndex((a) => a.idTemp === idTemp)
+    if (idx === -1) return
+    handleMoverAssunto(idx, direcao)
+  }
+
   const handleAtualizarAssunto = (idx: number, campo: keyof ItemRascunhoAssunto, valor: any) => {
     setAssuntos((prev) => {
       const copia = [...prev]
@@ -316,9 +338,19 @@ export default function Folha() {
     })
   }
 
+  const handleAtualizarAssuntoPorId = (
+    idTemp: string,
+    campo: keyof ItemRascunhoAssunto,
+    valor: any,
+  ) => {
+    setAssuntos((prev) =>
+      prev.map((item) => (item.idTemp === idTemp ? { ...item, [campo]: valor } : item)),
+    )
+  }
+
   // Handlers para criação rápida a partir dos seletores
-  const handleAbrirCriarProjeto = (idx: number) => {
-    setAssuntoAlvoIdx(idx)
+  const handleAbrirCriarProjeto = (idTemp: string) => {
+    setAssuntoAlvoIdTemp(idTemp)
     setNovoProjetoNome('')
     setNovoProjetoTipo('cliente')
     setNovoProjetoDescricao('')
@@ -351,8 +383,8 @@ export default function Folha() {
       setProjetos((prev) => [criado, ...prev])
 
       // Auto-seleciona no assunto que disparou ou no modal de demanda
-      if (assuntoAlvoIdx !== null) {
-        handleAtualizarAssunto(assuntoAlvoIdx, 'projetoId', criado.id)
+      if (assuntoAlvoIdTemp !== null) {
+        handleAtualizarAssuntoPorId(assuntoAlvoIdTemp, 'projetoId', criado.id)
       } else {
         setDemandaProjeto(criado.id)
       }
@@ -369,8 +401,8 @@ export default function Folha() {
     }
   }
 
-  const handleAbrirCriarContato = (idx: number) => {
-    setAssuntoAlvoIdx(idx)
+  const handleAbrirCriarContato = (idTemp: string) => {
+    setAssuntoAlvoIdTemp(idTemp)
     setNovoContatoNome('')
     setNovoContatoEmpresa('')
     setNovoContatoEmail('')
@@ -384,7 +416,8 @@ export default function Folha() {
     if (!novoContatoNome.trim()) return
     setCriandoContato(true)
     try {
-      const currentAssunto = assuntoAlvoIdx !== null ? assuntos[assuntoAlvoIdx] : null
+      const currentAssunto =
+        assuntoAlvoIdTemp !== null ? assuntos.find((a) => a.idTemp === assuntoAlvoIdTemp) : null
       const projId =
         currentAssunto && currentAssunto.projetoId !== 'none' ? currentAssunto.projetoId : undefined
 
@@ -405,8 +438,8 @@ export default function Folha() {
 
       setContatos((prev) => [criado, ...prev])
 
-      if (assuntoAlvoIdx !== null) {
-        handleAtualizarAssunto(assuntoAlvoIdx, 'contatoId', criado.id)
+      if (assuntoAlvoIdTemp !== null) {
+        handleAtualizarAssuntoPorId(assuntoAlvoIdTemp, 'contatoId', criado.id)
       } else {
         setDemandaContato(criado.id)
       }
@@ -423,8 +456,8 @@ export default function Folha() {
     }
   }
 
-  const handleAbrirCriarFluxo = (idx: number) => {
-    setAssuntoAlvoIdx(idx)
+  const handleAbrirCriarFluxo = (idTemp: string) => {
+    setAssuntoAlvoIdTemp(idTemp)
     setNovoFluxoTitulo('')
     setNovoFluxoCor('#0F766E')
     setModalCriarFluxoOpen(true)
@@ -458,8 +491,8 @@ export default function Folha() {
 
       setColunasFluxo((prev) => [...prev, novaColuna])
 
-      if (assuntoAlvoIdx !== null) {
-        handleAtualizarAssunto(assuntoAlvoIdx, 'fluxo', novaColuna.chave)
+      if (assuntoAlvoIdTemp !== null) {
+        handleAtualizarAssuntoPorId(assuntoAlvoIdTemp, 'fluxo', novaColuna.chave)
       }
 
       setModalCriarFluxoOpen(false)
@@ -474,8 +507,8 @@ export default function Folha() {
     }
   }
 
-  const handleAbrirCriarTimeline = (idx: number) => {
-    setAssuntoAlvoIdx(idx)
+  const handleAbrirCriarTimeline = (idTemp: string) => {
+    setAssuntoAlvoIdTemp(idTemp)
     setNovoTimelineNome('')
     setNovoTimelineDescricao('')
     setModalCriarTimelineOpen(true)
@@ -486,7 +519,8 @@ export default function Folha() {
     if (!novoTimelineNome.trim()) return
     setCriandoTimeline(true)
     try {
-      const currentAssunto = assuntoAlvoIdx !== null ? assuntos[assuntoAlvoIdx] : null
+      const currentAssunto =
+        assuntoAlvoIdTemp !== null ? assuntos.find((a) => a.idTemp === assuntoAlvoIdTemp) : null
       const projId =
         currentAssunto && currentAssunto.projetoId !== 'none' ? currentAssunto.projetoId : undefined
 
@@ -503,8 +537,8 @@ export default function Folha() {
 
       setMarcosTimeline((prev) => [novoMarco, ...prev])
 
-      if (assuntoAlvoIdx !== null) {
-        handleAtualizarAssunto(assuntoAlvoIdx, 'timeline', novoMarco.nome)
+      if (assuntoAlvoIdTemp !== null) {
+        handleAtualizarAssuntoPorId(assuntoAlvoIdTemp, 'timeline', novoMarco.nome)
       } else {
         setDemandaTimeline(novoMarco.nome)
       }
@@ -518,6 +552,65 @@ export default function Folha() {
       })
     } finally {
       setCriandoTimeline(false)
+    }
+  }
+
+  // Lançamento individual de um assunto do rascunho
+  const handleLancarAssuntoIndividual = async (idTemp: string) => {
+    const item = assuntos.find((a) => a.idTemp === idTemp)
+    if (!item || !item.registro.trim()) {
+      toast({
+        title: 'Assunto sem texto',
+        description: 'Digite o conteúdo do assunto antes de lançá-lo.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setLoadingLancarId(idTemp)
+    try {
+      const pendentesAtuais = folhaItems.filter((i) => i.status === 'pendente')
+      const proximaOrdem = pendentesAtuais.length > 0 ? pendentesAtuais.length + 1 : 1
+
+      const dataPart = item.dataHora
+        ? item.dataHora.split('T')[0]
+        : new Date().toISOString().split('T')[0]
+
+      await diamondApi.createFolhaDia({
+        data: dataPart,
+        data_hora: item.dataHora || undefined,
+        ordem: proximaOrdem,
+        registro: item.registro.trim(),
+        tipo_origem: item.tipoOrigem,
+        origem_ref: item.origemRef.trim() || undefined,
+        status: 'pendente',
+        fluxo: item.fluxo !== 'none' ? item.fluxo : undefined,
+        projeto: item.projetoId !== 'none' ? item.projetoId : undefined,
+        timeline: item.timeline.trim() || undefined,
+        contato: item.contatoId !== 'none' ? item.contatoId : undefined,
+        negocio: item.negocioId !== 'none' ? item.negocioId : undefined,
+      })
+
+      // Remove este assunto lançado do rascunho mantendo os demais
+      setAssuntos((prev) => {
+        const restantes = prev.filter((a) => a.idTemp !== idTemp)
+        return restantes.length > 0 ? restantes : [criarItemAssuntoVazio()]
+      })
+
+      toast({
+        title: 'Assunto lançado com sucesso!',
+        description: 'O assunto foi registrado na Folha do Dia e removido do rascunho.',
+      })
+
+      await carregarDados()
+    } catch (err) {
+      toast({
+        title: 'Erro ao lançar assunto',
+        description: (err as Error)?.message || 'Tente novamente.',
+        variant: 'destructive',
+      })
+    } finally {
+      setLoadingLancarId(null)
     }
   }
 
@@ -619,6 +712,7 @@ export default function Folha() {
   // Modal para Criar Demanda a partir de um assunto (rascunho ou já persistido)
   const handleAbrirCriarDemanda = (dados: {
     id?: string
+    idTemp?: string
     numero: number
     texto: string
     projetoId?: string
@@ -645,7 +739,7 @@ export default function Folha() {
 
   // Abertura de modais de criação a partir do modal de Demanda
   const handleAbrirCriarProjetoEmDemanda = () => {
-    setAssuntoAlvoIdx(null)
+    setAssuntoAlvoIdTemp(null)
     setNovoProjetoNome('')
     setNovoProjetoTipo('cliente')
     setNovoProjetoDescricao('')
@@ -653,7 +747,7 @@ export default function Folha() {
   }
 
   const handleAbrirCriarContatoEmDemanda = () => {
-    setAssuntoAlvoIdx(null)
+    setAssuntoAlvoIdTemp(null)
     setNovoContatoNome('')
     setNovoContatoEmpresa('')
     setNovoContatoEmail('')
@@ -663,7 +757,7 @@ export default function Folha() {
   }
 
   const handleAbrirCriarTimelineEmDemanda = () => {
-    setAssuntoAlvoIdx(null)
+    setAssuntoAlvoIdTemp(null)
     setNovoTimelineNome('')
     setNovoTimelineDescricao('')
     setModalCriarTimelineOpen(true)
@@ -685,6 +779,14 @@ export default function Folha() {
         prioridade: demandaPrioridade,
         timeline: demandaTimeline.trim() || undefined,
       })
+
+      // Se a demanda veio de um assunto do rascunho (em elaboração), remove o assunto do rascunho
+      if (demandaAssuntoOrigem?.idTemp) {
+        setAssuntos((prev) => {
+          const restantes = prev.filter((a) => a.idTemp !== demandaAssuntoOrigem.idTemp)
+          return restantes.length > 0 ? restantes : [criarItemAssuntoVazio()]
+        })
+      }
 
       toast({
         title: 'Demanda criada com sucesso!',
@@ -962,7 +1064,7 @@ export default function Folha() {
                           variant="ghost"
                           size="sm"
                           disabled={idx === 0}
-                          onClick={() => handleMoverAssunto(idx, 'cima')}
+                          onClick={() => handleMoverAssuntoPorId(item.idTemp, 'cima')}
                           className="h-7 w-7 p-0 text-[#5B6470] hover:text-[#1A1D21]"
                           title="Subir assunto"
                         >
@@ -973,7 +1075,7 @@ export default function Folha() {
                           variant="ghost"
                           size="sm"
                           disabled={idx === assuntos.length - 1}
-                          onClick={() => handleMoverAssunto(idx, 'baixo')}
+                          onClick={() => handleMoverAssuntoPorId(item.idTemp, 'baixo')}
                           className="h-7 w-7 p-0 text-[#5B6470] hover:text-[#1A1D21]"
                           title="Descer assunto"
                         >
@@ -985,6 +1087,7 @@ export default function Folha() {
                           size="sm"
                           onClick={() =>
                             handleAbrirCriarDemanda({
+                              idTemp: item.idTemp,
                               numero: numeroAssunto,
                               texto: item.registro,
                               projetoId: item.projetoId,
@@ -1003,7 +1106,23 @@ export default function Folha() {
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleRemoverAssunto(idx)}
+                          disabled={!item.registro.trim() || loadingLancarId === item.idTemp}
+                          onClick={() => handleLancarAssuntoIndividual(item.idTemp)}
+                          className="h-7 px-2 text-[11px] font-medium text-[#0F766E] hover:bg-[#0F766E]/10 gap-1"
+                          title="Lançar somente este assunto na folha"
+                        >
+                          {loadingLancarId === item.idTemp ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Send className="w-3 h-3" />
+                          )}
+                          <span className="hidden sm:inline">Lançar</span>
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoverAssuntoPorId(item.idTemp)}
                           className="h-7 w-7 p-0 text-[#5B6470] hover:text-red-600"
                           title="Remover este assunto"
                         >
@@ -1018,7 +1137,9 @@ export default function Folha() {
                         rows={2}
                         placeholder="Escreva como vier: ligações, conversas, prazos. A agenda separa por negócio, pessoa e tarefa, e você confirma."
                         value={item.registro}
-                        onChange={(e) => handleAtualizarAssunto(idx, 'registro', e.target.value)}
+                        onChange={(e) =>
+                          handleAtualizarAssuntoPorId(item.idTemp, 'registro', e.target.value)
+                        }
                         className="text-sm bg-white border-[#E5E1D8] resize-none focus-visible:ring-1 focus-visible:ring-[#0F766E]"
                       />
                     </div>
@@ -1032,7 +1153,9 @@ export default function Folha() {
                         <Input
                           type="datetime-local"
                           value={item.dataHora}
-                          onChange={(e) => handleAtualizarAssunto(idx, 'dataHora', e.target.value)}
+                          onChange={(e) =>
+                            handleAtualizarAssuntoPorId(item.idTemp, 'dataHora', e.target.value)
+                          }
                           className="text-xs h-8 bg-white border-[#E5E1D8]"
                         />
                       </div>
@@ -1044,7 +1167,7 @@ export default function Folha() {
                         <Select
                           value={item.tipoOrigem}
                           onValueChange={(v) =>
-                            handleAtualizarAssunto(idx, 'tipoOrigem', v as OrigemTipo)
+                            handleAtualizarAssuntoPorId(item.idTemp, 'tipoOrigem', v as OrigemTipo)
                           }
                         >
                           <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
@@ -1066,7 +1189,9 @@ export default function Folha() {
                         <Input
                           placeholder="Ex: Grupo Diretoria / Ligação 14h"
                           value={item.origemRef}
-                          onChange={(e) => handleAtualizarAssunto(idx, 'origemRef', e.target.value)}
+                          onChange={(e) =>
+                            handleAtualizarAssuntoPorId(item.idTemp, 'origemRef', e.target.value)
+                          }
                           className="text-xs h-8 bg-white border-[#E5E1D8]"
                         />
                       </div>
@@ -1087,7 +1212,7 @@ export default function Folha() {
                             </label>
                             <button
                               type="button"
-                              onClick={() => handleAbrirCriarFluxo(idx)}
+                              onClick={() => handleAbrirCriarFluxo(item.idTemp)}
                               className="text-[10px] font-medium text-[#0F766E] hover:underline flex items-center gap-0.5"
                               title="Adicionar nova etapa/coluna de fluxo"
                             >
@@ -1099,9 +1224,9 @@ export default function Folha() {
                             value={item.fluxo}
                             onValueChange={(v) => {
                               if (v === '__create_new__') {
-                                handleAbrirCriarFluxo(idx)
+                                handleAbrirCriarFluxo(item.idTemp)
                               } else {
-                                handleAtualizarAssunto(idx, 'fluxo', v)
+                                handleAtualizarAssuntoPorId(item.idTemp, 'fluxo', v)
                               }
                             }}
                           >
@@ -1153,7 +1278,7 @@ export default function Folha() {
                             </label>
                             <button
                               type="button"
-                              onClick={() => handleAbrirCriarProjeto(idx)}
+                              onClick={() => handleAbrirCriarProjeto(item.idTemp)}
                               className="text-[10px] font-medium text-[#0F766E] hover:underline flex items-center gap-0.5"
                               title="Cadastrar novo projeto imediatamente"
                             >
@@ -1165,9 +1290,9 @@ export default function Folha() {
                             value={item.projetoId}
                             onValueChange={(v) => {
                               if (v === '__create_new__') {
-                                handleAbrirCriarProjeto(idx)
+                                handleAbrirCriarProjeto(item.idTemp)
                               } else {
-                                handleAtualizarAssunto(idx, 'projetoId', v)
+                                handleAtualizarAssuntoPorId(item.idTemp, 'projetoId', v)
                               }
                             }}
                           >
@@ -1200,7 +1325,7 @@ export default function Folha() {
                             </label>
                             <button
                               type="button"
-                              onClick={() => handleAbrirCriarTimeline(idx)}
+                              onClick={() => handleAbrirCriarTimeline(item.idTemp)}
                               className="text-[10px] font-medium text-[#0F766E] hover:underline flex items-center gap-0.5"
                               title="Criar novo marco de timeline"
                             >
@@ -1212,11 +1337,11 @@ export default function Folha() {
                             value={item.timeline || '__empty__'}
                             onValueChange={(v) => {
                               if (v === '__create_new__') {
-                                handleAbrirCriarTimeline(idx)
+                                handleAbrirCriarTimeline(item.idTemp)
                               } else if (v === '__empty__') {
-                                handleAtualizarAssunto(idx, 'timeline', '')
+                                handleAtualizarAssuntoPorId(item.idTemp, 'timeline', '')
                               } else {
-                                handleAtualizarAssunto(idx, 'timeline', v)
+                                handleAtualizarAssuntoPorId(item.idTemp, 'timeline', v)
                               }
                             }}
                           >
@@ -1256,7 +1381,7 @@ export default function Folha() {
                             </label>
                             <button
                               type="button"
-                              onClick={() => handleAbrirCriarContato(idx)}
+                              onClick={() => handleAbrirCriarContato(item.idTemp)}
                               className="text-[10px] font-medium text-[#0F766E] hover:underline flex items-center gap-0.5"
                               title="Cadastrar novo contato imediatamente"
                             >
@@ -1268,9 +1393,9 @@ export default function Folha() {
                             value={item.contatoId}
                             onValueChange={(v) => {
                               if (v === '__create_new__') {
-                                handleAbrirCriarContato(idx)
+                                handleAbrirCriarContato(item.idTemp)
                               } else {
-                                handleAtualizarAssunto(idx, 'contatoId', v)
+                                handleAtualizarAssuntoPorId(item.idTemp, 'contatoId', v)
                               }
                             }}
                           >
