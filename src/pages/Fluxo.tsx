@@ -725,8 +725,9 @@ export default function Fluxo() {
       } else {
         const novo = await diamondApi.createColunaFluxo(payload)
         toast({ title: `Fluxo "${fluxoTitulo}" criado com sucesso!` })
-        if (novo?.categoria || fluxoCategoriaId) {
-          setCategoriaAtivaId(novo?.categoria || fluxoCategoriaId)
+        const catFinal = novo?.categoria || fluxoCategoriaId || categoriaAtivaId
+        if (catFinal && catFinal !== 'all') {
+          setCategoriaAtivaId(catFinal)
         }
         if (novo?.chave) {
           setFluxoAtivoChave(novo.chave)
@@ -771,7 +772,7 @@ export default function Fluxo() {
     try {
       await diamondApi.updateColunaFluxo(col.id, { titulo: novoTitulo })
       toast({ title: `Coluna renomeada para "${novoTitulo}"` })
-      await recarregarFluxoGlobal().catch(() => {})
+      await Promise.all([recarregarFluxoGlobal().catch(() => {}), carregarDados().catch(() => {})])
     } catch (err) {
       toast({
         title: 'Erro ao renomear coluna',
@@ -916,8 +917,8 @@ export default function Fluxo() {
       toast({
         title: `Card movido para "${nomeColuna}"`,
       })
-      // Sincroniza contagens no NavegacaoContext / painel lateral
-      recarregarFluxoGlobal().catch(() => {})
+      // Sincroniza contagens no NavegacaoContext / painel lateral e recarrega dados locais
+      await Promise.all([recarregarFluxoGlobal().catch(() => {}), carregarDados().catch(() => {})])
     } catch {
       toast({ title: 'Erro ao mover card', variant: 'destructive' })
       await carregarDados()
@@ -981,14 +982,23 @@ export default function Fluxo() {
   const tituloFluxoDestaque = useMemo(() => {
     if (fluxoAtivo) return fluxoAtivo.titulo
     if (categoriaAtiva) return categoriaAtiva.nome
+    if (colunasOrdenadas.length > 0) {
+      if (categoriaAtivaId === 'all' && fluxoAtivoChave === 'all') {
+        return 'Todos os Fluxos'
+      }
+      return colunasOrdenadas[0].titulo
+    }
     return 'Fluxo sem nome'
-  }, [fluxoAtivo, categoriaAtiva])
+  }, [fluxoAtivo, categoriaAtiva, colunasOrdenadas, categoriaAtivaId, fluxoAtivoChave])
 
   const corFluxoDestaque = useMemo(() => {
     if (fluxoAtivo?.cor) return fluxoAtivo.cor
     if (categoriaAtiva?.cor) return categoriaAtiva.cor
-    return '#9CA3AF'
-  }, [fluxoAtivo, categoriaAtiva])
+    if (colunasOrdenadas.length > 0 && colunasOrdenadas[0].cor) {
+      return colunasOrdenadas[0].cor
+    }
+    return '#0F766E'
+  }, [fluxoAtivo, categoriaAtiva, colunasOrdenadas])
 
   return (
     <div className="flex flex-col gap-4">
