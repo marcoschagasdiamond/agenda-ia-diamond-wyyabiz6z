@@ -30,6 +30,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Filter,
+  Check,
   CheckCircle2,
   Clock,
   AlertCircle,
@@ -135,8 +136,10 @@ export default function Fluxo() {
   // Alternância interna da aba QUADRO: 'colunas' (Kanban) ou 'lista' (Linhas empilhadas)
   const [modoVisualizacao, setModoVisualizacao] = useState<'colunas' | 'lista'>('colunas')
 
-  // Controle de exibição dos cards concluídos na coluna Finalizado (quando clicado em "Visualizar Todos")
-  const [mostrarTodosFinalizados, setMostrarTodosFinalizados] = useState(false)
+  // Controle de exibição dos cards concluídos por coluna de conclusão (chave da coluna -> boolean)
+  const [colunasConclusaoExpandidas, setColunasConclusaoExpandidas] = useState<
+    Record<string, boolean>
+  >({})
 
   // Controle de busca e filtro no cabeçalho DiamondGroup
   const [buscaAberta, setBuscaAberta] = useState(false)
@@ -1976,8 +1979,8 @@ export default function Fluxo() {
                       (!col.categoria || !f.categoria || f.categoria === col.categoria)),
                 )
 
-                // Na coluna de finalizado, se o usuário não clicou em "Visualizar Todos", os cards individuais ficam ocultos
-                const ocultarCardsIndividuais = isColunaFinalizado && !mostrarTodosFinalizados
+                // Na coluna de finalizado, se o usuário não clicou em "Visualizar Todos", os cards individuais ficam recolhidos
+                const mostrarCardsFinalizados = !!colunasConclusaoExpandidas[col.chave]
 
                 return (
                   <div
@@ -2076,19 +2079,31 @@ export default function Fluxo() {
                       </div>
                     </div>
 
-                    {/* BOTÃO "+" PRÓPRIO NO TOPO (faixa branca com "+" centralizado como na foto de referência) */}
-                    <button
-                      type="button"
-                      onClick={() => abrirModalCriarCard(col.chave)}
-                      title={`Adicionar novo card em ${col.titulo}`}
-                      className="w-full h-9 rounded-xl bg-white hover:bg-white/90 border border-[#E5E1D8] shadow-2xs hover:shadow-xs flex items-center justify-center text-[#2563EB] hover:text-[#1D4ED8] mb-3 transition-all group"
-                    >
-                      <Plus className="w-4 h-4 transition-transform group-hover:scale-110" />
-                    </button>
+                    {/* BOTÃO "+" PRÓPRIO NO TOPO: na coluna de conclusão o modelo da referência não mostra o botão '+' no topo */}
+                    {!isColunaFinalizado ? (
+                      <button
+                        type="button"
+                        onClick={() => abrirModalCriarCard(col.chave)}
+                        title={`Adicionar novo card em ${col.titulo}`}
+                        className="w-full h-9 rounded-xl bg-white hover:bg-white/90 border border-[#E5E1D8] shadow-2xs hover:shadow-xs flex items-center justify-center text-[#2563EB] hover:text-[#1D4ED8] mb-3 transition-all group"
+                      >
+                        <Plus className="w-4 h-4 transition-transform group-hover:scale-110" />
+                      </button>
+                    ) : null}
 
                     {/* CARDS DA COLUNA */}
                     <div className="space-y-3 flex-1 overflow-y-auto">
-                      {!ocultarCardsIndividuais && agruparPorFamilia ? (
+                      {/* Se for coluna de conclusão e o usuário clicou em Visualizar Todos, exibe os cards acima do resumo */}
+                      {isColunaFinalizado && mostrarCardsFinalizados && colCards.length > 0 && (
+                        <div className="space-y-2.5 pb-2 border-b border-[#E5E1D8]/70 mb-2">
+                          {colCards.map((card) =>
+                            renderKanbanCard(card, () => abrirModalEditarCard(card)),
+                          )}
+                        </div>
+                      )}
+
+                      {/* Coluna normal: renderiza por família ou lista direta */}
+                      {!isColunaFinalizado && agruparPorFamilia ? (
                         <>
                           {familiasDaColuna.map((fam) => {
                             const cardsDaFamilia = colCards.filter(
@@ -2126,7 +2141,7 @@ export default function Fluxo() {
                                       title="Adicionar card nesta família"
                                       className="text-[#5B6470] hover:text-[#0F766E] p-0.5"
                                     >
-                                      <Plus className="w-3 h-3" />
+                                      <Plus className="w-3.5 h-3.5" />
                                     </button>
                                   </div>
                                 </div>
@@ -2173,7 +2188,7 @@ export default function Fluxo() {
                             )
                           })()}
                         </>
-                      ) : !ocultarCardsIndividuais ? (
+                      ) : !isColunaFinalizado ? (
                         colCards.map((card) =>
                           renderKanbanCard(card, () => abrirModalEditarCard(card)),
                         )
@@ -2186,30 +2201,34 @@ export default function Fluxo() {
                         </div>
                       )}
 
-                      {/* ESTADO ESPECIAL DA COLUNA DE CONCLUSÃO ("Finalizado") CONFORME MODELO DA IMAGEM */}
+                      {/* ESTADO ESPECIAL DA COLUNA DE CONCLUSÃO ("Finalizado") CONFORME MODELO DA IMAGEM DIAMONDGROUP */}
                       {isColunaFinalizado && (
-                        <div className="py-8 px-4 flex flex-col items-center justify-center text-center">
-                          {/* Ícone de check sutil */}
-                          <div className="w-12 h-12 rounded-full flex items-center justify-center text-[#5B6470] mb-2">
-                            <CheckCircle2 className="w-8 h-8 stroke-[1.5] text-[#5B6470]" />
+                        <div className="py-12 px-4 flex flex-col items-center justify-center text-center my-auto">
+                          {/* Ícone de check sutil com traço limpo como no modelo */}
+                          <div className="w-12 h-12 rounded-full flex items-center justify-center text-[#5B6470] mb-3">
+                            <Check className="w-9 h-9 stroke-[1.75] text-[#5B6470]" />
                           </div>
 
-                          {/* Texto explicativo */}
-                          <p className="text-xs text-[#5B6470] font-normal mb-1">
+                          {/* Texto exato: "Quantidade de cards finalizados" */}
+                          <p className="text-xs text-[#5B6470] font-normal mb-2 leading-relaxed">
                             Quantidade de cards finalizados
                           </p>
 
-                          {/* Número em destaque (ex: "0 cards") com fonte forte e tom azul */}
-                          <h4 className="text-2xl font-black text-[#2563EB] tracking-tight mb-4">
+                          {/* Número em destaque forte em tom azul #2563EB: "X cards" */}
+                          <h4 className="text-[26px] font-black text-[#2563EB] tracking-tight mb-5 leading-none">
                             {colCards.length} {colCards.length === 1 ? 'card' : 'cards'}
                           </h4>
 
-                          {/* Botão "Visualizar Todos" */}
+                          {/* Botão "Visualizar Todos" com fundo azul suave e texto azul */}
                           <button
                             type="button"
                             onClick={() => {
-                              setMostrarTodosFinalizados((prev) => !prev)
-                              if (!mostrarTodosFinalizados && colCards.length === 0) {
+                              const novoEstado = !mostrarCardsFinalizados
+                              setColunasConclusaoExpandidas((prev) => ({
+                                ...prev,
+                                [col.chave]: novoEstado,
+                              }))
+                              if (novoEstado && colCards.length === 0) {
                                 toast({
                                   title: 'Fase de Conclusão',
                                   description:
@@ -2217,9 +2236,9 @@ export default function Fluxo() {
                                 })
                               }
                             }}
-                            className="px-5 py-2 rounded-lg bg-[#E0F2FE] hover:bg-[#BAE6FD] text-[#0284C7] hover:text-[#0369A1] font-semibold text-xs transition-colors shadow-2xs"
+                            className="px-6 py-2.5 rounded-lg bg-[#E0F2FE] hover:bg-[#BAE6FD] text-[#0284C7] hover:text-[#0369A1] font-semibold text-xs transition-colors shadow-2xs active:scale-[0.98]"
                           >
-                            {mostrarTodosFinalizados && colCards.length > 0
+                            {mostrarCardsFinalizados && colCards.length > 0
                               ? 'Ocultar Cards'
                               : 'Visualizar Todos'}
                           </button>
