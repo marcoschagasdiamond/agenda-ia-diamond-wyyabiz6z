@@ -50,6 +50,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { FluxoTabelaView } from './fluxo/FluxoTabelaView'
 import { FluxoGanttView } from './fluxo/FluxoGanttView'
 import { FluxoIndicadoresView } from './fluxo/FluxoIndicadoresView'
+import { ModalEditarFases } from './fluxo/ModalEditarFases'
+import { MODELOS_FLUXO_TEMPLATES, TEMPLATE_PADRAO_ID, gerarSlugChave } from './fluxo/fluxoTemplates'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -133,6 +135,9 @@ export default function Fluxo() {
   // Alternância interna da aba QUADRO: 'colunas' (Kanban) ou 'lista' (Linhas empilhadas)
   const [modoVisualizacao, setModoVisualizacao] = useState<'colunas' | 'lista'>('colunas')
 
+  // Controle de exibição dos cards concluídos na coluna Finalizado (quando clicado em "Visualizar Todos")
+  const [mostrarTodosFinalizados, setMostrarTodosFinalizados] = useState(false)
+
   // Controle de busca e filtro no cabeçalho DiamondGroup
   const [buscaAberta, setBuscaAberta] = useState(false)
   const [filtrosAbertos, setFiltrosAbertos] = useState(false)
@@ -179,7 +184,13 @@ export default function Fluxo() {
   const [fluxoCor, setFluxoCor] = useState('#0F766E')
   const [fluxoCategoriaId, setFluxoCategoriaId] = useState<string>('')
   const [fluxoTituloFases, setFluxoTituloFases] = useState('')
+  const [fluxoTemplateSelecionado, setFluxoTemplateSelecionado] =
+    useState<string>(TEMPLATE_PADRAO_ID)
+  const [fluxoIsConclusao, setFluxoIsConclusao] = useState(false)
   const [salvandoFluxo, setSalvandoFluxo] = useState(false)
+
+  // Modal Centralizado de Edição das Fases
+  const [modalEditarFasesOpen, setModalEditarFasesOpen] = useState(false)
 
   // Renomeação inline do título da coluna direto no board
   const [colunaEditandoId, setColunaEditandoId] = useState<string | null>(null)
@@ -686,6 +697,8 @@ export default function Fluxo() {
     setFluxoChave('')
     setFluxoCor('#0F766E')
     setFluxoTituloFases('')
+    setFluxoTemplateSelecionado(TEMPLATE_PADRAO_ID)
+    setFluxoIsConclusao(false)
     const catDestino =
       catId && catId !== 'all'
         ? catId
@@ -703,6 +716,11 @@ export default function Fluxo() {
     setFluxoCor(col.cor || '#0F766E')
     setFluxoCategoriaId(col.categoria || '')
     setFluxoTituloFases(col.titulo_fases || '')
+    setFluxoIsConclusao(
+      col.is_conclusao === true ||
+        col.titulo.toLowerCase().includes('finaliz') ||
+        col.titulo.toLowerCase().includes('termin'),
+    )
     setModalFluxoOpen(true)
   }
 
@@ -711,42 +729,93 @@ export default function Fluxo() {
     if (!fluxoTitulo.trim()) return
     setSalvandoFluxo(true)
 
-    const chaveGerada =
-      fluxoChave.trim() ||
-      fluxoTitulo
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '') ||
-      `fluxo_${Date.now()}`
-
-    // O título do fluxo NÃO sobrescreve nem altera titulo_fases.
-    // Criar ou renomear o fluxo NÃO altera o "nome das fases".
-    const payload: Partial<ColunaFluxo> = {
-      titulo: fluxoTitulo.trim(),
-      chave: chaveGerada,
-      cor: fluxoCor,
-      categoria: fluxoCategoriaId || undefined,
-      titulo_fases: fluxoTituloFases.trim() || undefined,
-      ordem: editingFluxo ? editingFluxo.ordem : colunas.length + 1,
-    }
-
     try {
       if (editingFluxo) {
+        // Editando coluna existente
+        const chaveGerada = fluxoChave.trim() || editingFluxo.chave || gerarSlugChave(fluxoTitulo)
+
+        const payload: Partial<ColunaFluxo> = {
+          titulo: fluxoTitulo.trim(),
+          chave: chaveGerada,
+          cor: fluxoCor,
+          categoria: fluxoCategoriaId || undefined,
+          titulo_fases: fluxoTituloFases.trim() || undefined,
+          is_conclusao: fluxoIsConclusao,
+          ordem: editingFluxo.ordem || 1,
+        }
+
         await diamondApi.updateColunaFluxo(editingFluxo.id, payload)
         toast({ title: 'Fluxo atualizado com sucesso!' })
       } else {
-        const novo = await diamondApi.createColunaFluxo(payload)
-        toast({ title: `Fluxo "${fluxoTitulo}" criado com sucesso!` })
-        const catFinal = novo?.categoria || fluxoCategoriaId || categoriaAtivaId
-        if (catFinal && catFinal !== 'all') {
-          setCategoriaAtivaId(catFinal)
-        }
-        if (novo?.chave) {
-          setFluxoAtivoChave(novo.chave)
+        // Criando fluxo novo. Se um template de modelo pronto foi selecionado com fases:
+        const templateEscolhido = MODELOS_FLUXO_TEMPLATES.find(
+          (t) => t.id === fluxoTemplateSelecionado,
+        )
+
+        // Se o usuário selecionou uma categoria existente ou nenhuma, garantimos uma categoria dedicada para o fluxo
+        let catDestinoId = fluxoCategoriaId
+
+        // Se for um template com fases predefinidas (ex: DiamondGroup padrão ou Legado 5 colunas)
+        if (templateEscolhido && templateEscolhido.fases.length > 0) {
+          // Criamos uma categoria para organizar as fases desse fluxo (ex.: Business 'carros')
+          const novaCategoria = await diamondApi.createCategoriaFluxo({
+            nome: fluxoTitulo.trim(),
+            cor: fluxoCor || '#0F766E',
+            descricao: `Fluxo ${fluxoTitulo.trim()} com modelo ${templateEscolhido.nome}`,
+            titulo_fases: fluxoTituloFases.trim() || fluxoTitulo.trim(),
+          })
+          catDestinoId = novaCategoria.id
+
+          // Cria as fases do modelo na ordem correta, cores e marcação de conclusão
+          const colunasCriadas: ColunaFluxo[] = []
+          for (let i = 0; i < templateEscolhido.fases.length; i++) {
+            const f = templateEscolhido.fases[i]
+            const chaveFase = gerarSlugChave(f.titulo, `${Date.now()}_${i + 1}`)
+            const colCriada = await diamondApi.createColunaFluxo({
+              chave: chaveFase,
+              titulo: f.titulo,
+              cor: f.cor,
+              ordem: i + 1,
+              categoria: novaCategoria.id,
+              is_conclusao: f.is_conclusao ?? false,
+              template_origem: templateEscolhido.id,
+            })
+            colunasCriadas.push(colCriada)
+          }
+
+          toast({
+            title: `Fluxo "${fluxoTitulo}" criado com sucesso!`,
+            description: `${templateEscolhido.fases.length} fases criadas automaticamente (${templateEscolhido.nome}).`,
+          })
+
+          setCategoriaAtivaId(novaCategoria.id)
+          setFluxoAtivoChave('all')
+        } else {
+          // Criação personalizada sem template múltiplo (uma coluna avulsa na categoria escolhida)
+          const chaveGerada = fluxoChave.trim() || gerarSlugChave(fluxoTitulo)
+
+          const payload: Partial<ColunaFluxo> = {
+            titulo: fluxoTitulo.trim(),
+            chave: chaveGerada,
+            cor: fluxoCor,
+            categoria: catDestinoId || undefined,
+            titulo_fases: fluxoTituloFases.trim() || undefined,
+            is_conclusao: fluxoIsConclusao,
+            ordem: colunas.length + 1,
+            template_origem: 'personalizado',
+          }
+
+          const novo = await diamondApi.createColunaFluxo(payload)
+          toast({ title: `Fluxo "${fluxoTitulo}" criado com sucesso!` })
+          if (catDestinoId && catDestinoId !== 'all') {
+            setCategoriaAtivaId(catDestinoId)
+          }
+          if (novo?.chave) {
+            setFluxoAtivoChave(novo.chave)
+          }
         }
       }
+
       setModalFluxoOpen(false)
       await carregarDados()
     } catch (err) {
@@ -1291,6 +1360,10 @@ export default function Fluxo() {
               <DropdownMenuItem onClick={() => abrirModalCriarCard()}>
                 <Plus className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
                 Novo Card
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setModalEditarFasesOpen(true)}>
+                <Layers className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
+                Editar Fases do Fluxo
               </DropdownMenuItem>
               {fluxoAtivo && (
                 <DropdownMenuItem onClick={() => abrirModalEditarFluxo(fluxoAtivo)}>
@@ -1885,7 +1958,16 @@ export default function Fluxo() {
                 </button>
               </div>
 
-              {colunasFiltradas.map((col) => {
+              {colunasFiltradas.map((col, colIndex) => {
+                const isUltimaColuna = colIndex === colunasFiltradas.length - 1
+                const isColunaFinalizado =
+                  col.is_conclusao === true ||
+                  (isUltimaColuna &&
+                    (col.titulo.toLowerCase().includes('finaliz') ||
+                      col.titulo.toLowerCase().includes('termin') ||
+                      col.chave.toLowerCase().includes('finaliz') ||
+                      col.chave.toLowerCase().includes('termin')))
+
                 const colCards = cardsFiltrados.filter((c) => c.status === col.chave)
                 const familiasDaColuna = familias.filter(
                   (f) =>
@@ -1893,6 +1975,9 @@ export default function Fluxo() {
                     (!f.coluna &&
                       (!col.categoria || !f.categoria || f.categoria === col.categoria)),
                 )
+
+                // Na coluna de finalizado, se o usuário não clicou em "Visualizar Todos", os cards individuais ficam ocultos
+                const ocultarCardsIndividuais = isColunaFinalizado && !mostrarTodosFinalizados
 
                 return (
                   <div
@@ -2003,7 +2088,7 @@ export default function Fluxo() {
 
                     {/* CARDS DA COLUNA */}
                     <div className="space-y-3 flex-1 overflow-y-auto">
-                      {agruparPorFamilia ? (
+                      {!ocultarCardsIndividuais && agruparPorFamilia ? (
                         <>
                           {familiasDaColuna.map((fam) => {
                             const cardsDaFamilia = colCards.filter(
@@ -2088,16 +2173,56 @@ export default function Fluxo() {
                             )
                           })()}
                         </>
-                      ) : (
+                      ) : !ocultarCardsIndividuais ? (
                         colCards.map((card) =>
                           renderKanbanCard(card, () => abrirModalEditarCard(card)),
                         )
-                      )}
+                      ) : null}
 
-                      {colCards.length === 0 && (
+                      {colCards.length === 0 && !isColunaFinalizado && (
                         <div className="h-32 border-2 border-dashed border-[#E5E1D8] rounded-xl flex flex-col items-center justify-center text-xs text-[#5B6470]/60 gap-1 bg-white/40">
                           <span className="font-medium">Nenhum card</span>
                           <span className="text-[10px]">Arraste ou clique em "+"</span>
+                        </div>
+                      )}
+
+                      {/* ESTADO ESPECIAL DA COLUNA DE CONCLUSÃO ("Finalizado") CONFORME MODELO DA IMAGEM */}
+                      {isColunaFinalizado && (
+                        <div className="py-8 px-4 flex flex-col items-center justify-center text-center">
+                          {/* Ícone de check sutil */}
+                          <div className="w-12 h-12 rounded-full flex items-center justify-center text-[#5B6470] mb-2">
+                            <CheckCircle2 className="w-8 h-8 stroke-[1.5] text-[#5B6470]" />
+                          </div>
+
+                          {/* Texto explicativo */}
+                          <p className="text-xs text-[#5B6470] font-normal mb-1">
+                            Quantidade de cards finalizados
+                          </p>
+
+                          {/* Número em destaque (ex: "0 cards") com fonte forte e tom azul */}
+                          <h4 className="text-2xl font-black text-[#2563EB] tracking-tight mb-4">
+                            {colCards.length} {colCards.length === 1 ? 'card' : 'cards'}
+                          </h4>
+
+                          {/* Botão "Visualizar Todos" */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMostrarTodosFinalizados((prev) => !prev)
+                              if (!mostrarTodosFinalizados && colCards.length === 0) {
+                                toast({
+                                  title: 'Fase de Conclusão',
+                                  description:
+                                    'Nenhum card finalizado até o momento. Conclua etapas arrastando cards para esta coluna.',
+                                })
+                              }
+                            }}
+                            className="px-5 py-2 rounded-lg bg-[#E0F2FE] hover:bg-[#BAE6FD] text-[#0284C7] hover:text-[#0369A1] font-semibold text-xs transition-colors shadow-2xs"
+                          >
+                            {mostrarTodosFinalizados && colCards.length > 0
+                              ? 'Ocultar Cards'
+                              : 'Visualizar Todos'}
+                          </button>
                         </div>
                       )}
                     </div>
@@ -2670,22 +2795,84 @@ export default function Fluxo() {
 
           <form onSubmit={handleSalvarFluxo} className="space-y-4 pt-2">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#1A1D21]">Título do Fluxo *</label>
+              <label className="text-xs font-semibold text-[#1A1D21]">
+                {editingFluxo ? 'Título da Etapa / Fluxo *' : 'Nome do Fluxo / Negócio *'}
+              </label>
               <Input
                 required
-                placeholder="Ex: BACKLOG, ENCAMINHAR AO TECNICO, EM ANALISE..."
+                placeholder={
+                  editingFluxo
+                    ? 'Ex: Backlog, A Fazer...'
+                    : 'Ex: Business Carros, Vendas Imóveis, Suporte...'
+                }
                 value={fluxoTitulo}
                 onChange={(e) => setFluxoTitulo(e.target.value)}
                 className="text-sm border-[#E5E1D8]"
               />
+              <span className="text-[10px] text-[#5B6470]">
+                {editingFluxo
+                  ? 'Nome individual desta etapa no quadro.'
+                  : 'Exemplo: "Business Carros" criará o fluxo com suas fases automaticamente.'}
+              </span>
             </div>
+
+            {/* SELEÇÃO DE MODELO PRONTO DE FASES (apenas ao criar novo fluxo) */}
+            {!editingFluxo && (
+              <div className="space-y-2 p-3 rounded-xl bg-[#F4F2EE]/50 border border-[#E5E1D8]">
+                <label className="text-xs font-bold text-[#1A1D21] flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-[#0F766E]" />
+                  <span>Modelo de Fases (Template do Board)</span>
+                </label>
+                <Select
+                  value={fluxoTemplateSelecionado}
+                  onValueChange={setFluxoTemplateSelecionado}
+                >
+                  <SelectTrigger className="text-xs bg-white border-[#E5E1D8]">
+                    <SelectValue placeholder="Selecione o modelo de fases" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MODELOS_FLUXO_TEMPLATES.map((tmpl) => (
+                      <SelectItem key={tmpl.id} value={tmpl.id} className="text-xs">
+                        {tmpl.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {(() => {
+                  const tmplAtual = MODELOS_FLUXO_TEMPLATES.find(
+                    (t) => t.id === fluxoTemplateSelecionado,
+                  )
+                  if (!tmplAtual) return null
+                  return (
+                    <div className="space-y-1.5 pt-1">
+                      <p className="text-[11px] text-[#5B6470]">{tmplAtual.descricao}</p>
+                      {tmplAtual.fases.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1 pt-1">
+                          {tmplAtual.fases.map((f, i) => (
+                            <span
+                              key={i}
+                              className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-black/10 text-white shadow-2xs"
+                              style={{ backgroundColor: f.cor }}
+                            >
+                              {f.titulo}
+                              {f.is_conclusao && <CheckCircle2 className="w-2.5 h-2.5 ml-0.5" />}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
 
             <div className="space-y-1">
               <label className="text-xs font-semibold text-[#5B6470]">
-                Nome das Fases (opcional — título do board)
+                Nome das Fases (opcional — título exibido no cabeçalho)
               </label>
               <Input
-                placeholder="Ex: Fases de Vendas, Etapas Técnicas..."
+                placeholder="Ex: Fases de Vendas, Etapas do Projeto..."
                 value={fluxoTituloFases}
                 onChange={(e) => setFluxoTituloFases(e.target.value)}
                 className="text-sm border-[#E5E1D8]"
@@ -2695,39 +2882,61 @@ export default function Fluxo() {
               </span>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#5B6470]">
-                Categoria Pertencente *
-              </label>
-              <Select value={fluxoCategoriaId} onValueChange={setFluxoCategoriaId}>
-                <SelectTrigger className="text-xs border-[#E5E1D8]">
-                  <SelectValue placeholder="Selecione a Categoria" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categorias.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#5B6470]">Cor da Etapa</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={fluxoCor}
-                  onChange={(e) => setFluxoCor(e.target.value)}
-                  className="w-8 h-8 rounded border border-[#E5E1D8] cursor-pointer"
-                />
-                <Input
-                  value={fluxoCor}
-                  onChange={(e) => setFluxoCor(e.target.value)}
-                  className="text-xs border-[#E5E1D8] font-mono w-28"
-                />
+            {editingFluxo && (
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-[#5B6470]">
+                  Categoria Pertencente
+                </label>
+                <Select value={fluxoCategoriaId} onValueChange={setFluxoCategoriaId}>
+                  <SelectTrigger className="text-xs border-[#E5E1D8]">
+                    <SelectValue placeholder="Selecione a Categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categorias.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
+            )}
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-1 flex-1">
+                <label className="text-xs font-semibold text-[#5B6470]">Cor do Fluxo</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={fluxoCor}
+                    onChange={(e) => setFluxoCor(e.target.value)}
+                    className="w-8 h-8 rounded border border-[#E5E1D8] cursor-pointer"
+                  />
+                  <Input
+                    value={fluxoCor}
+                    onChange={(e) => setFluxoCor(e.target.value)}
+                    className="text-xs border-[#E5E1D8] font-mono w-28"
+                  />
+                </div>
+              </div>
+
+              {editingFluxo && (
+                <div className="flex items-center gap-2 pt-4">
+                  <input
+                    type="checkbox"
+                    id="fluxoIsConclusao"
+                    checked={fluxoIsConclusao}
+                    onChange={(e) => setFluxoIsConclusao(e.target.checked)}
+                    className="rounded border-[#E5E1D8] text-[#0F766E] focus:ring-[#0F766E] w-4 h-4 cursor-pointer"
+                  />
+                  <label
+                    htmlFor="fluxoIsConclusao"
+                    className="text-xs font-medium text-[#1A1D21] cursor-pointer"
+                  >
+                    Fase de Conclusão (Finalizado)
+                  </label>
+                </div>
+              )}
             </div>
 
             <DialogFooter className="flex justify-end gap-2 pt-4 border-t border-[#E5E1D8]">
@@ -2855,6 +3064,25 @@ export default function Fluxo() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* ======================================================== */}
+      {/* MODAL 5: EDITAR FASES DO FLUXO (CENTRALIZADO)            */}
+      {/* ======================================================== */}
+      <ModalEditarFases
+        open={modalEditarFasesOpen}
+        onOpenChange={setModalEditarFasesOpen}
+        categoriaAtiva={categoriaAtiva}
+        colunas={colunas}
+        onFasesAtualizadas={async () => {
+          await Promise.all([
+            recarregarFluxoGlobal().catch(() => {}),
+            carregarDados().catch(() => {}),
+          ])
+          toast({
+            title: 'Fases do fluxo atualizadas com sucesso!',
+          })
+        }}
+      />
     </div>
   )
 

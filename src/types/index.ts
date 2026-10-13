@@ -281,6 +281,8 @@ export interface ColunaFluxo {
   ordem?: number
   categoria?: string
   titulo_fases?: string
+  is_conclusao?: boolean
+  template_origem?: string
   created?: string
   updated?: string
   expand?: {

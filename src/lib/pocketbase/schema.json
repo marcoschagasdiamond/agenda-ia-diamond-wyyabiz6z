@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-13T23:07:57.197Z",
+  "generatedAt": "2026-10-13T23:39:39.549Z",
   "collections": [
     {
       "name": "users",
@@ -1110,6 +1110,18 @@
         },
         {
           "name": "titulo_fases",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_conclusao",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "template_origem",
           "type": "text",
           "required": false,
           "system": false
