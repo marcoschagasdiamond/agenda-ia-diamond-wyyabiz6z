@@ -14,6 +14,8 @@ import type {
   ClienteProjeto,
   Profile,
   ColunaFluxo,
+  CategoriaFluxo,
+  GrupoFamilia,
   MarcoTimeline,
 } from '@/types'
 
@@ -150,7 +152,7 @@ export const diamondApi = {
     return await pb.collection('cards').getFullList<Card>({
       filter: filtroExtra || '',
       sort: '-updated',
-      expand: 'projeto,negocio,contato,responsavel',
+      expand: 'projeto,negocio,contato,responsavel,grupo_familia',
     })
   },
 
@@ -356,11 +358,40 @@ export const diamondApi = {
     return await res.json()
   },
 
-  // Colunas do Fluxo
-  async listColunasFluxo(): Promise<ColunaFluxo[]> {
+  // Categorias do Fluxo
+  async listCategoriasFluxo(): Promise<CategoriaFluxo[]> {
     try {
-      return await pb.collection('colunas_fluxo').getFullList<ColunaFluxo>({
+      return await pb.collection('categorias_fluxo').getFullList<CategoriaFluxo>({
         sort: 'ordem,created',
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async createCategoriaFluxo(data: Partial<CategoriaFluxo>): Promise<CategoriaFluxo> {
+    return await pb.collection('categorias_fluxo').create<CategoriaFluxo>(data)
+  },
+
+  async updateCategoriaFluxo(id: string, data: Partial<CategoriaFluxo>): Promise<CategoriaFluxo> {
+    return await pb.collection('categorias_fluxo').update<CategoriaFluxo>(id, data)
+  },
+
+  async deleteCategoriaFluxo(id: string): Promise<boolean> {
+    return await pb.collection('categorias_fluxo').delete(id)
+  },
+
+  // Colunas do Fluxo
+  async listColunasFluxo(categoriaId?: string): Promise<ColunaFluxo[]> {
+    try {
+      let filter = ''
+      if (categoriaId && categoriaId !== 'all') {
+        filter = `categoria = "${categoriaId}"`
+      }
+      return await pb.collection('colunas_fluxo').getFullList<ColunaFluxo>({
+        filter,
+        sort: 'ordem,created',
+        expand: 'categoria',
       })
     } catch {
       return [
@@ -374,6 +405,46 @@ export const diamondApi = {
 
   async createColunaFluxo(data: Partial<ColunaFluxo>): Promise<ColunaFluxo> {
     return await pb.collection('colunas_fluxo').create<ColunaFluxo>(data)
+  },
+
+  async updateColunaFluxo(id: string, data: Partial<ColunaFluxo>): Promise<ColunaFluxo> {
+    return await pb.collection('colunas_fluxo').update<ColunaFluxo>(id, data)
+  },
+
+  async deleteColunaFluxo(id: string): Promise<boolean> {
+    return await pb.collection('colunas_fluxo').delete(id)
+  },
+
+  // Grupos de Família
+  async listGruposFamilia(categoriaId?: string, colunaId?: string): Promise<GrupoFamilia[]> {
+    try {
+      const filters: string[] = []
+      if (categoriaId && categoriaId !== 'all') {
+        filters.push(`categoria = "${categoriaId}"`)
+      }
+      if (colunaId && colunaId !== 'all') {
+        filters.push(`coluna = "${colunaId}"`)
+      }
+      return await pb.collection('grupos_familia').getFullList<GrupoFamilia>({
+        filter: filters.join(' && '),
+        sort: 'ordem,created',
+        expand: 'coluna,categoria',
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async createGrupoFamilia(data: Partial<GrupoFamilia>): Promise<GrupoFamilia> {
+    return await pb.collection('grupos_familia').create<GrupoFamilia>(data)
+  },
+
+  async updateGrupoFamilia(id: string, data: Partial<GrupoFamilia>): Promise<GrupoFamilia> {
+    return await pb.collection('grupos_familia').update<GrupoFamilia>(id, data)
+  },
+
+  async deleteGrupoFamilia(id: string): Promise<boolean> {
+    return await pb.collection('grupos_familia').delete(id)
   },
 
   // Marcos da Timeline

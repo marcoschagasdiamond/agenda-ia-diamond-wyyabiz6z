@@ -120,6 +120,31 @@ export interface FolhaDia {
   }
 }
 
+export interface GrupoFamilia {
+  id: string
+  nome: string
+  ordem?: number
+  cor?: string
+  coluna?: string
+  categoria?: string
+  created?: string
+  updated?: string
+  expand?: {
+    coluna?: ColunaFluxo
+    categoria?: CategoriaFluxo
+  }
+}
+
+export interface CategoriaFluxo {
+  id: string
+  nome: string
+  ordem?: number
+  cor?: string
+  descricao?: string
+  created?: string
+  updated?: string
+}
+
 export interface Card {
   id: string
   titulo: string
@@ -127,6 +152,7 @@ export interface Card {
   projeto?: string
   negocio?: string
   contato?: string
+  grupo_familia?: string
   tags?: string[]
   prioridade?: CardPrioridade
   status?: CardStatus | string
@@ -140,6 +166,7 @@ export interface Card {
     negocio?: Negocio
     contato?: Contato
     responsavel?: User
+    grupo_familia?: GrupoFamilia
   }
 }
 
@@ -251,8 +278,12 @@ export interface ColunaFluxo {
   titulo: string
   cor?: string
   ordem?: number
+  categoria?: string
   created?: string
   updated?: string
+  expand?: {
+    categoria?: CategoriaFluxo
+  }
 }
 
 export interface MarcoTimeline {
