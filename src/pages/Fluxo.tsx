@@ -37,7 +37,19 @@ import {
   Building,
   User,
   Calendar,
+  Lock,
+  Bell,
+  Table as TableIcon,
+  BarChart3,
+  ExternalLink,
+  Copy,
+  Download,
+  MessageSquare,
 } from 'lucide-react'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { FluxoTabelaView } from './fluxo/FluxoTabelaView'
+import { FluxoGanttView } from './fluxo/FluxoGanttView'
+import { FluxoIndicadoresView } from './fluxo/FluxoIndicadoresView'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -115,8 +127,15 @@ export default function Fluxo() {
   // Painel lateral embutido: visível apenas se a segunda coluna global estiver fechada
   const [sidebarAberta, setSidebarAberta] = useState<boolean>(false)
 
-  // Alternância de visualização: 'colunas' (Kanban) ou 'lista' (Linhas empilhadas)
+  // Abas de visualização DiamondGroup: QUADRO | TABELA | GANTT | INDICADORES
+  const [abaAtiva, setAbaAtiva] = useState<'QUADRO' | 'TABELA' | 'GANTT' | 'INDICADORES'>('QUADRO')
+
+  // Alternância interna da aba QUADRO: 'colunas' (Kanban) ou 'lista' (Linhas empilhadas)
   const [modoVisualizacao, setModoVisualizacao] = useState<'colunas' | 'lista'>('colunas')
+
+  // Controle de busca e filtro no cabeçalho DiamondGroup
+  const [buscaAberta, setBuscaAberta] = useState(false)
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false)
 
   // Filtros
   const [filtroTexto, setFiltroTexto] = useState(buscaParam)
@@ -480,6 +499,92 @@ export default function Fluxo() {
     }
   }
 
+  const handleDuplicarCard = async (card: CardType) => {
+    try {
+      const payload: Partial<CardType> = {
+        titulo: `${card.titulo} (Cópia)`,
+        descricao: card.descricao,
+        projeto: card.projeto,
+        negocio: card.negocio,
+        contato: card.contato,
+        grupo_familia: card.grupo_familia,
+        prioridade: card.prioridade,
+        status: card.status,
+        proximo_passo: card.proximo_passo,
+        tags: card.tags,
+      }
+      await diamondApi.createCard(payload)
+      toast({ title: 'Card duplicado com sucesso!' })
+      await carregarDados()
+    } catch (err) {
+      toast({
+        title: 'Erro ao duplicar card',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleExportarCsv = () => {
+    try {
+      if (cardsFiltrados.length === 0) {
+        toast({ title: 'Nenhum card para exportar.' })
+        return
+      }
+
+      const headers = [
+        'Título',
+        'Coluna/Status',
+        'Prioridade',
+        'Contato',
+        'Projeto',
+        'Família',
+        'Criado Em',
+      ]
+      const rows = cardsFiltrados.map((c) => {
+        const col = colunasPorChave.get(c.status as string)?.titulo || c.status || ''
+        const contato =
+          c.expand?.contato?.nome || contatos.find((ct) => ct.id === c.contato)?.nome || ''
+        const projeto =
+          c.expand?.projeto?.nome || projetos.find((p) => p.id === c.projeto)?.nome || ''
+        const familia =
+          c.expand?.grupo_familia?.nome ||
+          familias.find((f) => f.id === c.grupo_familia)?.nome ||
+          ''
+        const dataCriado = c.created ? new Date(c.created).toLocaleDateString('pt-BR') : ''
+
+        return [
+          `"${(c.titulo || '').replace(/"/g, '""')}"`,
+          `"${col.replace(/"/g, '""')}"`,
+          `"${(c.prioridade || 'media').replace(/"/g, '""')}"`,
+          `"${contato.replace(/"/g, '""')}"`,
+          `"${projeto.replace(/"/g, '""')}"`,
+          `"${familia.replace(/"/g, '""')}"`,
+          `"${dataCriado}"`,
+        ].join(';')
+      })
+
+      const csvContent = '\uFEFF' + [headers.join(';'), ...rows].join('\n')
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.setAttribute('href', url)
+      link.setAttribute('download', `fluxo-cards-${new Date().toISOString().slice(0, 10)}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      toast({ title: 'Cards exportados em CSV com sucesso!' })
+    } catch (err) {
+      toast({
+        title: 'Erro ao exportar CSV',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    }
+  }
+
   // ==========================================
   // HANDLERS DE CATEGORIA
   // ==========================================
@@ -814,17 +919,42 @@ export default function Fluxo() {
     }
   }
 
+  // Lista de pessoas (contatos distintos) envolvidas nos cards filtrados
+  const contatosEnvolvidos = useMemo(() => {
+    const ids = new Set<string>()
+    cardsFiltrados.forEach((c) => {
+      if (c.contato) ids.add(c.contato)
+    })
+    return contatos.filter((ct) => ids.has(ct.id))
+  }, [cardsFiltrados, contatos])
+
+  // Nome do fluxo em destaque para o cabeçalho DiamondGroup
+  const tituloFluxoDestaque = useMemo(() => {
+    if (fluxoAtivo) return fluxoAtivo.titulo
+    if (categoriaAtiva) return categoriaAtiva.nome
+    return 'Fluxo sem nome'
+  }, [fluxoAtivo, categoriaAtiva])
+
+  const corFluxoDestaque = useMemo(() => {
+    if (fluxoAtivo?.cor) return fluxoAtivo.cor
+    if (categoriaAtiva?.cor) return categoriaAtiva.cor
+    return '#9CA3AF'
+  }, [fluxoAtivo, categoriaAtiva])
+
   return (
     <div className="flex flex-col gap-4">
-      {/* CABEÇALHO PRINCIPAL COM CONTROLES */}
-      <div className="bg-white p-4 rounded-xl border border-[#E5E1D8] shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+      {/* ========================================================================= */}
+      {/* 1. CABEÇALHO DO BOARD MODELO DIAMONDGROUP: NOME + PONTINHO + ÍCONES       */}
+      {/* ========================================================================= */}
+      <div className="bg-white px-5 py-3.5 rounded-xl border border-[#E5E1D8] shadow-xs flex flex-wrap items-center justify-between gap-3">
+        {/* Lado Esquerdo: Ponto de cor + Nome do fluxo em destaque + Toggle do painel de categorias */}
+        <div className="flex items-center gap-3 min-w-0">
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={() => setSidebarAberta(!sidebarAberta)}
-            className="text-xs h-8 px-2.5 border-[#E5E1D8] text-[#5B6470] hover:text-[#1A1D21] hover:bg-[#F4F2EE] gap-1.5"
+            className="text-xs h-8 px-2.5 border-[#E5E1D8] text-[#5B6470] hover:text-[#1A1D21] hover:bg-[#F4F2EE] gap-1.5 shrink-0"
             title={
               sidebarAberta ? 'Recolher painel de categorias' : 'Expandir painel de categorias'
             }
@@ -842,60 +972,239 @@ export default function Fluxo() {
             )}
           </Button>
 
-          <div>
-            <div className="flex items-center gap-2">
-              <FolderTree className="w-5 h-5 text-[#0F766E]" />
-              <h1 className="text-lg md:text-xl font-bold tracking-tight text-[#1A1D21]">
-                Fluxo Kanban Diamond
-              </h1>
-              <Badge className="bg-[#0F766E]/10 text-[#0F766E] border-none text-[11px] font-semibold">
-                {cardsFiltrados.length} Cards
-              </Badge>
-            </div>
-            <p className="text-[11px] text-[#5B6470]">
-              {categoriaAtiva
-                ? `Categoria: ${categoriaAtiva.nome}${fluxoAtivo ? ` • Fluxo: ${fluxoAtivo.titulo}` : ''}`
-                : 'Todas as categorias e fluxos'}
-            </p>
+          {/* Nome do fluxo com ponto de cor ao lado como na referência */}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span
+              className="w-3 h-3 rounded-full shrink-0 shadow-2xs"
+              style={{ backgroundColor: corFluxoDestaque }}
+            />
+            <h1 className="text-base sm:text-lg md:text-xl font-bold text-[#1A1D21] truncate tracking-tight">
+              {tituloFluxoDestaque}
+            </h1>
+            <Badge
+              variant="outline"
+              className="hidden sm:inline-flex text-[10px] bg-[#F4F2EE] text-[#5B6470] border-[#E5E1D8] font-semibold px-2 py-0.5"
+            >
+              {cardsFiltrados.length} cards
+            </Badge>
           </div>
         </div>
 
-        {/* Ações do cabeçalho: Alternância Coluna / Lista e Novo Card */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Alternância Coluna (Kanban) / Lista */}
-          <div className="inline-flex rounded-lg border border-[#E5E1D8] bg-[#F4F2EE] p-0.5 shadow-2xs">
-            <button
-              type="button"
-              onClick={() => setModoVisualizacao('colunas')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                modoVisualizacao === 'colunas'
-                  ? 'bg-white text-[#1A1D21] shadow-xs'
-                  : 'text-[#5B6470] hover:text-[#1A1D21]'
-              }`}
-            >
-              <Columns className="w-3.5 h-3.5 text-[#0F766E]" />
-              <span>Colunas</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setModoVisualizacao('lista')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                modoVisualizacao === 'lista'
-                  ? 'bg-white text-[#1A1D21] shadow-xs'
-                  : 'text-[#5B6470] hover:text-[#1A1D21]'
-              }`}
-            >
-              <ListIcon className="w-3.5 h-3.5 text-[#0F766E]" />
-              <span>Lista</span>
-            </button>
+        {/* Lado Direito: Pessoas (avatar tracejado/contador), Cadeado, Lupa, Filtro, Menu "..." e Sino com badge */}
+        <div className="flex items-center gap-2 flex-wrap ml-auto">
+          {/* Avatar com contorno tracejado e contador de pessoas envolvidas */}
+          <div
+            className="flex items-center gap-1.5 px-2 py-1 rounded-full border border-dashed border-[#CBD5E1] bg-[#FAFAF9] text-xs text-[#5B6470]"
+            title={`${contatosEnvolvidos.length} pessoas envolvidas neste fluxo`}
+          >
+            <div className="w-6 h-6 rounded-full border border-[#94A3B8] border-dashed flex items-center justify-center bg-white text-[#5B6470]">
+              <User className="w-3.5 h-3.5" />
+            </div>
+            <span className="text-[11px] font-semibold text-[#1A1D21] pr-1">
+              {contatosEnvolvidos.length}
+            </span>
           </div>
+
+          {/* Cadeado (permissões / privacidade do fluxo) */}
+          <button
+            type="button"
+            title="Permissões do fluxo: restrito à equipe DiamondGroup"
+            onClick={() =>
+              toast({
+                title: 'Permissões do Fluxo',
+                description: 'Acesso restrito aos administradores e equipe DiamondGroup.',
+              })
+            }
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-[#5B6470] hover:text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors"
+          >
+            <Lock className="w-4 h-4" />
+          </button>
+
+          {/* Busca (Lupa) */}
+          <button
+            type="button"
+            title="Buscar cards"
+            onClick={() => setBuscaAberta(!buscaAberta)}
+            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+              buscaAberta || filtroTexto
+                ? 'bg-[#0F766E]/10 text-[#0F766E]'
+                : 'text-[#5B6470] hover:text-[#1A1D21] hover:bg-[#F4F2EE]'
+            }`}
+          >
+            <Search className="w-4 h-4" />
+          </button>
+
+          {/* Botão de Filtro (destaque azul claro como no modelo de referência) */}
+          <button
+            type="button"
+            title="Filtros avançados"
+            onClick={() => setFiltrosAbertos(!filtrosAbertos)}
+            className={`h-8 px-2.5 rounded-lg flex items-center gap-1.5 text-xs font-semibold transition-all ${
+              filtrosAbertos ||
+              filtroPrioridade !== 'all' ||
+              filtroFamilia !== 'all' ||
+              filtroProjeto !== 'all'
+                ? 'bg-[#DBEAFE] text-[#1D4ED8] shadow-2xs'
+                : 'bg-[#EFF6FF] text-[#2563EB] hover:bg-[#DBEAFE]'
+            }`}
+          >
+            <Filter className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Filtro</span>
+          </button>
+
+          {/* Menu "..." com ações do fluxo */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="Ações do fluxo"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-[#5B6470] hover:text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="text-xs">
+              <DropdownMenuItem onClick={() => abrirModalCriarCard()}>
+                <Plus className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
+                Novo Card
+              </DropdownMenuItem>
+              {fluxoAtivo && (
+                <DropdownMenuItem onClick={() => abrirModalEditarFluxo(fluxoAtivo)}>
+                  <Edit2 className="w-3.5 h-3.5 mr-2 text-blue-600" />
+                  Editar Fluxo Selecionado
+                </DropdownMenuItem>
+              )}
+              {categoriaAtiva && (
+                <DropdownMenuItem onClick={() => abrirModalEditarCategoria(categoriaAtiva)}>
+                  <FolderTree className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
+                  Editar Categoria
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={handleExportarCsv}>
+                <Download className="w-3.5 h-3.5 mr-2 text-[#5B6470]" />
+                Exportar Lista em CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Sino de Notificação com badge vermelho no canto */}
+          <button
+            type="button"
+            title="Notificações e alertas do fluxo"
+            onClick={() =>
+              toast({
+                title: 'Notificações do Fluxo',
+                description: `${cardsFiltrados.filter((c) => c.prioridade === 'urgente').length} demandas urgentes em aberto.`,
+              })
+            }
+            className="relative w-8 h-8 rounded-lg flex items-center justify-center text-[#5B6470] hover:text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors"
+          >
+            <Bell className="w-4 h-4" />
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-600 ring-2 ring-white" />
+          </button>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 2. ABAS DE VISUALIZAÇÃO DIAMONDGROUP: QUADRO / TABELA / GANTT / INDICADORES */}
+      {/* ========================================================================= */}
+      <div className="bg-white px-3 py-1.5 rounded-xl border border-[#E5E1D8] shadow-xs flex items-center justify-between gap-3 overflow-x-auto">
+        <div className="flex items-center gap-1 sm:gap-2">
+          {/* Aba QUADRO */}
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('QUADRO')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+              abaAtiva === 'QUADRO'
+                ? 'bg-[#2563EB] text-white shadow-xs'
+                : 'text-[#5B6470] hover:text-[#1A1D21] hover:bg-[#F4F2EE]'
+            }`}
+          >
+            <Columns className="w-3.5 h-3.5" />
+            <span>QUADRO</span>
+          </button>
+
+          {/* Aba TABELA */}
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('TABELA')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+              abaAtiva === 'TABELA'
+                ? 'bg-[#2563EB] text-white shadow-xs'
+                : 'text-[#5B6470] hover:text-[#1A1D21] hover:bg-[#F4F2EE]'
+            }`}
+          >
+            <TableIcon className="w-3.5 h-3.5" />
+            <span>TABELA</span>
+          </button>
+
+          {/* Aba GANTT */}
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('GANTT')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+              abaAtiva === 'GANTT'
+                ? 'bg-[#2563EB] text-white shadow-xs'
+                : 'text-[#5B6470] hover:text-[#1A1D21] hover:bg-[#F4F2EE]'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span>GANTT</span>
+          </button>
+
+          {/* Aba INDICADORES */}
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('INDICADORES')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+              abaAtiva === 'INDICADORES'
+                ? 'bg-[#2563EB] text-white shadow-xs'
+                : 'text-[#5B6470] hover:text-[#1A1D21] hover:bg-[#F4F2EE]'
+            }`}
+          >
+            <BarChart3 className="w-3.5 h-3.5" />
+            <span>INDICADORES</span>
+          </button>
+        </div>
+
+        {/* Lado direito das abas: no QUADRO, mantém o toggle Colunas/Lista e botão Novo Card */}
+        <div className="flex items-center gap-2 shrink-0">
+          {abaAtiva === 'QUADRO' && (
+            <div className="inline-flex rounded-lg border border-[#E5E1D8] bg-[#F4F2EE] p-0.5 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setModoVisualizacao('colunas')}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                  modoVisualizacao === 'colunas'
+                    ? 'bg-white text-[#1A1D21] shadow-xs'
+                    : 'text-[#5B6470] hover:text-[#1A1D21]'
+                }`}
+              >
+                <Columns className="w-3 h-3 text-[#0F766E]" />
+                <span className="hidden sm:inline">Colunas</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setModoVisualizacao('lista')}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                  modoVisualizacao === 'lista'
+                    ? 'bg-white text-[#1A1D21] shadow-xs'
+                    : 'text-[#5B6470] hover:text-[#1A1D21]'
+                }`}
+              >
+                <ListIcon className="w-3 h-3 text-[#0F766E]" />
+                <span className="hidden sm:inline">Lista</span>
+              </button>
+            </div>
+          )}
 
           <Button
             onClick={() => abrirModalCriarCard()}
-            className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-8 px-3.5 font-medium shadow-sm gap-1.5"
+            size="sm"
+            className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-8 px-3 font-medium shadow-sm gap-1.5"
           >
             <Plus className="w-3.5 h-3.5" />
-            Novo Card
+            <span>Novo Card</span>
           </Button>
         </div>
       </div>
@@ -1193,96 +1502,109 @@ export default function Fluxo() {
             </div>
           </aside>
         )}
-
         {/* ======================================================== */}
-        {/* ÁREA PRINCIPAL DO BOARD: FILTROS + VISÃO COLUNAS OU LISTA */}
+        {/* ÁREA PRINCIPAL DO BOARD: CONFORME ABA SELECIONADA         */}
         {/* ======================================================== */}
         <div className="flex-1 min-w-0 w-full space-y-4">
-          {/* BARRA DE FILTROS & VISÕES */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-[#E5E1D8] shadow-xs">
-            <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
-              <div className="relative flex-1 min-w-[180px]">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#5B6470]" />
-                <Input
-                  placeholder="Filtrar cards por título, tag, próximo passo..."
-                  value={filtroTexto}
-                  onChange={(e) => setFiltroTexto(e.target.value)}
-                  className="pl-8 text-xs h-8 border-[#E5E1D8]"
-                />
+          {/* BARRA DE BUSCA E FILTROS EXPANSÍVEL */}
+          {(buscaAberta ||
+            filtrosAbertos ||
+            filtroTexto ||
+            filtroProjeto !== 'all' ||
+            filtroPrioridade !== 'all' ||
+            filtroFamilia !== 'all') && (
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-[#E5E1D8] shadow-xs animate-in fade-in duration-200">
+              <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
+                <div className="relative flex-1 min-w-[180px]">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#5B6470]" />
+                  <Input
+                    placeholder="Filtrar cards por título, tag, próximo passo..."
+                    value={filtroTexto}
+                    onChange={(e) => setFiltroTexto(e.target.value)}
+                    className="pl-8 text-xs h-8 border-[#E5E1D8]"
+                  />
+                  {filtroTexto && (
+                    <button
+                      type="button"
+                      onClick={() => setFiltroTexto('')}
+                      className="absolute right-2.5 top-2 text-[11px] text-[#5B6470] hover:text-[#1A1D21]"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <div className="w-[150px]">
+                  <Select value={filtroProjeto} onValueChange={setFiltroProjeto}>
+                    <SelectTrigger className="text-xs h-8 border-[#E5E1D8]">
+                      <SelectValue placeholder="Projetos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os Projetos</SelectItem>
+                      {projetos.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="w-[130px]">
+                  <Select value={filtroPrioridade} onValueChange={setFiltroPrioridade}>
+                    <SelectTrigger className="text-xs h-8 border-[#E5E1D8]">
+                      <SelectValue placeholder="Prioridade" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Prioridade: Todas</SelectItem>
+                      <SelectItem value="urgente">Urgente</SelectItem>
+                      <SelectItem value="alta">Alta</SelectItem>
+                      <SelectItem value="media">Média</SelectItem>
+                      <SelectItem value="baixa">Baixa</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="w-[140px]">
+                  <Select value={filtroFamilia} onValueChange={setFiltroFamilia}>
+                    <SelectTrigger className="text-xs h-8 border-[#E5E1D8]">
+                      <SelectValue placeholder="Família" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as Famílias</SelectItem>
+                      <SelectItem value="sem_familia">Sem Família</SelectItem>
+                      {familiasVisiveis.map((f) => (
+                        <SelectItem key={f.id} value={f.id}>
+                          {f.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              <div className="w-[150px]">
-                <Select value={filtroProjeto} onValueChange={setFiltroProjeto}>
-                  <SelectTrigger className="text-xs h-8 border-[#E5E1D8]">
-                    <SelectValue placeholder="Projetos" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos os Projetos</SelectItem>
-                    {projetos.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="w-[130px]">
-                <Select value={filtroPrioridade} onValueChange={setFiltroPrioridade}>
-                  <SelectTrigger className="text-xs h-8 border-[#E5E1D8]">
-                    <SelectValue placeholder="Prioridade" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Prioridade: Todas</SelectItem>
-                    <SelectItem value="urgente">Urgente</SelectItem>
-                    <SelectItem value="alta">Alta</SelectItem>
-                    <SelectItem value="media">Média</SelectItem>
-                    <SelectItem value="baixa">Baixa</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="w-[140px]">
-                <Select value={filtroFamilia} onValueChange={setFiltroFamilia}>
-                  <SelectTrigger className="text-xs h-8 border-[#E5E1D8]">
-                    <SelectValue placeholder="Família" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas as Famílias</SelectItem>
-                    <SelectItem value="sem_familia">Sem Família</SelectItem>
-                    {familiasVisiveis.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Toggle de agrupamento por família (relevante na visão colunas) */}
-            {modoVisualizacao === 'colunas' && (
-              <div className="flex items-center gap-2">
-                <Button
+              {/* Botão limpar filtros se ativo */}
+              {(filtroTexto ||
+                filtroProjeto !== 'all' ||
+                filtroPrioridade !== 'all' ||
+                filtroFamilia !== 'all') && (
+                <button
                   type="button"
-                  size="sm"
-                  variant={agruparPorFamilia ? 'default' : 'outline'}
-                  onClick={() => setAgruparPorFamilia(!agruparPorFamilia)}
-                  className={`text-xs h-8 gap-1.5 ${
-                    agruparPorFamilia
-                      ? 'bg-[#0F766E] hover:bg-[#0D5C56] text-white'
-                      : 'border-[#E5E1D8] text-[#5B6470]'
-                  }`}
-                  title="Agrupar cards em subseções por Grupo de Família"
+                  onClick={() => {
+                    setFiltroTexto('')
+                    setFiltroProjeto('all')
+                    setFiltroPrioridade('all')
+                    setFiltroFamilia('all')
+                  }}
+                  className="text-xs text-[#0F766E] hover:underline font-semibold"
                 >
-                  <Layers className="w-3.5 h-3.5" />
-                  {agruparPorFamilia ? 'Famílias Ativas' : 'Visão Contínua'}
-                </Button>
-              </div>
-            )}
-          </div>
+                  Limpar filtros
+                </button>
+              )}
+            </div>
+          )}
 
-          {/* Breadcrumb / Indicador do foco atual se houver filtro selecionado */}
+          {/* Breadcrumb / Indicador do foco atual se houver categoria ou fluxo ativo */}
           {(categoriaAtiva || fluxoAtivo) && (
             <div className="flex items-center justify-between bg-[#F4F2EE] px-3.5 py-2 rounded-lg border border-[#E5E1D8] text-xs">
               <div className="flex items-center gap-2 text-[#1A1D21]">
@@ -1324,10 +1646,22 @@ export default function Fluxo() {
           )}
 
           {/* ======================================================== */}
-          {/* VISÃO 1: EM COLUNAS (KANBAN COM DRAG-AND-DROP) */}
+          {/* ABA 1: QUADRO (KANBAN COM DRAG-AND-DROP E MODELO VISUAL) */}
           {/* ======================================================== */}
-          {modoVisualizacao === 'colunas' && (
+          {abaAtiva === 'QUADRO' && modoVisualizacao === 'colunas' && (
             <div className="flex gap-4 overflow-x-auto pb-4 items-start">
+              {/* Botão "+" isolado na margem esquerda antes da primeira coluna como no modelo */}
+              <div className="shrink-0 pt-7">
+                <button
+                  type="button"
+                  onClick={() => abrirModalCriarCard()}
+                  title="Criar novo card no fluxo"
+                  className="w-10 h-10 rounded-xl bg-white border border-[#E5E1D8] text-[#5B6470] hover:text-[#0F766E] hover:border-[#0F766E] hover:shadow-xs flex items-center justify-center transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+
               {colunasFiltradas.map((col) => {
                 const colCards = cardsFiltrados.filter((c) => c.status === col.chave)
                 const familiasDaColuna = familias.filter(
@@ -1342,31 +1676,43 @@ export default function Fluxo() {
                     key={col.id || col.chave}
                     onDragOver={handleDragOver}
                     onDrop={(e) => handleDrop(e, col.chave)}
-                    className="w-[300px] shrink-0 bg-[#FAFAF9] rounded-xl border border-[#E5E1D8] p-3 flex flex-col min-h-[580px] shadow-2xs"
+                    className="w-[310px] shrink-0 bg-[#F4F2EE]/50 rounded-2xl border border-[#E5E1D8]/80 p-3 flex flex-col min-h-[580px]"
                   >
-                    {/* Header da Coluna */}
-                    <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-[#E5E1D8]/80">
-                      <div className="flex items-center gap-2 min-w-0">
+                    {/* CABEÇALHO DA COLUNA MODELO DIAMONDGROUP: */}
+                    {/* NOME EM MAIÚSCULAS + CONTAGEM + ÍCONES DE OBSERVAÇÃO / OPÇÕES */}
+                    <div className="flex items-center justify-between pb-2 mb-2 px-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
                         <span
-                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          className="w-2 h-2 rounded-full shrink-0"
                           style={{ backgroundColor: col.cor || '#0F766E' }}
                         />
                         <h3 className="text-xs font-bold text-[#1A1D21] uppercase tracking-wider truncate">
-                          {col.titulo}
+                          {col.titulo} {colCards.length}
                         </h3>
                       </div>
 
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-[11px] font-semibold text-[#5B6470] bg-[#E5E1D8]/60 px-2 py-0.5 rounded-full">
-                          {colCards.length}
-                        </span>
+                      {/* Ícone de comentário/observações + menu "..." */}
+                      <div className="flex items-center gap-1 shrink-0 text-[#5B6470]">
+                        <button
+                          type="button"
+                          title={`Comentários da coluna ${col.titulo}`}
+                          onClick={() =>
+                            toast({
+                              title: `Coluna ${col.titulo}`,
+                              description: `${colCards.length} demandas nesta etapa do fluxo.`,
+                            })
+                          }
+                          className="w-6 h-6 rounded flex items-center justify-center hover:bg-white hover:text-[#1A1D21] transition-colors"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                        </button>
 
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button
                               type="button"
                               aria-label="Opções da coluna"
-                              className="p-1 text-[#5B6470] hover:text-[#1A1D21] rounded"
+                              className="w-6 h-6 rounded flex items-center justify-center hover:bg-white hover:text-[#1A1D21] transition-colors"
                             >
                               <MoreVertical className="w-3.5 h-3.5" />
                             </button>
@@ -1382,42 +1728,31 @@ export default function Fluxo() {
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => abrirModalEditarFluxo(col)}>
                               <Edit2 className="w-3.5 h-3.5 mr-2" />
-                              Editar Fluxo
+                              Editar Coluna
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => handleExcluirFluxo(col)}
                               className="text-red-600"
                             >
                               <Trash2 className="w-3.5 h-3.5 mr-2" />
-                              Excluir Fluxo
+                              Excluir Coluna
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
                     </div>
 
-                    {/* Botão rápido para criar card ou família na coluna */}
-                    <div className="flex items-center gap-1 mb-2.5">
-                      <button
-                        type="button"
-                        onClick={() => abrirModalCriarCard(col.chave)}
-                        className="flex-1 py-1 px-2 rounded border border-dashed border-[#E5E1D8] text-[11px] text-[#5B6470] hover:text-[#0F766E] hover:border-[#0F766E]/40 hover:bg-white flex items-center justify-center gap-1 transition-all"
-                      >
-                        <Plus className="w-3 h-3" />
-                        Card
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => abrirModalNovaFamilia(col.id)}
-                        title="Criar novo grupo de família neste fluxo"
-                        className="py-1 px-2 rounded border border-dashed border-[#E5E1D8] text-[11px] text-[#5B6470] hover:text-blue-600 hover:border-blue-300 hover:bg-white flex items-center justify-center gap-1 transition-all"
-                      >
-                        <Layers className="w-3 h-3" />
-                        Família
-                      </button>
-                    </div>
+                    {/* BOTÃO "+" PRÓPRIO NO TOPO (faixa branca com "+" centralizado como na foto de referência) */}
+                    <button
+                      type="button"
+                      onClick={() => abrirModalCriarCard(col.chave)}
+                      title={`Adicionar novo card em ${col.titulo}`}
+                      className="w-full h-9 rounded-xl bg-white hover:bg-white/90 border border-[#E5E1D8] shadow-2xs hover:shadow-xs flex items-center justify-center text-[#2563EB] hover:text-[#1D4ED8] mb-3 transition-all group"
+                    >
+                      <Plus className="w-4 h-4 transition-transform group-hover:scale-110" />
+                    </button>
 
-                    {/* Cards: Agrupados por família ou contínuos */}
+                    {/* CARDS DA COLUNA */}
                     <div className="space-y-3 flex-1 overflow-y-auto">
                       {agruparPorFamilia ? (
                         <>
@@ -1434,15 +1769,15 @@ export default function Fluxo() {
                                   e.stopPropagation()
                                   handleDrop(e, col.chave, fam.id)
                                 }}
-                                className="bg-white/70 rounded-lg p-2 border border-[#E5E1D8]/80 space-y-2"
+                                className="bg-white/60 rounded-xl p-2.5 border border-[#E5E1D8]/80 space-y-2"
                               >
-                                <div className="flex items-center justify-between pb-1 border-b border-[#E5E1D8]/60">
+                                <div className="flex items-center justify-between pb-1.5 border-b border-[#E5E1D8]/60">
                                   <div className="flex items-center gap-1.5 min-w-0">
                                     <span
                                       className="w-2 h-2 rounded-full shrink-0"
                                       style={{ backgroundColor: fam.cor || '#3B82F6' }}
                                     />
-                                    <span className="text-[11px] font-semibold text-[#1A1D21] truncate">
+                                    <span className="text-[11px] font-bold text-[#1A1D21] uppercase tracking-wide truncate">
                                       {fam.nome}
                                     </span>
                                     <Badge className="bg-blue-50 text-blue-700 hover:bg-blue-50 border-blue-200 text-[10px] px-1 py-0 h-4">
@@ -1459,41 +1794,15 @@ export default function Fluxo() {
                                     >
                                       <Plus className="w-3 h-3" />
                                     </button>
-                                    <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                        <button
-                                          type="button"
-                                          aria-label="Opções da família"
-                                          className="text-[#5B6470] hover:text-[#1A1D21] p-0.5"
-                                        >
-                                          <MoreVertical className="w-3 h-3" />
-                                        </button>
-                                      </DropdownMenuTrigger>
-                                      <DropdownMenuContent align="end" className="text-xs">
-                                        <DropdownMenuItem
-                                          onClick={() => abrirModalEditarFamilia(fam)}
-                                        >
-                                          <Edit2 className="w-3 h-3 mr-2" />
-                                          Editar Família
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem
-                                          onClick={() => handleExcluirFamilia(fam)}
-                                          className="text-red-600"
-                                        >
-                                          <Trash2 className="w-3 h-3 mr-2" />
-                                          Excluir Família
-                                        </DropdownMenuItem>
-                                      </DropdownMenuContent>
-                                    </DropdownMenu>
                                   </div>
                                 </div>
 
-                                <div className="space-y-2">
+                                <div className="space-y-2.5">
                                   {cardsDaFamilia.map((card) =>
                                     renderKanbanCard(card, () => abrirModalEditarCard(card)),
                                   )}
                                   {cardsDaFamilia.length === 0 && (
-                                    <div className="h-10 border border-dashed border-[#E5E1D8] rounded flex items-center justify-center text-[10px] text-[#5B6470]/60">
+                                    <div className="h-10 border border-dashed border-[#E5E1D8] rounded-lg flex items-center justify-center text-[10px] text-[#5B6470]/60">
                                       Arraste cards para esta família
                                     </div>
                                   )}
@@ -1515,7 +1824,7 @@ export default function Fluxo() {
                                   e.stopPropagation()
                                   handleDrop(e, col.chave, '')
                                 }}
-                                className="space-y-2 pt-1"
+                                className="space-y-2.5 pt-1"
                               >
                                 {familiasDaColuna.length > 0 && (
                                   <div className="flex items-center gap-1.5 text-[10px] font-semibold text-[#5B6470] uppercase px-1">
@@ -1537,9 +1846,9 @@ export default function Fluxo() {
                       )}
 
                       {colCards.length === 0 && (
-                        <div className="h-32 border-2 border-dashed border-[#E5E1D8] rounded-lg flex flex-col items-center justify-center text-xs text-[#5B6470]/60 gap-1">
-                          <span>Nenhum card</span>
-                          <span className="text-[10px]">Solte cards aqui</span>
+                        <div className="h-32 border-2 border-dashed border-[#E5E1D8] rounded-xl flex flex-col items-center justify-center text-xs text-[#5B6470]/60 gap-1 bg-white/40">
+                          <span className="font-medium">Nenhum card</span>
+                          <span className="text-[10px]">Arraste ou clique em "+"</span>
                         </div>
                       )}
                     </div>
@@ -1572,9 +1881,9 @@ export default function Fluxo() {
           )}
 
           {/* ======================================================== */}
-          {/* VISÃO 2: EM LISTA (LINHAS EMPILHADAS COM AÇÕES RÁPIDAS) */}
+          {/* VISÃO LISTA DO QUADRO (quando QUADRO com toggle Lista)    */}
           {/* ======================================================== */}
-          {modoVisualizacao === 'lista' && (
+          {abaAtiva === 'QUADRO' && modoVisualizacao === 'lista' && (
             <div className="bg-white rounded-xl border border-[#E5E1D8] shadow-xs overflow-hidden">
               <div className="p-3 border-b border-[#E5E1D8] bg-[#FAFAF9] flex items-center justify-between text-xs font-semibold text-[#5B6470]">
                 <div className="flex items-center gap-2">
@@ -1602,9 +1911,10 @@ export default function Fluxo() {
                         className="flex-1 cursor-pointer space-y-1.5"
                       >
                         <div className="flex items-center gap-2 flex-wrap">
+                          {renderCardAvatar(card)}
                           {getPriorityBadge(card.prioridade)}
 
-                          <h4 className="text-sm font-semibold text-[#1A1D21] hover:text-[#0F766E] transition-colors">
+                          <h4 className="text-sm font-bold text-[#1A1D21] uppercase tracking-tight hover:text-[#0F766E] transition-colors">
                             {card.titulo}
                           </h4>
 
@@ -1733,6 +2043,10 @@ export default function Fluxo() {
                               <Edit2 className="w-3.5 h-3.5 mr-2" />
                               Ver / Editar Card
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDuplicarCard(card)}>
+                              <Copy className="w-3.5 h-3.5 mr-2 text-blue-600" />
+                              Duplicar Card
+                            </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => handleExcluirCard(card.id)}
                               className="text-red-600"
@@ -1763,7 +2077,46 @@ export default function Fluxo() {
               </div>
             </div>
           )}
-        </div>
+
+          {/* ======================================================== */}
+          {/* ABA 2: TABELA (VISÃO EM TABELA ESTRUTURADA DE CARDS)      */}
+          {/* ======================================================== */}
+          {abaAtiva === 'TABELA' && (
+            <FluxoTabelaView
+              cards={cardsFiltrados}
+              colunasPorChave={colunasPorChave}
+              familias={familias}
+              projetos={projetos}
+              contatos={contatos}
+              onEditarCard={abrirModalEditarCard}
+              onCriarCard={() => abrirModalCriarCard()}
+            />
+          )}
+
+          {/* ======================================================== */}
+          {/* ABA 3: GANTT (LINHA DO TEMPO DOS CARDS AO LONGO DOS DIAS) */}
+          {/* ======================================================== */}
+          {abaAtiva === 'GANTT' && (
+            <FluxoGanttView
+              cards={cardsFiltrados}
+              colunasOrdenadas={colunasOrdenadas}
+              onEditarCard={abrirModalEditarCard}
+            />
+          )}
+
+          {/* ======================================================== */}
+          {/* ABA 4: INDICADORES (PAINEL DE MÉTRICAS E DISTRIBUIÇÃO)   */}
+          {/* ======================================================== */}
+          {abaAtiva === 'INDICADORES' && (
+            <FluxoIndicadoresView
+              cards={cardsFiltrados}
+              colunasOrdenadas={colunasOrdenadas}
+              familias={familias}
+              projetos={projetos}
+              contatos={contatos}
+            />
+          )}
+        </div>{' '}
       </div>
 
       {/* ======================================================== */}
@@ -2226,9 +2579,45 @@ export default function Fluxo() {
     </div>
   )
 
-  // Card renderizado na visão em Colunas (Kanban)
+  // Retorna o contato associado ao card
+  const getContatoDoCard = (card: CardType) => {
+    if (card.expand?.contato) return card.expand.contato
+    if (card.contato) {
+      return contatos.find((ct) => ct.id === card.contato) || null
+    }
+    return null
+  }
+
+  // Gera avatar circular com foto ou iniciais
+  const renderCardAvatar = (card: CardType) => {
+    const contato = getContatoDoCard(card)
+    const nome = contato?.nome || card.titulo || 'Card'
+    const iniciais =
+      nome
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((n) => n[0]?.toUpperCase())
+        .join('') || 'D'
+
+    // Avatar circular no modelo DiamondGroup (foto ou fallback com tom azul corporativo)
+    return (
+      <Avatar className="w-8 h-8 rounded-full border-2 border-white shadow-2xs shrink-0 ring-1 ring-black/5">
+        <AvatarImage
+          src={`https://img.usecurling.com/ppl/128?seed=${encodeURIComponent(nome)}`}
+          alt={nome}
+        />
+        <AvatarFallback className="bg-gradient-to-br from-[#1E40AF] to-[#0F766E] text-white text-[10px] font-bold">
+          {iniciais}
+        </AvatarFallback>
+      </Avatar>
+    )
+  }
+
+  // Card renderizado no modelo visual DiamondGroup
   function renderKanbanCard(card: CardType, onEdit: () => void) {
     const familiaDoCard = familias.find((f) => f.id === card.grupo_familia)
+    const contato = getContatoDoCard(card)
 
     return (
       <div
@@ -2236,67 +2625,130 @@ export default function Fluxo() {
         draggable
         onDragStart={(e) => handleDragStart(e, card.id)}
         onClick={onEdit}
-        className={`p-3 rounded-lg bg-white border border-[#E5E1D8] shadow-2xs diamond-card-hover cursor-pointer transition-all ${getPriorityBorder(
-          card.prioridade,
-        )}`}
+        className="group relative bg-white rounded-xl border border-[#E5E1D8] p-3.5 shadow-2xs hover:shadow-md transition-all cursor-pointer diamond-card-hover"
       >
-        <div className="flex items-start justify-between gap-2 mb-1.5">
-          <h4 className="text-xs font-semibold text-[#1A1D21] leading-tight line-clamp-2">
-            {card.titulo}
-          </h4>
-          {card.criado_por_ia && (
-            <span title="Criado pela IA" className="text-[10px] text-[#0F766E] shrink-0">
-              <Sparkles className="w-3 h-3" />
-            </span>
-          )}
+        {/* Linha Superior: Avatar circular à esquerda, título em maiúsculas ao centro, botão abrir + 3 pontinhos à direita */}
+        <div className="flex items-start justify-between gap-2.5">
+          {/* Avatar circular */}
+          {renderCardAvatar(card)}
+
+          {/* Título do Card em MAIÚSCULAS no modelo DiamondGroup */}
+          <div className="flex-1 min-w-0 pt-0.5">
+            <h4 className="text-xs font-bold text-[#1A1D21] uppercase tracking-tight leading-snug line-clamp-2">
+              {card.titulo}
+            </h4>
+            {contato && (
+              <p className="text-[10px] text-[#5B6470] truncate mt-0.5">
+                {contato.nome} {contato.empresa ? `• ${contato.empresa}` : ''}
+              </p>
+            )}
+          </div>
+
+          {/* Ações do Canto Superior Direito: Botão azul de abrir (seta) + Menu "..." */}
+          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+            {/* Botão de abrir/compartilhar (quadrado azul com seta branca como na imagem) */}
+            <button
+              type="button"
+              onClick={onEdit}
+              title="Abrir detalhes do card"
+              className="w-6 h-6 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white flex items-center justify-center shadow-2xs transition-all"
+            >
+              <ExternalLink className="w-3 h-3" />
+            </button>
+
+            {/* Menu 3 pontinhos com ações completas */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Opções do card"
+                  className="w-6 h-6 rounded flex items-center justify-center text-[#5B6470] hover:text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors"
+                >
+                  <MoreVertical className="w-3.5 h-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="text-xs">
+                <DropdownMenuItem onClick={onEdit}>
+                  <Edit2 className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
+                  Abrir / Editar Card
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleDuplicarCard(card)}>
+                  <Copy className="w-3.5 h-3.5 mr-2 text-blue-600" />
+                  Duplicar Card
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {/* Mover de coluna */}
+                {colunasOrdenadas.map((col) => {
+                  if (col.chave === card.status) return null
+                  return (
+                    <DropdownMenuItem
+                      key={col.id || col.chave}
+                      onClick={() => handleMudarStatusCard(card.id, col.chave)}
+                    >
+                      <ArrowRight className="w-3.5 h-3.5 mr-2 text-[#5B6470]" />
+                      Mover para {col.titulo}
+                    </DropdownMenuItem>
+                  )
+                })}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => handleExcluirCard(card.id)}
+                  className="text-red-600"
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-2" />
+                  Excluir Card
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
+        {/* Detalhes extras preservados: próximo passo, família, projeto, badges */}
         {card.descricao && (
-          <p className="text-[11px] text-[#5B6470] line-clamp-2 mb-2">{card.descricao}</p>
+          <p className="text-[11px] text-[#5B6470] line-clamp-2 mt-2 leading-relaxed">
+            {card.descricao}
+          </p>
         )}
 
         {card.proximo_passo && (
-          <div className="bg-[#F4F2EE]/60 p-1.5 rounded text-[11px] text-[#0F766E] font-medium flex items-center gap-1.5 mb-2 border border-[#E5E1D8]/40">
+          <div className="bg-[#F4F2EE]/70 px-2 py-1 rounded-md text-[10px] text-[#0F766E] font-medium flex items-center gap-1.5 mt-2 border border-[#E5E1D8]/50">
             <ArrowRight className="w-3 h-3 shrink-0" />
             <span className="line-clamp-1">{card.proximo_passo}</span>
           </div>
         )}
 
-        {/* Tag de Grupo de Família */}
-        {familiaDoCard && (
-          <div className="mb-2">
+        {/* Rodapé do card: prioridade, família, projeto e tags */}
+        <div className="flex flex-wrap items-center gap-1.5 mt-2.5 pt-2 border-t border-[#E5E1D8]/60 text-[10px] text-[#5B6470]">
+          {getPriorityBadge(card.prioridade)}
+
+          {familiaDoCard && (
             <span
-              className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded"
+              className="inline-flex items-center gap-1 font-medium px-1.5 py-0.5 rounded text-[10px]"
               style={{
                 backgroundColor: `${familiaDoCard.cor || '#3B82F6'}15`,
                 color: familiaDoCard.cor || '#3B82F6',
-                border: `1px solid ${familiaDoCard.cor || '#3B82F6'}30`,
               }}
             >
               <Layers className="w-2.5 h-2.5" />
               {familiaDoCard.nome}
             </span>
-          </div>
-        )}
+          )}
 
-        {/* Tags e Vínculos */}
-        <div className="flex flex-wrap items-center gap-1 mt-1 pt-1.5 border-t border-[#E5E1D8]/60 text-[10px] text-[#5B6470]">
           {card.expand?.projeto && (
-            <span className="bg-[#F4F2EE] px-1.5 py-0.5 rounded truncate max-w-[120px]">
+            <span className="bg-[#F4F2EE] px-1.5 py-0.5 rounded truncate max-w-[110px]">
               📁 {card.expand.projeto.nome}
             </span>
           )}
-          {card.expand?.contato && (
-            <span className="bg-[#F4F2EE] px-1.5 py-0.5 rounded truncate max-w-[100px]">
-              👤 {card.expand.contato.nome}
+
+          {card.criado_por_ia && (
+            <span
+              title="Criado via IA"
+              className="inline-flex items-center gap-0.5 text-[#0F766E] bg-[#0F766E]/10 px-1 py-0.5 rounded ml-auto"
+            >
+              <Sparkles className="w-2.5 h-2.5" />
+              IA
             </span>
           )}
-          {Array.isArray(card.tags) &&
-            card.tags.slice(0, 2).map((t, i) => (
-              <span key={i} className="text-[#5B6470] bg-[#E5E1D8]/50 px-1 py-0.5 rounded">
-                #{t}
-              </span>
-            ))}
         </div>
       </div>
     )
