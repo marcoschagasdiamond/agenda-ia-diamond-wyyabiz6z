@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-13T22:48:02.494Z",
+  "generatedAt": "2026-10-13T23:07:57.197Z",
   "collections": [
     {
       "name": "users",
@@ -1107,6 +1107,12 @@
           "required": false,
           "system": false,
           "collectionRef": "categorias_fluxo"
+        },
+        {
+          "name": "titulo_fases",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_colunas_fluxo_chave ON colunas_fluxo (chave)"]
@@ -1206,6 +1212,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "titulo_fases",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE INDEX idx_categorias_fluxo_ordem ON categorias_fluxo (ordem)"]

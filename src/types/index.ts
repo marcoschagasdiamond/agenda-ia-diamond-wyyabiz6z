@@ -141,6 +141,7 @@ export interface CategoriaFluxo {
   ordem?: number
   cor?: string
   descricao?: string
+  titulo_fases?: string
   created?: string
   updated?: string
 }
@@ -279,6 +280,7 @@ export interface ColunaFluxo {
   cor?: string
   ordem?: number
   categoria?: string
+  titulo_fases?: string
   created?: string
   updated?: string
   expand?: {
