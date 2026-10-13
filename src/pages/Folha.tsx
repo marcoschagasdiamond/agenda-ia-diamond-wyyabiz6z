@@ -72,10 +72,57 @@ export interface ItemRascunhoAssunto {
   negocioId: string
 }
 
+const STORAGE_KEY_RASCUNHO = 'agenda_ia_diamond_folha_rascunho_assuntos'
+
 const getAgoraLocalISO = () => {
   const agora = new Date()
   const tzOffset = agora.getTimezoneOffset() * 60000
   return new Date(agora.getTime() - tzOffset).toISOString().slice(0, 16)
+}
+
+const criarItemAssuntoVazio = (): ItemRascunhoAssunto => ({
+  idTemp: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+  registro: '',
+  dataHora: getAgoraLocalISO(),
+  tipoOrigem: 'manual',
+  origemRef: '',
+  fluxo: 'novo',
+  projetoId: 'none',
+  timeline: '',
+  contatoId: 'none',
+  negocioId: 'none',
+})
+
+const carregarRascunhoSalvo = (): ItemRascunhoAssunto[] => {
+  if (typeof window === 'undefined') return [criarItemAssuntoVazio()]
+  try {
+    const salvo = localStorage.getItem(STORAGE_KEY_RASCUNHO)
+    if (!salvo) return [criarItemAssuntoVazio()]
+    const parsed = JSON.parse(salvo)
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed.map((item: any, i: number) => ({
+        idTemp:
+          typeof item?.idTemp === 'string' && item.idTemp ? item.idTemp : `temp_${Date.now()}_${i}`,
+        registro: typeof item?.registro === 'string' ? item.registro : '',
+        dataHora:
+          typeof item?.dataHora === 'string' && item.dataHora ? item.dataHora : getAgoraLocalISO(),
+        tipoOrigem: (['manual', 'whatsapp', 'email', 'importado'] as OrigemTipo[]).includes(
+          item?.tipoOrigem,
+        )
+          ? item.tipoOrigem
+          : 'manual',
+        origemRef: typeof item?.origemRef === 'string' ? item.origemRef : '',
+        fluxo: typeof item?.fluxo === 'string' ? item.fluxo : 'novo',
+        projetoId: typeof item?.projetoId === 'string' ? item.projetoId : 'none',
+        timeline: typeof item?.timeline === 'string' ? item.timeline : '',
+        contatoId: typeof item?.contatoId === 'string' ? item.contatoId : 'none',
+        negocioId: typeof item?.negocioId === 'string' ? item.negocioId : 'none',
+      }))
+    }
+  } catch (err) {
+    console.error('Falha ao ler rascunho da folha do localStorage:', err)
+  }
+  return [criarItemAssuntoVazio()]
 }
 
 export default function Folha() {
@@ -118,21 +165,8 @@ export default function Folha() {
   const [novoTimelineDescricao, setNovoTimelineDescricao] = useState('')
   const [criandoTimeline, setCriandoTimeline] = useState(false)
 
-  // Lista de assuntos múltiplos em elaboração na sessão
-  const [assuntos, setAssuntos] = useState<ItemRascunhoAssunto[]>([
-    {
-      idTemp: 'temp_1',
-      registro: '',
-      dataHora: getAgoraLocalISO(),
-      tipoOrigem: 'manual',
-      origemRef: '',
-      fluxo: 'novo',
-      projetoId: 'none',
-      timeline: '',
-      contatoId: 'none',
-      negocioId: 'none',
-    },
-  ])
+  // Lista de assuntos múltiplos em elaboração na sessão, persistida no localStorage
+  const [assuntos, setAssuntos] = useState<ItemRascunhoAssunto[]>(() => carregarRascunhoSalvo())
 
   const [loadingAdd, setLoadingAdd] = useState(false)
 
@@ -212,6 +246,15 @@ export default function Folha() {
     carregarDados()
   }, [])
 
+  // Sincroniza rascunho com o localStorage sempre que os assuntos mudarem
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_RASCUNHO, JSON.stringify(assuntos))
+    } catch (err) {
+      console.error('Falha ao sincronizar rascunho da folha no localStorage:', err)
+    }
+  }, [assuntos])
+
   // Gerenciamento dos múltiplos assuntos da folha
   const handleAdicionarAssunto = () => {
     setAssuntos((prev) => [
@@ -234,23 +277,22 @@ export default function Folha() {
   const handleRemoverAssunto = (idx: number) => {
     if (assuntos.length <= 1) {
       // Limpa o único assunto existente em vez de deixar vazio
-      setAssuntos([
-        {
-          idTemp: `temp_${Date.now()}`,
-          registro: '',
-          dataHora: getAgoraLocalISO(),
-          tipoOrigem: 'manual',
-          origemRef: '',
-          fluxo: 'novo',
-          projetoId: 'none',
-          timeline: '',
-          contatoId: 'none',
-          negocioId: 'none',
-        },
-      ])
+      setAssuntos([criarItemAssuntoVazio()])
       return
     }
     setAssuntos((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  const handleLimparTodosAssuntos = () => {
+    const temConteudo = assuntos.some((a) => a.registro.trim().length > 0)
+    if (temConteudo) {
+      const confirma = window.confirm(
+        'Tem certeza que deseja apagar todos os assuntos digitados nesta folha?',
+      )
+      if (!confirma) return
+    }
+    setAssuntos([criarItemAssuntoVazio()])
+    toast({ title: 'Rascunho da folha limpo com sucesso' })
   }
 
   const handleMoverAssunto = (idx: number, direcao: 'cima' | 'baixo') => {
@@ -519,21 +561,8 @@ export default function Folha() {
         })
       }
 
-      // Reinicia formulário com 1 assunto limpo
-      setAssuntos([
-        {
-          idTemp: `temp_${Date.now()}`,
-          registro: '',
-          dataHora: getAgoraLocalISO(),
-          tipoOrigem: 'manual',
-          origemRef: '',
-          fluxo: 'novo',
-          projetoId: 'none',
-          timeline: '',
-          contatoId: 'none',
-          negocioId: 'none',
-        },
-      ])
+      // Reinicia formulário com 1 assunto limpo (o useEffect sincronizará com o localStorage)
+      setAssuntos([criarItemAssuntoVazio()])
 
       toast({
         title: `${validos.length} ${validos.length === 1 ? 'assunto capturado' : 'assuntos capturados'}!`,
@@ -763,6 +792,9 @@ export default function Folha() {
         title: 'Sessão finalizada e organizada com sucesso!',
         description: 'Cards inseridos no Kanban e Resumo do Dia gravado na memória.',
       })
+
+      // Limpa o rascunho em elaboração caso o usuário tenha lançado tudo
+      setAssuntos([criarItemAssuntoVazio()])
 
       setModalRevisaoOpen(false)
       await carregarDados()
@@ -1282,6 +1314,17 @@ export default function Folha() {
               </Button>
 
               <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleLimparTodosAssuntos}
+                  className="text-xs h-9 text-[#5B6470] hover:text-red-600 gap-1.5"
+                  title="Apagar todos os assuntos digitados"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Limpar Rascunho
+                </Button>
                 <Button
                   type="submit"
                   disabled={loadingAdd}
