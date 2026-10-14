@@ -31,6 +31,8 @@ import {
   CalendarPlus,
   AlertCircle,
   Flag,
+  Rocket,
+  CheckCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -169,12 +171,33 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
       if (d) diasComItens.add(d)
     })
 
-    // Contadores gerais
+    projetos.forEach((p) => {
+      if (p.data_inicio) {
+        const d = p.data_inicio.split('T')[0].split(' ')[0]
+        if (d) diasComItens.add(d)
+      }
+      if (p.data_fim) {
+        const d = p.data_fim.split('T')[0].split(' ')[0]
+        if (d) diasComItens.add(d)
+      }
+    })
+
+    // Contadores gerais (mês visualizado no mini-calendário ou total cadastrado)
+    const prefixoMes = `${anoAtual}-${String(mesAtual + 1).padStart(2, '0')}`
+
     const totalEventos = eventosCalendario.length
     const totalDemandasComPrazo = demandas.filter((d) => d.prazo).length
     const totalFolhaComData = folhaItems.filter((f) => f.data || f.data_hora).length
     const totalCardsComPrazo = cards.filter((c) => c.data_prazo).length
     const totalMarcos = marcosTimeline.filter((m) => m.data_alvo).length
+
+    // Contagem de Inícios e Fins de Projetos no mês atual/visualizado
+    const totalProjetosInicioMes = projetos.filter(
+      (p) => p.data_inicio && p.data_inicio.startsWith(prefixoMes),
+    ).length
+    const totalProjetosFimMes = projetos.filter(
+      (p) => p.data_fim && p.data_fim.startsWith(prefixoMes),
+    ).length
 
     // Prazos atrasados (demandas pendentes com prazo < hoje)
     const atrasadas = demandas.filter((d) => {
@@ -330,7 +353,9 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
                 totalDemandasComPrazo +
                 totalFolhaComData +
                 totalCardsComPrazo +
-                totalMarcos}
+                totalMarcos +
+                totalProjetosInicioMes +
+                totalProjetosFimMes}
             </span>
           </button>
 
@@ -436,6 +461,48 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
             </div>
             <span className="text-[10px] bg-[#E5E1D8]/60 px-1.5 py-0.2 rounded text-[#5B6470]">
               {totalMarcos}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setFiltroTipoCalendario('projeto_inicio')
+              if (pathname !== '/calendario') irPara('/calendario')
+            }}
+            className={`w-full flex items-center justify-between px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
+              filtroTipoCalendario === 'projeto_inicio'
+                ? 'bg-blue-100 text-blue-900 font-semibold'
+                : 'text-[#5B6470] hover:bg-[#F4F2EE] hover:text-[#1A1D21]'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Rocket className="w-3 h-3 text-blue-600" />
+              <span>Inícios de Projetos</span>
+            </div>
+            <span className="text-[10px] bg-[#E5E1D8]/60 px-1.5 py-0.2 rounded text-[#5B6470]">
+              {totalProjetosInicioMes}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setFiltroTipoCalendario('projeto_fim')
+              if (pathname !== '/calendario') irPara('/calendario')
+            }}
+            className={`w-full flex items-center justify-between px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
+              filtroTipoCalendario === 'projeto_fim'
+                ? 'bg-indigo-100 text-indigo-900 font-semibold'
+                : 'text-[#5B6470] hover:bg-[#F4F2EE] hover:text-[#1A1D21]'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-3 h-3 text-indigo-600" />
+              <span>Fins de Projetos</span>
+            </div>
+            <span className="text-[10px] bg-[#E5E1D8]/60 px-1.5 py-0.2 rounded text-[#5B6470]">
+              {totalProjetosFimMes}
             </span>
           </button>
         </div>
