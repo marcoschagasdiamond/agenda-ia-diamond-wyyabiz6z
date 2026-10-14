@@ -25,6 +25,12 @@ import {
   ShieldCheck,
   CheckCircle2,
   Calendar,
+  CalendarDays,
+  CalendarCheck2,
+  ChevronLeft,
+  CalendarPlus,
+  AlertCircle,
+  Flag,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -74,7 +80,16 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
     listas,
     demandas,
     folhaItems,
+    marcosTimeline,
+    eventosCalendario,
+    dataSelecionadaCalendario,
+    setDataSelecionadaCalendario,
+    filtroTipoCalendario,
+    setFiltroTipoCalendario,
   } = useNavegacao()
+
+  // Mini-calendário de navegação na segunda coluna
+  const [miniCalMesOffset, setMiniCalMesOffset] = useState<number>(0)
 
   // Filtro de busca local dentro da segunda coluna
   const [buscaSecundaria, setBuscaSecundaria] = useState('')
@@ -88,6 +103,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
   // Identifica a seção ativa
   const secaoAtiva = (() => {
     if (pathname === '/') return 'dashboard'
+    if (pathname.startsWith('/calendario')) return 'calendario'
     if (pathname.startsWith('/folha')) return 'folha'
     if (pathname.startsWith('/fluxo')) return 'fluxo'
     if (pathname.startsWith('/projetos')) return 'projetos'
@@ -101,6 +117,359 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
     if (pathname.startsWith('/portal')) return 'portal'
     return 'dashboard'
   })()
+
+  // =========================================================================
+  // 0. SEGUNDA COLUNA: CALENDÁRIO (Mini-calendário, contadores e filtros)
+  // =========================================================================
+  const renderColunaCalendario = () => {
+    // Cálculo do mini calendário
+    const baseDate = new Date()
+    baseDate.setMonth(baseDate.getMonth() + miniCalMesOffset)
+    const anoAtual = baseDate.getFullYear()
+    const mesAtual = baseDate.getMonth() // 0-11
+
+    const nomeMes = baseDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+    const primeiroDiaSemana = new Date(anoAtual, mesAtual, 1).getDay() // 0 = dom
+    const totalDiasMes = new Date(anoAtual, mesAtual + 1, 0).getDate()
+
+    // Formatar hoje
+    const hojeObj = new Date()
+    const hojeStr = `${hojeObj.getFullYear()}-${String(hojeObj.getMonth() + 1).padStart(2, '0')}-${String(hojeObj.getDate()).padStart(2, '0')}`
+
+    // Coleta dias que têm itens (eventos, demandas com prazo, folha com data, cards com prazo)
+    const diasComItens = new Set<string>()
+
+    eventosCalendario.forEach((ev) => {
+      const d = ev.data_inicio ? ev.data_inicio.split('T')[0] : ''
+      if (d) diasComItens.add(d)
+    })
+
+    demandas.forEach((dem) => {
+      const d = dem.prazo ? dem.prazo.split('T')[0] : ''
+      if (d) diasComItens.add(d)
+    })
+
+    folhaItems.forEach((f) => {
+      const d = f.data ? f.data.split('T')[0] : f.data_hora ? f.data_hora.split('T')[0] : ''
+      if (d) diasComItens.add(d)
+    })
+
+    cards.forEach((c) => {
+      const d = c.data_prazo ? c.data_prazo.split('T')[0] : ''
+      if (d) diasComItens.add(d)
+    })
+
+    marcosTimeline.forEach((m) => {
+      const d = m.data_alvo ? m.data_alvo.split('T')[0] : ''
+      if (d) diasComItens.add(d)
+    })
+
+    // Contadores gerais
+    const totalEventos = eventosCalendario.length
+    const totalDemandasComPrazo = demandas.filter((d) => d.prazo).length
+    const totalFolhaComData = folhaItems.filter((f) => f.data || f.data_hora).length
+    const totalCardsComPrazo = cards.filter((c) => c.data_prazo).length
+    const totalMarcos = marcosTimeline.filter((m) => m.data_alvo).length
+
+    // Prazos atrasados (demandas pendentes com prazo < hoje)
+    const atrasadas = demandas.filter((d) => {
+      if (d.status === 'concluido' || !d.prazo) return false
+      return d.prazo.split('T')[0] < hojeStr
+    }).length
+
+    const hojeItensCount =
+      eventosCalendario.filter((e) => e.data_inicio && e.data_inicio.startsWith(hojeStr)).length +
+      demandas.filter((d) => d.prazo && d.prazo.startsWith(hojeStr)).length +
+      folhaItems.filter(
+        (f) =>
+          (f.data && f.data.startsWith(hojeStr)) ||
+          (f.data_hora && f.data_hora.startsWith(hojeStr)),
+      ).length
+
+    const diasGrid: (number | null)[] = []
+    for (let i = 0; i < primeiroDiaSemana; i++) {
+      diasGrid.push(null)
+    }
+    for (let d = 1; d <= totalDiasMes; d++) {
+      diasGrid.push(d)
+    }
+
+    return (
+      <div className="flex flex-col h-full">
+        {/* Topo da coluna */}
+        <div className="p-3.5 border-b border-[#E5E1D8] flex items-center justify-between bg-white shrink-0">
+          <div>
+            <h2 className="text-sm font-bold text-[#1A1D21] tracking-tight">Calendário</h2>
+            <p className="text-[10px] text-[#5B6470]">Prazos, etapas e atividades</p>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => irPara('/calendario')}
+            className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-7 px-2.5 gap-1 font-medium shadow-2xs"
+          >
+            <CalendarPlus className="w-3.5 h-3.5" />
+            <span>Abrir</span>
+          </Button>
+        </div>
+
+        {/* Mini Calendário */}
+        <div className="p-3 border-b border-[#E5E1D8] bg-[#FAFAF9] shrink-0">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-[#1A1D21] capitalize">{nomeMes}</span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setMiniCalMesOffset((prev) => prev - 1)}
+                className="p-1 rounded hover:bg-[#E5E1D8] text-[#5B6470] hover:text-[#1A1D21]"
+                title="Mês anterior"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setMiniCalMesOffset(0)}
+                className="text-[10px] font-semibold text-[#0F766E] hover:underline px-1"
+                title="Voltar ao mês atual"
+              >
+                Hoje
+              </button>
+              <button
+                type="button"
+                onClick={() => setMiniCalMesOffset((prev) => prev + 1)}
+                className="p-1 rounded hover:bg-[#E5E1D8] text-[#5B6470] hover:text-[#1A1D21]"
+                title="Próximo mês"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Cabeçalho dias da semana (D S T Q Q S S) */}
+          <div className="grid grid-cols-7 text-center text-[10px] font-medium text-[#5B6470] mb-1">
+            <span>D</span>
+            <span>S</span>
+            <span>T</span>
+            <span>Q</span>
+            <span>Q</span>
+            <span>S</span>
+            <span>S</span>
+          </div>
+
+          {/* Grade de dias */}
+          <div className="grid grid-cols-7 gap-1 text-center">
+            {diasGrid.map((dia, idx) => {
+              if (dia === null) {
+                return <div key={`empty-${idx}`} className="h-6" />
+              }
+              const diaFormatado = `${anoAtual}-${String(mesAtual + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
+              const isHoje = diaFormatado === hojeStr
+              const isSelecionado = diaFormatado === dataSelecionadaCalendario
+              const temAtividade = diasComItens.has(diaFormatado)
+
+              return (
+                <button
+                  key={`day-${dia}`}
+                  type="button"
+                  onClick={() => {
+                    setDataSelecionadaCalendario(diaFormatado)
+                    if (pathname !== '/calendario') irPara('/calendario')
+                  }}
+                  className={`h-6 w-6 mx-auto rounded-full text-[11px] flex items-center justify-center relative transition-colors ${
+                    isSelecionado
+                      ? 'bg-[#0F766E] text-white font-bold shadow-2xs'
+                      : isHoje
+                        ? 'border border-[#0F766E] text-[#0F766E] font-bold bg-[#0F766E]/10'
+                        : 'text-[#1A1D21] hover:bg-[#E5E1D8]/60 font-normal'
+                  }`}
+                >
+                  <span>{dia}</span>
+                  {temAtividade && !isSelecionado && (
+                    <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#0F766E]" />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Atalhos Rápidos & Filtros */}
+        <div className="p-2 border-b border-[#E5E1D8] bg-white shrink-0 space-y-1">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-[#5B6470] px-2 pt-1">
+            Filtros por Tipo
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setFiltroTipoCalendario('todos')
+              if (pathname !== '/calendario') irPara('/calendario')
+            }}
+            className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              filtroTipoCalendario === 'todos'
+                ? 'bg-[#1A1D21] text-white'
+                : 'text-[#1A1D21] hover:bg-[#F4F2EE]'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Todos os Itens</span>
+            </div>
+            <span
+              className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                filtroTipoCalendario === 'todos'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-[#E5E1D8] text-[#5B6470]'
+              }`}
+            >
+              {totalEventos +
+                totalDemandasComPrazo +
+                totalFolhaComData +
+                totalCardsComPrazo +
+                totalMarcos}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setFiltroTipoCalendario('evento')
+              if (pathname !== '/calendario') irPara('/calendario')
+            }}
+            className={`w-full flex items-center justify-between px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
+              filtroTipoCalendario === 'evento'
+                ? 'bg-[#0F766E]/15 text-[#0F766E] font-semibold'
+                : 'text-[#5B6470] hover:bg-[#F4F2EE] hover:text-[#1A1D21]'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#0F766E]" />
+              <span>Eventos & Reuniões</span>
+            </div>
+            <span className="text-[10px] bg-[#E5E1D8]/60 px-1.5 py-0.2 rounded text-[#5B6470]">
+              {totalEventos}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setFiltroTipoCalendario('demanda')
+              if (pathname !== '/calendario') irPara('/calendario')
+            }}
+            className={`w-full flex items-center justify-between px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
+              filtroTipoCalendario === 'demanda'
+                ? 'bg-amber-100 text-amber-900 font-semibold'
+                : 'text-[#5B6470] hover:bg-[#F4F2EE] hover:text-[#1A1D21]'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+              <span>Prazos de Demandas</span>
+            </div>
+            <span className="text-[10px] bg-[#E5E1D8]/60 px-1.5 py-0.2 rounded text-[#5B6470]">
+              {totalDemandasComPrazo}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setFiltroTipoCalendario('folha')
+              if (pathname !== '/calendario') irPara('/calendario')
+            }}
+            className={`w-full flex items-center justify-between px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
+              filtroTipoCalendario === 'folha'
+                ? 'bg-blue-100 text-blue-900 font-semibold'
+                : 'text-[#5B6470] hover:bg-[#F4F2EE] hover:text-[#1A1D21]'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-blue-500" />
+              <span>Folha do Dia</span>
+            </div>
+            <span className="text-[10px] bg-[#E5E1D8]/60 px-1.5 py-0.2 rounded text-[#5B6470]">
+              {totalFolhaComData}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setFiltroTipoCalendario('card')
+              if (pathname !== '/calendario') irPara('/calendario')
+            }}
+            className={`w-full flex items-center justify-between px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
+              filtroTipoCalendario === 'card'
+                ? 'bg-purple-100 text-purple-900 font-semibold'
+                : 'text-[#5B6470] hover:bg-[#F4F2EE] hover:text-[#1A1D21]'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-purple-500" />
+              <span>Cards do Fluxo</span>
+            </div>
+            <span className="text-[10px] bg-[#E5E1D8]/60 px-1.5 py-0.2 rounded text-[#5B6470]">
+              {totalCardsComPrazo}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setFiltroTipoCalendario('marco')
+              if (pathname !== '/calendario') irPara('/calendario')
+            }}
+            className={`w-full flex items-center justify-between px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
+              filtroTipoCalendario === 'marco'
+                ? 'bg-emerald-100 text-emerald-900 font-semibold'
+                : 'text-[#5B6470] hover:bg-[#F4F2EE] hover:text-[#1A1D21]'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Flag className="w-3 h-3 text-emerald-600" />
+              <span>Marcos de Timeline</span>
+            </div>
+            <span className="text-[10px] bg-[#E5E1D8]/60 px-1.5 py-0.2 rounded text-[#5B6470]">
+              {totalMarcos}
+            </span>
+          </button>
+        </div>
+
+        {/* Resumo do Dia Selecionado */}
+        <div className="flex-1 p-3 overflow-y-auto space-y-2 bg-[#FAFAF9]">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-[#1A1D21]">
+              {dataSelecionadaCalendario === hojeStr ? 'Hoje' : dataSelecionadaCalendario}
+            </span>
+            <span className="text-[10px] text-[#5B6470]">
+              {dataSelecionadaCalendario === hojeStr
+                ? `${hojeItensCount} itens`
+                : 'Dia selecionado'}
+            </span>
+          </div>
+
+          {atrasadas > 0 && (
+            <div className="p-2 rounded-lg bg-red-50 border border-red-200 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              <div className="text-[11px] text-red-800 leading-tight">
+                <span className="font-bold">{atrasadas} prazo(s)</span> atrasado(s) no sistema
+              </div>
+            </div>
+          )}
+
+          <div className="text-[11px] text-[#5B6470] bg-white p-2.5 rounded-lg border border-[#E5E1D8] space-y-1">
+            <div className="font-semibold text-[#1A1D21] flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#0F766E]" />
+              <span>Visão Integrada</span>
+            </div>
+            <p className="text-[10px] text-[#5B6470] leading-relaxed">
+              Datas sincronizadas com Demandas, Cards do Kanban, Folha do Dia e Marcos de Projetos.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   // =========================================================================
   // 1. SEGUNDA COLUNA: FLUXOS (KANBAN) — CONFORME MODELO DA IMAGEM
@@ -982,6 +1351,8 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
 
   // Renderiza a coluna com base na seção ativa
   switch (secaoAtiva) {
+    case 'calendario':
+      return renderColunaCalendario()
     case 'fluxo':
       return renderColunaFluxos()
     case 'folha':

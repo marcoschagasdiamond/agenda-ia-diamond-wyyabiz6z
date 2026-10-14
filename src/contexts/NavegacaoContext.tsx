@@ -13,6 +13,8 @@ import type {
   Lista,
   Demanda,
   FolhaDia,
+  MarcoTimeline,
+  EventoCalendario,
 } from '@/types'
 
 export interface FluxoComContagem extends FluxoKanban {
@@ -67,6 +69,12 @@ interface NavegacaoContextData {
   listas: Lista[]
   demandas: Demanda[]
   folhaItems: FolhaDia[]
+  marcosTimeline: MarcoTimeline[]
+  eventosCalendario: EventoCalendario[]
+  dataSelecionadaCalendario: string
+  setDataSelecionadaCalendario: (data: string) => void
+  filtroTipoCalendario: string
+  setFiltroTipoCalendario: (tipo: string) => void
   recarregarDadosGlobais: () => Promise<void>
 
   // Controle de visibilidade da 2ª coluna
@@ -108,6 +116,15 @@ export const NavegacaoProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [listas, setListas] = useState<Lista[]>([])
   const [demandas, setDemandas] = useState<Demanda[]>([])
   const [folhaItems, setFolhaItems] = useState<FolhaDia[]>([])
+  const [marcosTimeline, setMarcosTimeline] = useState<MarcoTimeline[]>([])
+  const [eventosCalendario, setEventosCalendario] = useState<EventoCalendario[]>([])
+
+  // Estado compartilhado de navegação do calendário
+  const [dataSelecionadaCalendario, setDataSelecionadaCalendario] = useState<string>(() => {
+    const hoje = new Date()
+    return hoje.toISOString().split('T')[0]
+  })
+  const [filtroTipoCalendario, setFiltroTipoCalendario] = useState<string>('todos')
 
   // Visibilidade da coluna secundária
   const [colunaSecundariaAberta, setColunaSecundariaAberta] = useState<boolean>(true)
@@ -142,7 +159,7 @@ export const NavegacaoProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const recarregarDadosGlobais = async () => {
     try {
-      const [p, ct, past, arq, cli, lis, dem, folha] = await Promise.all([
+      const [p, ct, past, arq, cli, lis, dem, folha, marcos, evs] = await Promise.all([
         diamondApi.listProjetos().catch(() => []),
         diamondApi.listContatos().catch(() => []),
         diamondApi.listPastas().catch(() => []),
@@ -151,6 +168,8 @@ export const NavegacaoProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         diamondApi.listListas().catch(() => []),
         diamondApi.listDemandas().catch(() => []),
         diamondApi.listFolhaDia().catch(() => []),
+        diamondApi.listMarcosTimeline().catch(() => []),
+        diamondApi.listEventosCalendario().catch(() => []),
       ])
       setProjetos(p)
       setContatos(ct)
@@ -160,6 +179,8 @@ export const NavegacaoProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setListas(lis)
       setDemandas(dem)
       setFolhaItems(folha)
+      setMarcosTimeline(marcos)
+      setEventosCalendario(evs)
     } catch (err) {
       console.error('Erro ao carregar dados globais da navegação:', err)
     }
@@ -263,6 +284,12 @@ export const NavegacaoProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         listas,
         demandas,
         folhaItems,
+        marcosTimeline,
+        eventosCalendario,
+        dataSelecionadaCalendario,
+        setDataSelecionadaCalendario,
+        filtroTipoCalendario,
+        setFiltroTipoCalendario,
         recarregarDadosGlobais,
 
         colunaSecundariaAberta,

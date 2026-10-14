@@ -16,6 +16,7 @@ import Onboarding from '@/pages/Onboarding'
 // Páginas Principais
 import Dashboard from '@/pages/Dashboard'
 import Folha from '@/pages/Folha'
+import Calendario from '@/pages/Calendario'
 import Fluxo from '@/pages/Fluxo'
 import Projetos from '@/pages/Projetos'
 import ProjetoDetalhes from '@/pages/ProjetoDetalhes'
@@ -83,6 +84,14 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <Folha />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/calendario"
+                element={
+                  <ProtectedRoute>
+                    <Calendario />
                   </ProtectedRoute>
                 }
               />

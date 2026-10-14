@@ -17,6 +17,38 @@ export type DemandaStatus = 'pendente' | 'concluido'
 export type ListaTipo = 'contatos' | 'demandas' | 'cadastros'
 export type ListaCompartilhada = 'interno' | 'clientes' | 'publica'
 
+export type EventoCalendarioCategoria =
+  | 'reuniao'
+  | 'prazo'
+  | 'etapa'
+  | 'atividade'
+  | 'alinhamento'
+  | 'outro'
+
+export type EventoCalendarioStatus = 'pendente' | 'em_andamento' | 'concluido' | 'cancelado'
+
+export type CalendarioItemTipo = 'evento' | 'demanda' | 'card' | 'folha' | 'marco'
+
+export interface ItemCalendarioUnificado {
+  id: string
+  titulo: string
+  descricao?: string
+  dataHora: string // ISO ou YYYY-MM-DD ou YYYY-MM-DDTHH:mm
+  dataHoraFim?: string
+  diaInteiro: boolean
+  tipo: CalendarioItemTipo
+  status?: string
+  prioridade?: CardPrioridade
+  cor?: string
+  projetoNome?: string
+  projetoId?: string
+  contatoNome?: string
+  contatoId?: string
+  responsavelNome?: string
+  faseColunaNome?: string
+  rawItem: unknown
+}
+
 export interface User {
   id: string
   email: string
@@ -189,6 +221,7 @@ export interface Card {
   proximo_passo?: string
   responsavel?: string
   criado_por_ia?: boolean
+  data_prazo?: string
   created: string
   updated: string
   expand?: {
@@ -324,6 +357,33 @@ export interface MarcoTimeline {
   nome: string
   descricao?: string
   projeto?: string
+  data_alvo?: string
   created?: string
   updated?: string
+  expand?: {
+    projeto?: Projeto
+  }
+}
+
+export interface EventoCalendario {
+  id: string
+  titulo: string
+  descricao?: string
+  data_inicio: string
+  data_fim?: string
+  dia_inteiro?: boolean
+  categoria?: EventoCalendarioCategoria
+  status?: EventoCalendarioStatus
+  prioridade?: CardPrioridade
+  cor?: string
+  projeto?: string
+  contato?: string
+  criado_por?: string
+  created: string
+  updated: string
+  expand?: {
+    projeto?: Projeto
+    contato?: Contato
+    criado_por?: User
+  }
 }

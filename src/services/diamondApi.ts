@@ -18,6 +18,7 @@ import type {
   FluxoKanban,
   GrupoFamilia,
   MarcoTimeline,
+  EventoCalendario,
 } from '@/types'
 
 export const diamondApi = {
@@ -494,5 +495,41 @@ export const diamondApi = {
 
   async createMarcoTimeline(data: Partial<MarcoTimeline>): Promise<MarcoTimeline> {
     return await pb.collection('marcos_timeline').create<MarcoTimeline>(data)
+  },
+
+  async updateMarcoTimeline(id: string, data: Partial<MarcoTimeline>): Promise<MarcoTimeline> {
+    return await pb.collection('marcos_timeline').update<MarcoTimeline>(id, data)
+  },
+
+  async deleteMarcoTimeline(id: string): Promise<boolean> {
+    return await pb.collection('marcos_timeline').delete(id)
+  },
+
+  // Eventos do Calendário
+  async listEventosCalendario(filtroExtra?: string): Promise<EventoCalendario[]> {
+    try {
+      return await pb.collection('eventos_calendario').getFullList<EventoCalendario>({
+        filter: filtroExtra || '',
+        sort: 'data_inicio',
+        expand: 'projeto,contato,criado_por',
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async createEventoCalendario(data: Partial<EventoCalendario>): Promise<EventoCalendario> {
+    return await pb.collection('eventos_calendario').create<EventoCalendario>(data)
+  },
+
+  async updateEventoCalendario(
+    id: string,
+    data: Partial<EventoCalendario>,
+  ): Promise<EventoCalendario> {
+    return await pb.collection('eventos_calendario').update<EventoCalendario>(id, data)
+  },
+
+  async deleteEventoCalendario(id: string): Promise<boolean> {
+    return await pb.collection('eventos_calendario').delete(id)
   },
 }
