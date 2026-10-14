@@ -15,6 +15,7 @@ import type {
   Profile,
   ColunaFluxo,
   CategoriaFluxo,
+  FluxoKanban,
   GrupoFamilia,
   MarcoTimeline,
 } from '@/types'

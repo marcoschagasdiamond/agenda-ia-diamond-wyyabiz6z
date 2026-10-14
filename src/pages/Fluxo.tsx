@@ -743,11 +743,9 @@ export default function Fluxo() {
   const abrirModalNovoFluxo = (catId?: string) => {
     setEditingFluxo(null)
     setFluxoTitulo('')
-    setFluxoChave('')
     setFluxoCor('#0F766E')
     setFluxoTituloFases('')
     setFluxoTemplateSelecionado(TEMPLATE_PADRAO_ID)
-    setFluxoIsConclusao(false)
     const catDestino =
       catId && catId !== 'all'
         ? catId
@@ -761,11 +759,9 @@ export default function Fluxo() {
   const abrirModalEditarFluxo = (f: FluxoKanban) => {
     setEditingFluxo(f)
     setFluxoTitulo(f.nome || f.titulo)
-    setFluxoChave(f.id)
     setFluxoCor(f.cor || '#0F766E')
     setFluxoCategoriaId(f.categoria || '')
     setFluxoTituloFases(f.titulo_fases || '')
-    setFluxoIsConclusao(false)
     setModalFluxoOpen(true)
   }
 
@@ -808,7 +804,7 @@ export default function Fluxo() {
           cor: fluxoCor || '#0F766E',
           ordem: fluxos.length + 1,
           titulo_fases: fluxoTituloFases.trim() || undefined,
-          modelo_origem: templateEscolhido.id,
+          template_origem: templateEscolhido.id,
         })
 
         // 2. Semear automaticamente as fases (colunas_fluxo) com base no modelo selecionado

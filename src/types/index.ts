@@ -149,6 +149,7 @@ export interface CategoriaFluxo {
 export interface FluxoKanban {
   id: string
   nome: string
+  titulo?: string
   cor?: string
   ordem?: number
   categoria?: string
