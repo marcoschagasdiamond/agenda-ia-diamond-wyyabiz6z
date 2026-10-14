@@ -1224,6 +1224,181 @@ export default function Fluxo() {
     return '#0F766E'
   }, [fluxoAtivo, categoriaAtiva, colunasOrdenadas])
 
+  // Retorna o contato associado ao card
+  const getContatoDoCard = (card: CardType) => {
+    if (card.expand?.contato) return card.expand.contato
+    if (card.contato) {
+      return contatos.find((ct) => ct.id === card.contato) || null
+    }
+    return null
+  }
+
+  // Gera avatar circular com foto ou iniciais
+  const renderCardAvatar = (card: CardType) => {
+    const contato = getContatoDoCard(card)
+    const nome = contato?.nome || card.titulo || 'Card'
+    const iniciais =
+      nome
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((n) => n[0]?.toUpperCase())
+        .join('') || 'D'
+
+    // Avatar circular no modelo DiamondGroup (foto ou fallback com tom azul corporativo)
+    return (
+      <Avatar className="w-8 h-8 rounded-full border-2 border-white shadow-2xs shrink-0 ring-1 ring-black/5">
+        <AvatarImage
+          src={`https://img.usecurling.com/ppl/128?seed=${encodeURIComponent(nome)}`}
+          alt={nome}
+        />
+        <AvatarFallback className="bg-gradient-to-br from-[#1E40AF] to-[#0F766E] text-white text-[10px] font-bold">
+          {iniciais}
+        </AvatarFallback>
+      </Avatar>
+    )
+  }
+
+  // Card renderizado no modelo visual DiamondGroup
+  function renderKanbanCard(card: CardType, onEdit: () => void) {
+    const familiaDoCard = familias.find((f) => f.id === card.grupo_familia)
+    const contato = getContatoDoCard(card)
+
+    return (
+      <div
+        key={card.id}
+        draggable
+        onDragStart={(e) => handleDragStart(e, card.id)}
+        onClick={onEdit}
+        className="group relative bg-white rounded-xl border border-[#E5E1D8] p-3.5 shadow-2xs hover:shadow-md transition-all cursor-pointer diamond-card-hover"
+      >
+        {/* Linha Superior: Avatar circular à esquerda, título em maiúsculas ao centro, botão abrir + 3 pontinhos à direita */}
+        <div className="flex items-start justify-between gap-2.5">
+          {/* Avatar circular */}
+          {renderCardAvatar(card)}
+
+          {/* Título do Card em MAIÚSCULAS no modelo DiamondGroup */}
+          <div className="flex-1 min-w-0 pt-0.5">
+            <h4 className="text-xs font-bold text-[#1A1D21] uppercase tracking-tight leading-snug line-clamp-2">
+              {card.titulo}
+            </h4>
+            {contato && (
+              <p className="text-[10px] text-[#5B6470] truncate mt-0.5">
+                {contato.nome} {contato.empresa ? `• ${contato.empresa}` : ''}
+              </p>
+            )}
+          </div>
+
+          {/* Ações do Canto Superior Direito: Botão azul de abrir (seta) + Menu "..." */}
+          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+            {/* Botão de abrir/compartilhar (quadrado azul com seta branca como na imagem) */}
+            <button
+              type="button"
+              onClick={onEdit}
+              title="Abrir detalhes do card"
+              className="w-6 h-6 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white flex items-center justify-center shadow-2xs transition-all"
+            >
+              <ExternalLink className="w-3 h-3" />
+            </button>
+
+            {/* Menu 3 pontinhos com ações completas */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Opções do card"
+                  className="w-6 h-6 rounded flex items-center justify-center text-[#5B6470] hover:text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors"
+                >
+                  <MoreVertical className="w-3.5 h-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="text-xs">
+                <DropdownMenuItem onClick={onEdit}>
+                  <Edit2 className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
+                  Abrir / Editar Card
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleDuplicarCard(card)}>
+                  <Copy className="w-3.5 h-3.5 mr-2 text-blue-600" />
+                  Duplicar Card
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {/* Mover de coluna */}
+                {colunasOrdenadas.map((col) => {
+                  if (col.chave === card.status) return null
+                  return (
+                    <DropdownMenuItem
+                      key={col.id || col.chave}
+                      onClick={() => handleMudarStatusCard(card.id, col.chave)}
+                    >
+                      <ArrowRight className="w-3.5 h-3.5 mr-2 text-[#5B6470]" />
+                      Mover para {col.titulo}
+                    </DropdownMenuItem>
+                  )
+                })}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => handleExcluirCard(card.id)}
+                  className="text-red-600"
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-2" />
+                  Excluir Card
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+
+        {/* Detalhes extras preservados: próximo passo, família, projeto, badges */}
+        {card.descricao && (
+          <p className="text-[11px] text-[#5B6470] line-clamp-2 mt-2 leading-relaxed">
+            {card.descricao}
+          </p>
+        )}
+
+        {card.proximo_passo && (
+          <div className="bg-[#F4F2EE]/70 px-2 py-1 rounded-md text-[10px] text-[#0F766E] font-medium flex items-center gap-1.5 mt-2 border border-[#E5E1D8]/50">
+            <ArrowRight className="w-3 h-3 shrink-0" />
+            <span className="line-clamp-1">{card.proximo_passo}</span>
+          </div>
+        )}
+
+        {/* Rodapé do card: prioridade, família, projeto e tags */}
+        <div className="flex flex-wrap items-center gap-1.5 mt-2.5 pt-2 border-t border-[#E5E1D8]/60 text-[10px] text-[#5B6470]">
+          {getPriorityBadge(card.prioridade)}
+
+          {familiaDoCard && (
+            <span
+              className="inline-flex items-center gap-1 font-medium px-1.5 py-0.5 rounded text-[10px]"
+              style={{
+                backgroundColor: `${familiaDoCard.cor || '#3B82F6'}15`,
+                color: familiaDoCard.cor || '#3B82F6',
+              }}
+            >
+              <Layers className="w-2.5 h-2.5" />
+              {familiaDoCard.nome}
+            </span>
+          )}
+
+          {card.expand?.projeto && (
+            <span className="bg-[#F4F2EE] px-1.5 py-0.5 rounded truncate max-w-[110px]">
+              📁 {card.expand.projeto.nome}
+            </span>
+          )}
+
+          {card.criado_por_ia && (
+            <span
+              title="Criado via IA"
+              className="inline-flex items-center gap-0.5 text-[#0F766E] bg-[#0F766E]/10 px-1 py-0.5 rounded ml-auto"
+            >
+              <Sparkles className="w-2.5 h-2.5" />
+              IA
+            </span>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {/* ========================================================================= */}
@@ -3198,179 +3373,4 @@ export default function Fluxo() {
       />
     </div>
   )
-
-  // Retorna o contato associado ao card
-  const getContatoDoCard = (card: CardType) => {
-    if (card.expand?.contato) return card.expand.contato
-    if (card.contato) {
-      return contatos.find((ct) => ct.id === card.contato) || null
-    }
-    return null
-  }
-
-  // Gera avatar circular com foto ou iniciais
-  const renderCardAvatar = (card: CardType) => {
-    const contato = getContatoDoCard(card)
-    const nome = contato?.nome || card.titulo || 'Card'
-    const iniciais =
-      nome
-        .split(' ')
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((n) => n[0]?.toUpperCase())
-        .join('') || 'D'
-
-    // Avatar circular no modelo DiamondGroup (foto ou fallback com tom azul corporativo)
-    return (
-      <Avatar className="w-8 h-8 rounded-full border-2 border-white shadow-2xs shrink-0 ring-1 ring-black/5">
-        <AvatarImage
-          src={`https://img.usecurling.com/ppl/128?seed=${encodeURIComponent(nome)}`}
-          alt={nome}
-        />
-        <AvatarFallback className="bg-gradient-to-br from-[#1E40AF] to-[#0F766E] text-white text-[10px] font-bold">
-          {iniciais}
-        </AvatarFallback>
-      </Avatar>
-    )
-  }
-
-  // Card renderizado no modelo visual DiamondGroup
-  function renderKanbanCard(card: CardType, onEdit: () => void) {
-    const familiaDoCard = familias.find((f) => f.id === card.grupo_familia)
-    const contato = getContatoDoCard(card)
-
-    return (
-      <div
-        key={card.id}
-        draggable
-        onDragStart={(e) => handleDragStart(e, card.id)}
-        onClick={onEdit}
-        className="group relative bg-white rounded-xl border border-[#E5E1D8] p-3.5 shadow-2xs hover:shadow-md transition-all cursor-pointer diamond-card-hover"
-      >
-        {/* Linha Superior: Avatar circular à esquerda, título em maiúsculas ao centro, botão abrir + 3 pontinhos à direita */}
-        <div className="flex items-start justify-between gap-2.5">
-          {/* Avatar circular */}
-          {renderCardAvatar(card)}
-
-          {/* Título do Card em MAIÚSCULAS no modelo DiamondGroup */}
-          <div className="flex-1 min-w-0 pt-0.5">
-            <h4 className="text-xs font-bold text-[#1A1D21] uppercase tracking-tight leading-snug line-clamp-2">
-              {card.titulo}
-            </h4>
-            {contato && (
-              <p className="text-[10px] text-[#5B6470] truncate mt-0.5">
-                {contato.nome} {contato.empresa ? `• ${contato.empresa}` : ''}
-              </p>
-            )}
-          </div>
-
-          {/* Ações do Canto Superior Direito: Botão azul de abrir (seta) + Menu "..." */}
-          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-            {/* Botão de abrir/compartilhar (quadrado azul com seta branca como na imagem) */}
-            <button
-              type="button"
-              onClick={onEdit}
-              title="Abrir detalhes do card"
-              className="w-6 h-6 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white flex items-center justify-center shadow-2xs transition-all"
-            >
-              <ExternalLink className="w-3 h-3" />
-            </button>
-
-            {/* Menu 3 pontinhos com ações completas */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  aria-label="Opções do card"
-                  className="w-6 h-6 rounded flex items-center justify-center text-[#5B6470] hover:text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors"
-                >
-                  <MoreVertical className="w-3.5 h-3.5" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="text-xs">
-                <DropdownMenuItem onClick={onEdit}>
-                  <Edit2 className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
-                  Abrir / Editar Card
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleDuplicarCard(card)}>
-                  <Copy className="w-3.5 h-3.5 mr-2 text-blue-600" />
-                  Duplicar Card
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {/* Mover de coluna */}
-                {colunasOrdenadas.map((col) => {
-                  if (col.chave === card.status) return null
-                  return (
-                    <DropdownMenuItem
-                      key={col.id || col.chave}
-                      onClick={() => handleMudarStatusCard(card.id, col.chave)}
-                    >
-                      <ArrowRight className="w-3.5 h-3.5 mr-2 text-[#5B6470]" />
-                      Mover para {col.titulo}
-                    </DropdownMenuItem>
-                  )
-                })}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => handleExcluirCard(card.id)}
-                  className="text-red-600"
-                >
-                  <Trash2 className="w-3.5 h-3.5 mr-2" />
-                  Excluir Card
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-
-        {/* Detalhes extras preservados: próximo passo, família, projeto, badges */}
-        {card.descricao && (
-          <p className="text-[11px] text-[#5B6470] line-clamp-2 mt-2 leading-relaxed">
-            {card.descricao}
-          </p>
-        )}
-
-        {card.proximo_passo && (
-          <div className="bg-[#F4F2EE]/70 px-2 py-1 rounded-md text-[10px] text-[#0F766E] font-medium flex items-center gap-1.5 mt-2 border border-[#E5E1D8]/50">
-            <ArrowRight className="w-3 h-3 shrink-0" />
-            <span className="line-clamp-1">{card.proximo_passo}</span>
-          </div>
-        )}
-
-        {/* Rodapé do card: prioridade, família, projeto e tags */}
-        <div className="flex flex-wrap items-center gap-1.5 mt-2.5 pt-2 border-t border-[#E5E1D8]/60 text-[10px] text-[#5B6470]">
-          {getPriorityBadge(card.prioridade)}
-
-          {familiaDoCard && (
-            <span
-              className="inline-flex items-center gap-1 font-medium px-1.5 py-0.5 rounded text-[10px]"
-              style={{
-                backgroundColor: `${familiaDoCard.cor || '#3B82F6'}15`,
-                color: familiaDoCard.cor || '#3B82F6',
-              }}
-            >
-              <Layers className="w-2.5 h-2.5" />
-              {familiaDoCard.nome}
-            </span>
-          )}
-
-          {card.expand?.projeto && (
-            <span className="bg-[#F4F2EE] px-1.5 py-0.5 rounded truncate max-w-[110px]">
-              📁 {card.expand.projeto.nome}
-            </span>
-          )}
-
-          {card.criado_por_ia && (
-            <span
-              title="Criado via IA"
-              className="inline-flex items-center gap-0.5 text-[#0F766E] bg-[#0F766E]/10 px-1 py-0.5 rounded ml-auto"
-            >
-              <Sparkles className="w-2.5 h-2.5" />
-              IA
-            </span>
-          )}
-        </div>
-      </div>
-    )
-  }
 }
