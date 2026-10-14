@@ -43,6 +43,9 @@ import {
   Info,
   CalendarCheck,
   CalendarX2,
+  ListChecks,
+  Users,
+  FileText,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -122,6 +125,9 @@ export default function Calendario() {
   const [itemSelecionado, setItemSelecionado] = useState<ItemCalendarioUnificado | null>(null)
   const [modalDiaOpen, setModalDiaOpen] = useState(false)
   const [diaVisualizado, setDiaVisualizado] = useState<string>('')
+  const [filtroTipoModalDia, setFiltroTipoModalDia] = useState<TipoAtividadeGrade | 'todos'>(
+    'todos',
+  )
 
   // Formulário de Criação/Edição de Evento Próprio
   const [formEvento, setFormEvento] = useState<{
@@ -155,6 +161,103 @@ export default function Calendario() {
     contatoId: '',
   })
   const [salvandoEvento, setSalvandoEvento] = useState(false)
+
+  // Definição dos tipos de atividade para a grade mensal (DiamondGroup)
+  type TipoAtividadeGrade = 'evento' | 'reuniao' | 'demanda' | 'folha' | 'card' | 'marco'
+
+  const TIPOS_ATIVIDADE_CONFIG: Record<
+    TipoAtividadeGrade,
+    {
+      labelSingular: string
+      labelPlural: string
+      icone: React.ComponentType<{ className?: string }>
+      corBase: string
+      bgBase: string
+      borderBase: string
+    }
+  > = {
+    evento: {
+      labelSingular: 'evento',
+      labelPlural: 'eventos',
+      icone: CalendarDays,
+      corBase: '#0F766E', // Teal Diamond
+      bgBase: 'bg-teal-50 hover:bg-teal-100/80',
+      borderBase: 'border-teal-200/80',
+    },
+    reuniao: {
+      labelSingular: 'reunião',
+      labelPlural: 'reuniões',
+      icone: Users,
+      corBase: '#0284C7', // Azul Diamond
+      bgBase: 'bg-sky-50 hover:bg-sky-100/80',
+      borderBase: 'border-sky-200/80',
+    },
+    demanda: {
+      labelSingular: 'demanda',
+      labelPlural: 'demandas',
+      icone: ListChecks,
+      corBase: '#D97706', // Âmbar
+      bgBase: 'bg-amber-50 hover:bg-amber-100/80',
+      borderBase: 'border-amber-200/80',
+    },
+    folha: {
+      labelSingular: 'assunto da folha',
+      labelPlural: 'assuntos da Folha',
+      icone: FileText,
+      corBase: '#2563EB', // Azul Royal
+      bgBase: 'bg-blue-50 hover:bg-blue-100/80',
+      borderBase: 'border-blue-200/80',
+    },
+    card: {
+      labelSingular: 'card do fluxo',
+      labelPlural: 'cards do Kanban',
+      icone: KanbanSquare,
+      corBase: '#7C3AED', // Roxo
+      bgBase: 'bg-purple-50 hover:bg-purple-100/80',
+      borderBase: 'border-purple-200/80',
+    },
+    marco: {
+      labelSingular: 'marco de timeline',
+      labelPlural: 'marcos de timeline',
+      icone: Flag,
+      corBase: '#059669', // Esmeralda
+      bgBase: 'bg-emerald-50 hover:bg-emerald-100/80',
+      borderBase: 'border-emerald-200/80',
+    },
+  }
+
+  // Identifica a qual categoria de atividade da grade o item pertence
+  const getTipoAtividadeGrade = (item: ItemCalendarioUnificado): TipoAtividadeGrade => {
+    if (item.tipo === 'evento') {
+      const ev = item.rawItem as EventoCalendario | undefined
+      if (ev?.categoria === 'reuniao') {
+        return 'reuniao'
+      }
+      return 'evento'
+    }
+    if (item.tipo === 'demanda') return 'demanda'
+    if (item.tipo === 'folha') return 'folha'
+    if (item.tipo === 'card') return 'card'
+    if (item.tipo === 'marco') return 'marco'
+    return 'evento'
+  }
+
+  // Determina o estado predominante dos itens de um grupo (atrasado > pendente > concluido)
+  const getEstadoGrupoItens = (itens: ItemCalendarioUnificado[], dataStr: string) => {
+    const temAtrasado = itens.some((i) => {
+      const concluido = i.status === 'concluido' || i.status === 'processado'
+      if (concluido) return false
+      return dataStr < hojeStr
+    })
+    if (temAtrasado) return 'atrasado'
+
+    const todosConcluidos = itens.every(
+      (i) => i.status === 'concluido' || i.status === 'processado',
+    )
+    if (todosConcluidos && itens.length > 0) return 'concluido'
+
+    return 'pendente'
+  }
 
   // Cores por categoria/tipo
   const getCorPorTipo = (
@@ -572,10 +675,11 @@ export default function Calendario() {
     }
   }
 
-  // Visualizar Itens de um Dia em Modal
-  const handleVerDia = (diaStr: string) => {
+  // Visualizar Itens de um Dia em Modal (opcionalmente filtrado por tipo de atividade)
+  const handleVerDia = (diaStr: string, tipoFiltro: TipoAtividadeGrade | 'todos' = 'todos') => {
     setDiaVisualizado(diaStr)
     setDataSelecionadaCalendario(diaStr)
+    setFiltroTipoModalDia(tipoFiltro)
     setModalDiaOpen(true)
   }
 
@@ -711,59 +815,116 @@ export default function Calendario() {
                   </div>
                 </div>
 
-                {/* Lista de chips/eventos do dia */}
-                <div className="flex-1 space-y-1 overflow-hidden">
-                  {itensDoDia.slice(0, 3).map((item) => {
-                    const cor = getCorPorTipo(item.tipo, item.status, item.cor)
-                    const horaFormatada =
-                      !item.diaInteiro && item.dataHora.includes('T')
-                        ? item.dataHora.split('T')[1].slice(0, 5)
-                        : null
+                {/* Ícones compactos por tipo de atividade no estilo DiamondGroup */}
+                {(() => {
+                  // Agrupa itens do dia por TipoAtividadeGrade
+                  const gruposPorTipo: Record<TipoAtividadeGrade, ItemCalendarioUnificado[]> = {
+                    evento: [],
+                    reuniao: [],
+                    demanda: [],
+                    folha: [],
+                    card: [],
+                    marco: [],
+                  }
 
-                    return (
-                      <div
-                        key={item.id}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setItemSelecionado(item)
-                          setModalDetalheOpen(true)
-                        }}
-                        style={{ borderLeftColor: cor }}
-                        className="text-[10px] leading-tight px-1.5 py-0.5 rounded bg-white border-l-2 border border-[#E5E1D8] text-[#1A1D21] font-medium truncate cursor-pointer hover:bg-[#F4F2EE] shadow-2xs flex items-center gap-1"
-                        title={`${horaFormatada ? `[${horaFormatada}] ` : ''}${item.titulo}`}
-                      >
-                        {horaFormatada && (
-                          <span className="text-[#5B6470] text-[9px] shrink-0 font-normal">
-                            {horaFormatada}
-                          </span>
-                        )}
-                        <span className="truncate">{item.titulo}</span>
-                      </div>
-                    )
-                  })}
+                  itensDoDia.forEach((item) => {
+                    const tipoAtiv = getTipoAtividadeGrade(item)
+                    gruposPorTipo[tipoAtiv].push(item)
+                  })
 
-                  {/* Mais itens */}
-                  {itensDoDia.length > 3 && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleVerDia(cel.dataStr)
-                      }}
-                      className="text-[9px] text-[#0F766E] font-semibold hover:underline block text-left px-1"
-                    >
-                      +{itensDoDia.length - 3} mais
-                    </button>
-                  )}
-                </div>
+                  // Tipos com atividade no dia (ordem consistente de apresentação)
+                  const ordemTipos: TipoAtividadeGrade[] = [
+                    'evento',
+                    'reuniao',
+                    'demanda',
+                    'folha',
+                    'card',
+                    'marco',
+                  ]
+                  const tiposAtivos = ordemTipos.filter((t) => gruposPorTipo[t].length > 0)
 
-                {/* Marcador de atrasados */}
-                {itensDoDia.some(
-                  (i) =>
-                    i.status !== 'concluido' && i.status !== 'processado' && cel.dataStr < hojeStr,
-                ) && (
-                  <div className="absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full bg-red-500" />
-                )}
+                  if (tiposAtivos.length === 0) {
+                    return <div className="flex-1" />
+                  }
+
+                  return (
+                    <div className="flex-1 flex flex-wrap content-start items-start gap-1 py-1">
+                      {tiposAtivos.map((tipo) => {
+                        const itensDoTipo = gruposPorTipo[tipo]
+                        const qtd = itensDoTipo.length
+                        const config = TIPOS_ATIVIDADE_CONFIG[tipo]
+                        const IconeComponent = config.icone
+                        const estado = getEstadoGrupoItens(itensDoTipo, cel.dataStr)
+
+                        // Tooltip descritivo em português: ex. "1 reunião", "3 demandas"
+                        const tooltip = `${qtd} ${qtd === 1 ? config.labelSingular : config.labelPlural}${
+                          estado === 'atrasado'
+                            ? ' (atrasado)'
+                            : estado === 'concluido'
+                              ? ' (concluído)'
+                              : ''
+                        }`
+
+                        // Estilo do badge/ponto de estado (vermelho para atrasado, verde concluído, âmbar pendente)
+                        const dotColor =
+                          estado === 'atrasado'
+                            ? 'bg-red-500 ring-1 ring-white'
+                            : estado === 'concluido'
+                              ? 'bg-emerald-500 ring-1 ring-white'
+                              : 'bg-amber-400 ring-1 ring-white'
+
+                        const badgeColor =
+                          estado === 'atrasado'
+                            ? 'bg-red-500 text-white'
+                            : estado === 'concluido'
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-zinc-700 text-white'
+
+                        return (
+                          <button
+                            key={tipo}
+                            type="button"
+                            title={tooltip}
+                            aria-label={tooltip}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (itensDoTipo.length === 1) {
+                                setItemSelecionado(itensDoTipo[0])
+                                setModalDetalheOpen(true)
+                              } else {
+                                handleVerDia(cel.dataStr, tipo)
+                              }
+                            }}
+                            className={`relative inline-flex items-center gap-1 px-1.5 py-1 rounded-md border text-xs font-semibold shadow-2xs transition-all hover:scale-105 active:scale-95 focus:outline-hidden ${config.bgBase} ${config.borderBase}`}
+                            style={{
+                              color:
+                                estado === 'atrasado'
+                                  ? '#DC2626'
+                                  : estado === 'concluido'
+                                    ? '#16A34A'
+                                    : config.corBase,
+                            }}
+                          >
+                            <IconeComponent className="w-3.5 h-3.5 shrink-0" />
+
+                            {/* Contador numérico (badge de quantidade) quando >= 1 */}
+                            <span
+                              className={`text-[9px] font-bold px-1 py-0.2 rounded-full min-w-[14px] text-center leading-none ${badgeColor}`}
+                            >
+                              {qtd}
+                            </span>
+
+                            {/* Ponto indicador de estado */}
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`}
+                              aria-hidden="true"
+                            />
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
               </div>
             )
           })}
@@ -1422,7 +1583,13 @@ export default function Calendario() {
       {/* ======================================================== */}
       {/* 5. MODAL: LISTAGEM DE ITENS DE UM DIA ESPECÍFICO         */}
       {/* ======================================================== */}
-      <Dialog open={modalDiaOpen} onOpenChange={setModalDiaOpen}>
+      <Dialog
+        open={modalDiaOpen}
+        onOpenChange={(open) => {
+          setModalDiaOpen(open)
+          if (!open) setFiltroTipoModalDia('todos')
+        }}
+      >
         <DialogContent className="sm:max-w-md bg-white border border-[#E5E1D8]">
           <DialogHeader>
             <DialogTitle className="text-sm font-bold text-[#1A1D21]">
@@ -1430,42 +1597,111 @@ export default function Calendario() {
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-2 max-h-[350px] overflow-y-auto py-2">
-            {(itensPorDia.get(diaVisualizado) || []).map((item) => {
-              const cor = getCorPorTipo(item.tipo, item.status, item.cor)
-              const horaFormatada =
-                !item.diaInteiro && item.dataHora.includes('T')
-                  ? item.dataHora.split('T')[1].slice(0, 5)
-                  : null
+          {/* Abas de filtro rápido por tipo de atividade dentro do dia */}
+          {(() => {
+            const todosItensDia = itensPorDia.get(diaVisualizado) || []
+            const tiposPresentes: TipoAtividadeGrade[] = (
+              ['evento', 'reuniao', 'demanda', 'folha', 'card', 'marco'] as TipoAtividadeGrade[]
+            ).filter((t) => todosItensDia.some((item) => getTipoAtividadeGrade(item) === t))
 
-              return (
-                <div
-                  key={item.id}
-                  onClick={() => {
-                    setItemSelecionado(item)
-                    setModalDiaOpen(false)
-                    setModalDetalheOpen(true)
-                  }}
-                  style={{ borderLeftColor: cor }}
-                  className="p-2 rounded bg-white border border-[#E5E1D8] border-l-3 hover:bg-[#FAFAF9] cursor-pointer"
+            if (tiposPresentes.length <= 1) return null
+
+            return (
+              <div className="flex flex-wrap items-center gap-1 pb-2 border-b border-[#E5E1D8]">
+                <button
+                  type="button"
+                  onClick={() => setFiltroTipoModalDia('todos')}
+                  className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors ${
+                    filtroTipoModalDia === 'todos'
+                      ? 'bg-[#1A1D21] text-white'
+                      : 'bg-[#F4F2EE] text-[#5B6470] hover:text-[#1A1D21]'
+                  }`}
                 >
-                  <div className="flex items-center justify-between text-[10px] text-[#5B6470]">
-                    <span className="uppercase font-bold text-[#0F766E]">{item.tipo}</span>
-                    {horaFormatada && <span>{horaFormatada}</span>}
-                  </div>
-                  <div className="text-xs font-semibold text-[#1A1D21] mt-0.5">{item.titulo}</div>
-                  {item.projetoNome && (
-                    <div className="text-[10px] text-[#5B6470] mt-1">{item.projetoNome}</div>
-                  )}
-                </div>
-              )
-            })}
+                  Todos ({todosItensDia.length})
+                </button>
+                {tiposPresentes.map((tipo) => {
+                  const cfg = TIPOS_ATIVIDADE_CONFIG[tipo]
+                  const Icone = cfg.icone
+                  const count = todosItensDia.filter(
+                    (i) => getTipoAtividadeGrade(i) === tipo,
+                  ).length
+                  const ativo = filtroTipoModalDia === tipo
 
-            {(itensPorDia.get(diaVisualizado) || []).length === 0 && (
-              <div className="text-center py-6 text-xs text-[#5B6470]">
-                Nenhuma atividade cadastrada para este dia.
+                  return (
+                    <button
+                      key={tipo}
+                      type="button"
+                      onClick={() => setFiltroTipoModalDia(tipo)}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold transition-colors ${
+                        ativo
+                          ? 'bg-[#0F766E] text-white shadow-2xs'
+                          : 'bg-[#F4F2EE] text-[#5B6470] hover:text-[#1A1D21]'
+                      }`}
+                    >
+                      <Icone className="w-3 h-3" />
+                      <span className="capitalize">{tipo}</span>
+                      <span className="text-[10px] opacity-80">({count})</span>
+                    </button>
+                  )
+                })}
               </div>
-            )}
+            )
+          })()}
+
+          <div className="space-y-2 max-h-[350px] overflow-y-auto py-2">
+            {(() => {
+              const itensDoDia = itensPorDia.get(diaVisualizado) || []
+              const itensExibidos =
+                filtroTipoModalDia === 'todos'
+                  ? itensDoDia
+                  : itensDoDia.filter((i) => getTipoAtividadeGrade(i) === filtroTipoModalDia)
+
+              if (itensExibidos.length === 0) {
+                return (
+                  <div className="text-center py-6 text-xs text-[#5B6470]">
+                    {filtroTipoModalDia !== 'todos'
+                      ? 'Nenhuma atividade deste tipo encontrada para este dia.'
+                      : 'Nenhuma atividade cadastrada para este dia.'}
+                  </div>
+                )
+              }
+
+              return itensExibidos.map((item) => {
+                const cor = getCorPorTipo(item.tipo, item.status, item.cor)
+                const horaFormatada =
+                  !item.diaInteiro && item.dataHora.includes('T')
+                    ? item.dataHora.split('T')[1].slice(0, 5)
+                    : null
+                const tipoGrade = getTipoAtividadeGrade(item)
+                const configGrade = TIPOS_ATIVIDADE_CONFIG[tipoGrade]
+                const IconeItem = configGrade.icone
+
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => {
+                      setItemSelecionado(item)
+                      setModalDiaOpen(false)
+                      setModalDetalheOpen(true)
+                    }}
+                    style={{ borderLeftColor: cor }}
+                    className="p-2 rounded bg-white border border-[#E5E1D8] border-l-3 hover:bg-[#FAFAF9] cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between text-[10px] text-[#5B6470]">
+                      <span className="uppercase font-bold text-[#0F766E] flex items-center gap-1">
+                        <IconeItem className="w-3 h-3" />
+                        {tipoGrade === 'reuniao' ? 'Reunião' : item.tipo}
+                      </span>
+                      {horaFormatada && <span>{horaFormatada}</span>}
+                    </div>
+                    <div className="text-xs font-semibold text-[#1A1D21] mt-0.5">{item.titulo}</div>
+                    {item.projetoNome && (
+                      <div className="text-[10px] text-[#5B6470] mt-1">{item.projetoNome}</div>
+                    )}
+                  </div>
+                )
+              })
+            })()}
           </div>
 
           <DialogFooter className="flex justify-between sm:justify-between pt-2 border-t border-[#E5E1D8]">
@@ -1485,7 +1721,10 @@ export default function Calendario() {
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() => setModalDiaOpen(false)}
+              onClick={() => {
+                setModalDiaOpen(false)
+                setFiltroTipoModalDia('todos')
+              }}
               className="text-xs h-8"
             >
               Fechar
