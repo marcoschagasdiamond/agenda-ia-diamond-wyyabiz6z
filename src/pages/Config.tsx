@@ -72,6 +72,9 @@ export default function Config() {
             <Badge className="bg-[#0F766E]/10 text-[#0F766E] border-none text-[11px] font-semibold">
               Segundo Cérebro
             </Badge>
+            <Badge variant="outline" className="text-[10px] text-[#5B6470] border-[#E5E1D8]">
+              v0.0.27
+            </Badge>
           </div>
           <p className="text-xs text-[#5B6470] mt-1">
             Ajuste posicionamento, honorários e consulte o status dos conectores de e-mail e

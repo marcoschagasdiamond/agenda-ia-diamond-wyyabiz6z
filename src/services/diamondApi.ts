@@ -19,6 +19,9 @@ import type {
   GrupoFamilia,
   MarcoTimeline,
   EventoCalendario,
+  MembroEquipe,
+  ConviteEquipe,
+  EscopoItem,
 } from '@/types'
 
 export const diamondApi = {
@@ -531,5 +534,176 @@ export const diamondApi = {
 
   async deleteEventoCalendario(id: string): Promise<boolean> {
     return await pb.collection('eventos_calendario').delete(id)
+  },
+
+  // Equipe & Colaboração
+  async listMembrosEquipe(): Promise<MembroEquipe[]> {
+    try {
+      const records = await pb.collection('membros_equipe').getFullList<MembroEquipe>({
+        sort: '-created',
+        expand: 'usuario,adicionado_por',
+      })
+      return records.map((m) => {
+        let parsedEscopos: EscopoItem[] = []
+        if (typeof m.escopos === 'string') {
+          try {
+            parsedEscopos = JSON.parse(m.escopos)
+          } catch {
+            parsedEscopos = []
+          }
+        } else if (Array.isArray(m.escopos)) {
+          parsedEscopos = m.escopos
+        }
+        return {
+          ...m,
+          escopos: parsedEscopos,
+        }
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async createMembroEquipe(data: Partial<MembroEquipe>): Promise<MembroEquipe> {
+    const payload = {
+      ...data,
+      escopos: typeof data.escopos === 'object' ? JSON.stringify(data.escopos) : data.escopos,
+    }
+    return await pb.collection('membros_equipe').create<MembroEquipe>(payload)
+  },
+
+  async updateMembroEquipe(id: string, data: Partial<MembroEquipe>): Promise<MembroEquipe> {
+    const payload = {
+      ...data,
+      escopos: typeof data.escopos === 'object' ? JSON.stringify(data.escopos) : data.escopos,
+    }
+    return await pb.collection('membros_equipe').update<MembroEquipe>(id, payload)
+  },
+
+  async deleteMembroEquipe(id: string): Promise<boolean> {
+    return await pb.collection('membros_equipe').delete(id)
+  },
+
+  // Convites de Equipe
+  async listConvitesEquipe(statusFiltro?: string): Promise<ConviteEquipe[]> {
+    try {
+      let filter = ''
+      if (statusFiltro && statusFiltro !== 'todos') {
+        filter = `status = "${statusFiltro}"`
+      }
+      return await pb.collection('convites_equipe').getFullList<ConviteEquipe>({
+        filter,
+        sort: '-created',
+        expand:
+          'convidado_por,usuario_aceitou,projeto_ref,cliente_ref,fluxo_ref,categoria_ref,demanda_ref',
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async getConvitePorToken(token: string): Promise<ConviteEquipe | null> {
+    try {
+      return await pb
+        .collection('convites_equipe')
+        .getFirstListItem<ConviteEquipe>(`token = "${token}"`, {
+          expand: 'convidado_por,projeto_ref,cliente_ref,fluxo_ref,categoria_ref,demanda_ref',
+        })
+    } catch {
+      return null
+    }
+  },
+
+  async criarConvite(data: {
+    email: string
+    escopo_tipo: string
+    escopo_id?: string
+    escopo_nome?: string
+    nivel_acesso: string
+    mensagem?: string
+    convidado_por?: string
+  }): Promise<ConviteEquipe> {
+    const token =
+      Math.random().toString(36).substring(2, 12) +
+      Math.random().toString(36).substring(2, 12) +
+      Date.now().toString(36)
+
+    const expiraEm = new Date()
+    expiraEm.setDate(expiraEm.getDate() + 7)
+
+    const payload: Record<string, unknown> = {
+      email: data.email.trim().toLowerCase(),
+      token,
+      escopo_tipo: data.escopo_tipo,
+      escopo_id: data.escopo_id || '',
+      escopo_nome: data.escopo_nome || '',
+      nivel_acesso: data.nivel_acesso,
+      status: 'pendente',
+      mensagem: data.mensagem || '',
+      expira_em: expiraEm.toISOString(),
+      convidado_por: data.convidado_por || pb.authStore.record?.id || '',
+    }
+
+    if (data.escopo_tipo === 'projeto' && data.escopo_id) {
+      payload.projeto_ref = data.escopo_id
+    } else if (data.escopo_tipo === 'cliente' && data.escopo_id) {
+      payload.cliente_ref = data.escopo_id
+    } else if (data.escopo_tipo === 'fluxo' && data.escopo_id) {
+      payload.fluxo_ref = data.escopo_id
+    } else if (data.escopo_tipo === 'categoria' && data.escopo_id) {
+      payload.categoria_ref = data.escopo_id
+    } else if (data.escopo_tipo === 'demanda' && data.escopo_id) {
+      payload.demanda_ref = data.escopo_id
+    }
+
+    return await pb.collection('convites_equipe').create<ConviteEquipe>(payload)
+  },
+
+  async reenviarConvite(conviteId: string): Promise<{ sucesso: boolean; mensagem: string }> {
+    const res = await fetch(
+      `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/equipe/reenviar-convite`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: pb.authStore.token,
+        },
+        body: JSON.stringify({ convite_id: conviteId }),
+      },
+    )
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Falha ao reenviar convite')
+    }
+    return await res.json()
+  },
+
+  async revogarConvite(conviteId: string): Promise<ConviteEquipe> {
+    return await pb.collection('convites_equipe').update<ConviteEquipe>(conviteId, {
+      status: 'revogado',
+    })
+  },
+
+  async aceitarConvite(dados: {
+    token: string
+    nome?: string
+    usuario_id?: string
+  }): Promise<{ sucesso: boolean; mensagem: string; ja_aceito?: boolean }> {
+    const res = await fetch(
+      `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/equipe/aceitar-convite`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(pb.authStore.token ? { Authorization: pb.authStore.token } : {}),
+        },
+        body: JSON.stringify(dados),
+      },
+    )
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Falha ao aceitar convite')
+    }
+    return await res.json()
   },
 }

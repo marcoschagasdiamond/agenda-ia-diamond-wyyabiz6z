@@ -15,6 +15,9 @@ import type {
   FolhaDia,
   MarcoTimeline,
   EventoCalendario,
+  MembroEquipe,
+  ConviteEquipe,
+  EscopoTipo,
 } from '@/types'
 
 export interface FluxoComContagem extends FluxoKanban {
@@ -75,6 +78,16 @@ interface NavegacaoContextData {
   setDataSelecionadaCalendario: (data: string) => void
   filtroTipoCalendario: string
   setFiltroTipoCalendario: (tipo: string) => void
+  membrosEquipe: MembroEquipe[]
+  convitesEquipe: ConviteEquipe[]
+  modalConvidarEquipeOpen: boolean
+  setModalConvidarEquipeOpen: (open: boolean) => void
+  modalConvidarEscopoPadrao?: {
+    tipo: EscopoTipo
+    id?: string
+    nome?: string
+  }
+  setModalConvidarEscopoPadrao: (escopo?: { tipo: EscopoTipo; id?: string; nome?: string }) => void
   recarregarDadosGlobais: () => Promise<void>
 
   // Controle de visibilidade da 2ª coluna
@@ -118,6 +131,14 @@ export const NavegacaoProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [folhaItems, setFolhaItems] = useState<FolhaDia[]>([])
   const [marcosTimeline, setMarcosTimeline] = useState<MarcoTimeline[]>([])
   const [eventosCalendario, setEventosCalendario] = useState<EventoCalendario[]>([])
+  const [membrosEquipe, setMembrosEquipe] = useState<MembroEquipe[]>([])
+  const [convitesEquipe, setConvitesEquipe] = useState<ConviteEquipe[]>([])
+
+  // Modal global reutilizável de convite de equipe
+  const [modalConvidarEquipeOpen, setModalConvidarEquipeOpen] = useState(false)
+  const [modalConvidarEscopoPadrao, setModalConvidarEscopoPadrao] = useState<
+    { tipo: EscopoTipo; id?: string; nome?: string } | undefined
+  >(undefined)
 
   // Estado compartilhado de navegação do calendário
   const [dataSelecionadaCalendario, setDataSelecionadaCalendario] = useState<string>(() => {
@@ -159,18 +180,22 @@ export const NavegacaoProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const recarregarDadosGlobais = async () => {
     try {
-      const [p, ct, past, arq, cli, lis, dem, folha, marcos, evs] = await Promise.all([
-        diamondApi.listProjetos().catch(() => []),
-        diamondApi.listContatos().catch(() => []),
-        diamondApi.listPastas().catch(() => []),
-        diamondApi.listArquivos().catch(() => []),
-        diamondApi.listClientes().catch(() => []),
-        diamondApi.listListas().catch(() => []),
-        diamondApi.listDemandas().catch(() => []),
-        diamondApi.listFolhaDia().catch(() => []),
-        diamondApi.listMarcosTimeline().catch(() => []),
-        diamondApi.listEventosCalendario().catch(() => []),
-      ])
+      const [p, ct, past, arq, cli, lis, dem, folha, marcos, evs, membs, convs] = await Promise.all(
+        [
+          diamondApi.listProjetos().catch(() => []),
+          diamondApi.listContatos().catch(() => []),
+          diamondApi.listPastas().catch(() => []),
+          diamondApi.listArquivos().catch(() => []),
+          diamondApi.listClientes().catch(() => []),
+          diamondApi.listListas().catch(() => []),
+          diamondApi.listDemandas().catch(() => []),
+          diamondApi.listFolhaDia().catch(() => []),
+          diamondApi.listMarcosTimeline().catch(() => []),
+          diamondApi.listEventosCalendario().catch(() => []),
+          diamondApi.listMembrosEquipe().catch(() => []),
+          diamondApi.listConvitesEquipe().catch(() => []),
+        ],
+      )
       setProjetos(p)
       setContatos(ct)
       setPastas(past)
@@ -181,6 +206,8 @@ export const NavegacaoProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setFolhaItems(folha)
       setMarcosTimeline(marcos)
       setEventosCalendario(evs)
+      setMembrosEquipe(membs)
+      setConvitesEquipe(convs)
     } catch (err) {
       console.error('Erro ao carregar dados globais da navegação:', err)
     }
@@ -290,8 +317,13 @@ export const NavegacaoProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setDataSelecionadaCalendario,
         filtroTipoCalendario,
         setFiltroTipoCalendario,
+        membrosEquipe,
+        convitesEquipe,
+        modalConvidarEquipeOpen,
+        setModalConvidarEquipeOpen,
+        modalConvidarEscopoPadrao,
+        setModalConvidarEscopoPadrao,
         recarregarDadosGlobais,
-
         colunaSecundariaAberta,
         setColunaSecundariaAberta,
         toggleColunaSecundaria,

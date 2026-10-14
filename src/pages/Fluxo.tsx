@@ -39,6 +39,7 @@ import {
   Building,
   User,
   Calendar,
+  Users,
   Lock,
   Bell,
   Table as TableIcon,
@@ -108,6 +109,8 @@ export default function Fluxo() {
     modalNovaFamiliaOpen: globalModalNovaFamilia,
     setModalNovaFamiliaOpen: setGlobalModalNovaFamilia,
     modalNovaFamiliaColunaId: globalModalNovaFamiliaColId,
+    setModalConvidarEquipeOpen,
+    setModalConvidarEscopoPadrao,
   } = navGlobal
 
   // Dados principais
@@ -1337,6 +1340,21 @@ export default function Fluxo() {
                 })}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
+                  onClick={() => {
+                    const escopoNome = card.expand?.projeto?.nome || card.titulo
+                    setModalConvidarEscopoPadrao({
+                      tipo: card.projeto ? 'projeto' : card.fluxo_id ? 'fluxo' : 'geral',
+                      id: card.projeto || card.fluxo_id || '',
+                      nome: escopoNome,
+                    })
+                    setModalConvidarEquipeOpen(true)
+                  }}
+                  className="text-[#0F766E]"
+                >
+                  <Users className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
+                  Convidar Colaborador
+                </DropdownMenuItem>
+                <DropdownMenuItem
                   onClick={() => handleExcluirCard(card.id)}
                   className="text-red-600"
                 >
@@ -1628,6 +1646,34 @@ export default function Fluxo() {
               <DropdownMenuItem onClick={handleExportarCsv}>
                 <Download className="w-3.5 h-3.5 mr-2 text-[#5B6470]" />
                 Exportar Lista em CSV
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => {
+                  if (fluxoAtivo) {
+                    setModalConvidarEscopoPadrao({
+                      tipo: 'fluxo',
+                      id: fluxoAtivo.id,
+                      nome: fluxoAtivo.nome || fluxoAtivo.titulo,
+                    })
+                  } else if (categoriaAtiva) {
+                    setModalConvidarEscopoPadrao({
+                      tipo: 'categoria',
+                      id: categoriaAtiva.id,
+                      nome: categoriaAtiva.nome,
+                    })
+                  } else {
+                    setModalConvidarEscopoPadrao({
+                      tipo: 'geral',
+                      nome: 'Workspace Completo',
+                    })
+                  }
+                  setModalConvidarEquipeOpen(true)
+                }}
+                className="text-[#0F766E] font-medium"
+              >
+                <Users className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
+                Convidar Equipe para este Fluxo
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

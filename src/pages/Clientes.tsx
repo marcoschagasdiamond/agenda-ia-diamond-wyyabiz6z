@@ -27,11 +27,12 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
+import { useNavegacao } from '@/contexts/NavegacaoContext'
 
 export default function Clientes() {
   const { user } = useAuth()
   const { toast } = useToast()
-
+  const { setModalConvidarEquipeOpen, setModalConvidarEscopoPadrao } = useNavegacao()
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [projetos, setProjetos] = useState<Projeto[]>([])
   const [clienteProjetos, setClienteProjetos] = useState<ClienteProjeto[]>([])
@@ -296,7 +297,14 @@ export default function Clientes() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleConvidarPortal(c)}
+                          onClick={() => {
+                            setModalConvidarEscopoPadrao({
+                              tipo: 'cliente',
+                              id: c.id,
+                              nome: `${c.nome} (${c.empresa || 'Cliente'})`,
+                            })
+                            setModalConvidarEquipeOpen(true)
+                          }}
                           className="text-[11px] h-7 text-[#0F766E] border-[#0F766E]/30 hover:bg-[#0F766E]/5"
                         >
                           Convidar

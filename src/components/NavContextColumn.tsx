@@ -86,6 +86,10 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
     setDataSelecionadaCalendario,
     filtroTipoCalendario,
     setFiltroTipoCalendario,
+    membrosEquipe,
+    convitesEquipe,
+    setModalConvidarEquipeOpen,
+    setModalConvidarEscopoPadrao,
   } = useNavegacao()
 
   // Mini-calendário de navegação na segunda coluna
@@ -111,6 +115,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
     if (pathname.startsWith('/arquivos')) return 'arquivos'
     if (pathname.startsWith('/listas')) return 'listas'
     if (pathname.startsWith('/clientes')) return 'clientes'
+    if (pathname.startsWith('/equipe')) return 'equipe'
     if (pathname.startsWith('/agente')) return 'agente'
     if (pathname.startsWith('/resumos')) return 'resumos'
     if (pathname.startsWith('/config')) return 'config'
@@ -1349,6 +1354,124 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
     )
   }
 
+  // =========================================================================
+  // 9. SEGUNDA COLUNA: EQUIPE (Membros, convites pendentes e atalho convidar)
+  // =========================================================================
+  const renderColunaEquipe = () => {
+    const pendentes = convitesEquipe.filter((c) => c.status === 'pendente')
+    const ativos = membrosEquipe.filter((m) => m.status === 'ativo')
+
+    return (
+      <div className="flex flex-col h-full">
+        <div className="p-3.5 border-b border-[#E5E1D8] flex items-center justify-between bg-white shrink-0">
+          <div>
+            <h2 className="text-sm font-bold text-[#1A1D21] tracking-tight">Equipe Diamond</h2>
+            <p className="text-[10px] text-[#5B6470]">Colaboradores e convites</p>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => {
+              setModalConvidarEscopoPadrao({ tipo: 'geral', nome: 'Workspace Completo' })
+              setModalConvidarEquipeOpen(true)
+            }}
+            className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-7 px-2.5 gap-1 font-medium shadow-2xs"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Convidar</span>
+          </Button>
+        </div>
+
+        <div className="p-2 border-b border-[#E5E1D8] bg-[#FAFAF9] shrink-0 space-y-1">
+          <button
+            type="button"
+            onClick={() => irPara('/equipe')}
+            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-[#1A1D21] text-white transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Users className="w-3.5 h-3.5" />
+              <span>Painel da Equipe</span>
+            </div>
+            <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full text-white">
+              {membrosEquipe.length}
+            </span>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-2 space-y-3">
+          {/* Convites Pendentes */}
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-[#5B6470] px-2 mb-1.5 flex items-center justify-between">
+              <span>Convites Aguardando ({pendentes.length})</span>
+            </div>
+            <div className="space-y-1">
+              {pendentes.map((conv) => (
+                <div
+                  key={conv.id}
+                  onClick={() => irPara('/equipe')}
+                  className="p-2 rounded-lg border border-[#E5E1D8] bg-white hover:bg-[#FAFAF9] transition-colors cursor-pointer text-xs"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-[#1A1D21] truncate max-w-[150px]">
+                      {conv.email}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className="text-[9px] bg-amber-50 text-amber-700 border-amber-200"
+                    >
+                      Pendente
+                    </Badge>
+                  </div>
+                  <div className="text-[10px] text-[#5B6470] mt-1 flex items-center gap-1">
+                    <span className="capitalize">{conv.escopo_tipo}:</span>
+                    <span className="text-[#0F766E] truncate max-w-[130px] font-medium">
+                      {conv.escopo_nome || 'Workspace'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+              {pendentes.length === 0 && (
+                <div className="text-[11px] text-[#5B6470] italic px-2 py-1">
+                  Nenhum convite pendente.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Membros Ativos */}
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-[#5B6470] px-2 mb-1.5 flex items-center justify-between">
+              <span>Membros Ativos ({ativos.length})</span>
+            </div>
+            <div className="space-y-1">
+              {ativos.map((m) => (
+                <div
+                  key={m.id}
+                  onClick={() => irPara('/equipe')}
+                  className="p-2 rounded-lg border border-[#E5E1D8] bg-white hover:bg-[#FAFAF9] transition-colors cursor-pointer text-xs flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <div className="w-6 h-6 rounded-full bg-[#1A1D21] text-white flex items-center justify-center font-bold text-[10px] shrink-0">
+                      {m.nome?.[0] || m.email[0].toUpperCase()}
+                    </div>
+                    <div className="truncate">
+                      <span className="font-semibold text-[#1A1D21] block truncate">
+                        {m.nome || m.email.split('@')[0]}
+                      </span>
+                      <span className="text-[10px] text-[#5B6470] block truncate">{m.email}</span>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="text-[9px] capitalize shrink-0 ml-1">
+                    {m.nivel_acesso || 'Edição'}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // Renderiza a coluna com base na seção ativa
   switch (secaoAtiva) {
     case 'calendario':
@@ -1367,6 +1490,8 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
       return renderColunaListas()
     case 'clientes':
       return renderColunaClientes()
+    case 'equipe':
+      return renderColunaEquipe()
     case 'agente':
       return renderColunaAgente()
     case 'config':

@@ -28,6 +28,8 @@ import Clientes from '@/pages/Clientes'
 import Agente from '@/pages/Agente'
 import Resumos from '@/pages/Resumos'
 import Config from '@/pages/Config'
+import Equipe from '@/pages/Equipe'
+import AceitarConvite from '@/pages/AceitarConvite'
 import PortalCliente from '@/pages/PortalCliente'
 import NotFound from '@/pages/NotFound'
 
@@ -59,6 +61,7 @@ export default function App() {
               <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/convite/:token" element={<AceitarConvite />} />
 
               {/* Onboarding Obrigatório Fixo */}
               <Route
@@ -156,6 +159,14 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <Clientes />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/equipe"
+                element={
+                  <ProtectedRoute>
+                    <Equipe />
                   </ProtectedRoute>
                 }
               />

@@ -387,3 +387,68 @@ export interface EventoCalendario {
     criado_por?: User
   }
 }
+
+export type EscopoTipo = 'geral' | 'projeto' | 'fluxo' | 'categoria' | 'cliente' | 'demanda'
+export type NivelAcesso = 'leitura' | 'edicao' | 'admin'
+export type MembroStatus = 'ativo' | 'pendente' | 'suspenso'
+export type ConviteStatus = 'pendente' | 'aceito' | 'revogado' | 'expirado'
+
+export interface EscopoItem {
+  tipo: EscopoTipo
+  id?: string
+  nome?: string
+  nivel: NivelAcesso
+}
+
+export interface MembroEquipe {
+  id: string
+  usuario?: string
+  email: string
+  nome?: string
+  funcao?: 'admin' | 'membro' | 'visualizador'
+  nivel_acesso?: NivelAcesso
+  status: MembroStatus
+  escopos?: EscopoItem[] | string
+  adicionado_por?: string
+  ultimo_acesso?: string
+  observacoes?: string
+  created: string
+  updated: string
+  expand?: {
+    usuario?: User
+    adicionado_por?: User
+  }
+}
+
+export interface ConviteEquipe {
+  id: string
+  email: string
+  token: string
+  escopo_tipo: EscopoTipo
+  escopo_id?: string
+  escopo_nome?: string
+  nivel_acesso: NivelAcesso
+  status: ConviteStatus
+  mensagem?: string
+  expira_em?: string
+  enviado_em?: string
+  aceito_em?: string
+  convidado_por?: string
+  usuario_aceitou?: string
+  projeto_ref?: string
+  cliente_ref?: string
+  fluxo_ref?: string
+  categoria_ref?: string
+  demanda_ref?: string
+  created: string
+  updated: string
+  expand?: {
+    convidado_por?: User
+    usuario_aceitou?: User
+    projeto_ref?: Projeto
+    cliente_ref?: Cliente
+    fluxo_ref?: FluxoKanban
+    categoria_ref?: CategoriaFluxo
+    demanda_ref?: Demanda
+  }
+}

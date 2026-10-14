@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import pb from '@/lib/pocketbase/client'
-import type { User, Profile, Cliente } from '@/types'
+import type { User, Profile, Cliente, MembroEquipe, EscopoItem } from '@/types'
 
 interface AuthContextType {
   user: User | null
   profile: Profile | null
   clienteProfile: Cliente | null
+  membroEquipe: MembroEquipe | null
+  meusEscopos: EscopoItem[]
   isClientPortal: boolean
   loading: boolean
   signIn: (email: string, pass: string) => Promise<{ error: Error | null }>
@@ -26,12 +28,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
   const [profile, setProfile] = useState<Profile | null>(null)
   const [clienteProfile, setClienteProfile] = useState<Cliente | null>(null)
+  const [membroEquipe, setMembroEquipe] = useState<MembroEquipe | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
 
   const fetchProfileAndRole = async (currentUser: User | null) => {
     if (!currentUser) {
       setProfile(null)
       setClienteProfile(null)
+      setMembroEquipe(null)
       return
     }
     try {
@@ -48,6 +52,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .getFirstListItem<Cliente>(`email = "${currentUser.email}"`)
         .catch(() => null)
       setClienteProfile(c)
+
+      // 3. Tentar buscar registro em membros_equipe
+      const m = await pb
+        .collection('membros_equipe')
+        .getFirstListItem<MembroEquipe>(
+          `usuario = "${currentUser.id}" || email = "${currentUser.email}"`,
+        )
+        .catch(() => null)
+      if (m) {
+        let parsed: EscopoItem[] = []
+        if (typeof m.escopos === 'string') {
+          try {
+            parsed = JSON.parse(m.escopos)
+          } catch {
+            parsed = []
+          }
+        } else if (Array.isArray(m.escopos)) {
+          parsed = m.escopos
+        }
+        setMembroEquipe({ ...m, escopos: parsed })
+      } else {
+        setMembroEquipe(null)
+      }
     } catch {
       // Best-effort
     }
@@ -115,6 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
     setProfile(null)
     setClienteProfile(null)
+    setMembroEquipe(null)
   }
 
   const refreshProfile = async () => {
@@ -163,12 +191,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Se o usuário tiver registro de cliente e não tiver perfil admin/interno completo
   const isClientPortal = Boolean(clienteProfile && (!profile || !profile.respostas_onboarding))
 
+  // Escopos do usuário logado
+  const isOwner = user?.email === 'marcoschagasdiamond@icloud.com'
+  const meusEscopos: EscopoItem[] = isOwner
+    ? [{ tipo: 'geral', nome: 'Acesso Geral Diamond', nivel: 'admin' }]
+    : Array.isArray(membroEquipe?.escopos)
+      ? (membroEquipe.escopos as EscopoItem[])
+      : []
+
   return (
     <AuthContext.Provider
       value={{
         user,
         profile,
         clienteProfile,
+        membroEquipe,
+        meusEscopos,
         isClientPortal,
         loading,
         signIn,

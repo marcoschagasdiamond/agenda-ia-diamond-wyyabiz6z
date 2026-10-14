@@ -7,6 +7,7 @@ import {
   Plus,
   ArrowRight,
   Sparkles,
+  UserPlus,
   Building,
   CheckCircle2,
   Clock,
@@ -39,11 +40,12 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
+import { useNavegacao } from '@/contexts/NavegacaoContext'
 
 export default function Projetos() {
   const navigate = useNavigate()
   const { toast } = useToast()
-
+  const { setModalConvidarEquipeOpen, setModalConvidarEscopoPadrao } = useNavegacao()
   const [projetos, setProjetos] = useState<Projeto[]>([])
   const [modalOpen, setModalOpen] = useState(false)
   const [nome, setNome] = useState('')
@@ -186,8 +188,28 @@ export default function Projetos() {
             </CardContent>
 
             <CardFooter className="pt-2 pb-3 border-t border-[#E5E1D8]/60 flex items-center justify-between text-xs text-[#0F766E] font-medium">
-              <span>Abrir Segundo Cérebro</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setModalConvidarEscopoPadrao({
+                    tipo: 'projeto',
+                    id: proj.id,
+                    nome: proj.nome,
+                  })
+                  setModalConvidarEquipeOpen(true)
+                }}
+                className="flex items-center gap-1 text-[11px] text-[#5B6470] hover:text-[#0F766E] transition-colors py-1 px-1.5 rounded hover:bg-[#F4F2EE]"
+                title="Convidar equipe para este projeto"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Convidar</span>
+              </button>
+
+              <div className="flex items-center gap-1">
+                <span>Abrir</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </div>
             </CardFooter>
           </Card>
         ))}

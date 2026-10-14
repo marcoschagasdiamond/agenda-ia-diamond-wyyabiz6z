@@ -10,8 +10,10 @@ import {
   Users,
   CheckSquare,
   Trash2,
+  UserPlus,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useNavegacao } from '@/contexts/NavegacaoContext'
 import { Input } from '@/components/ui/input'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -33,6 +35,7 @@ import { useToast } from '@/hooks/use-toast'
 
 export default function Listas() {
   const { toast } = useToast()
+  const { setModalConvidarEquipeOpen, setModalConvidarEscopoPadrao } = useNavegacao()
   const [listas, setListas] = useState<Lista[]>([])
   const [demandas, setDemandas] = useState<Demanda[]>([])
   const [contatos, setContatos] = useState<Contato[]>([])
@@ -225,6 +228,24 @@ export default function Listas() {
                           <Clock className="w-3 h-3" />
                           {demanda.prazo}
                         </span>
+                      )}
+                      {!isConcluido && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setModalConvidarEscopoPadrao({
+                              tipo: 'demanda',
+                              id: demanda.id,
+                              nome: demanda.titulo,
+                            })
+                            setModalConvidarEquipeOpen(true)
+                          }}
+                          className="text-[10px] text-[#5B6470] hover:text-[#0F766E] flex items-center gap-1 p-1 rounded hover:bg-[#F4F2EE]"
+                          title="Convidar colaborador para esta demanda"
+                        >
+                          <UserPlus className="w-3 h-3" />
+                          <span className="hidden md:inline">Convidar</span>
+                        </button>
                       )}
                     </div>
                   </div>

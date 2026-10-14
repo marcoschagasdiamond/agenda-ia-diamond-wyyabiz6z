@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import ModalConvidarEquipe from '@/components/ModalConvidarEquipe'
 
 interface LayoutProps {
   children?: React.ReactNode
@@ -36,8 +37,15 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   const { user, clienteProfile, isClientPortal, signOut } = useAuth()
-  const { colunaSecundariaAberta, setColunaSecundariaAberta, toggleColunaSecundaria, folhaItems } =
-    useNavegacao()
+  const {
+    colunaSecundariaAberta,
+    setColunaSecundariaAberta,
+    toggleColunaSecundaria,
+    folhaItems,
+    modalConvidarEquipeOpen,
+    setModalConvidarEquipeOpen,
+    modalConvidarEscopoPadrao,
+  } = useNavegacao()
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -72,6 +80,7 @@ export default function Layout({ children }: LayoutProps) {
     { name: 'Arquivos & Pastas', path: '/arquivos', icon: FolderOpen },
     { name: 'Listas & Demandas', path: '/listas', icon: ListTodo },
     { name: 'Clientes & Portal', path: '/clientes', icon: UserCheck },
+    { name: 'Equipe & Convites', path: '/equipe', icon: Users },
     { name: 'Agente IA Diamond', path: '/agente', icon: Bot, highlight: true },
     { name: 'Resumos do Dia', path: '/resumos', icon: History },
     { name: 'Configurações', path: '/config', icon: Settings },
@@ -93,14 +102,15 @@ export default function Layout({ children }: LayoutProps) {
     navigate(`/fluxo?busca=${encodeURIComponent(searchQuery)}`)
   }
 
-  const isAuthRoute = [
-    '/login',
-    '/signup',
-    '/verify-email',
-    '/forgot-password',
-    '/reset-password',
-    '/onboarding',
-  ].includes(location.pathname)
+  const isAuthRoute =
+    [
+      '/login',
+      '/signup',
+      '/verify-email',
+      '/forgot-password',
+      '/reset-password',
+      '/onboarding',
+    ].includes(location.pathname) || location.pathname.startsWith('/convite/')
 
   if (isAuthRoute) {
     return <main className="min-h-screen bg-[#F4F2EE]">{children}</main>
@@ -394,6 +404,13 @@ export default function Layout({ children }: LayoutProps) {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Modal Reutilizável de Convite de Equipe */}
+      <ModalConvidarEquipe
+        open={modalConvidarEquipeOpen}
+        onOpenChange={setModalConvidarEquipeOpen}
+        escopoInicial={modalConvidarEscopoPadrao}
+      />
     </div>
   )
 }

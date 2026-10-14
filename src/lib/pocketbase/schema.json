@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-14T00:48:49.141Z",
+  "generatedAt": "2026-10-14T01:04:28.480Z",
   "collections": [
     {
       "name": "users",
@@ -1495,6 +1495,254 @@
       "indexes": [
         "CREATE INDEX idx_eventos_cal_inicio ON eventos_calendario (data_inicio)",
         "CREATE INDEX idx_eventos_cal_status ON eventos_calendario (status)"
+      ]
+    },
+    {
+      "name": "membros_equipe",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "usuario",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "email",
+          "type": "email",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "funcao",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["admin", "membro", "visualizador"]
+        },
+        {
+          "name": "nivel_acesso",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["leitura", "edicao", "admin"]
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["ativo", "pendente", "suspenso"]
+        },
+        {
+          "name": "escopos",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "adicionado_por",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "ultimo_acesso",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacoes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_membros_email ON membros_equipe (email)",
+        "CREATE INDEX idx_membros_status ON membros_equipe (status)",
+        "CREATE INDEX idx_membros_usuario ON membros_equipe (usuario)"
+      ]
+    },
+    {
+      "name": "convites_equipe",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' || token != ''",
+        "view": "@request.auth.id != '' || token != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' || token != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "email",
+          "type": "email",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "token",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "escopo_tipo",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["geral", "projeto", "fluxo", "categoria", "cliente", "demanda"]
+        },
+        {
+          "name": "escopo_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "escopo_nome",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nivel_acesso",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["leitura", "edicao", "admin"]
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["pendente", "aceito", "revogado", "expirado"]
+        },
+        {
+          "name": "mensagem",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "expira_em",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "enviado_em",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aceito_em",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "convidado_por",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "usuario_aceitou",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "projeto_ref",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "projetos"
+        },
+        {
+          "name": "cliente_ref",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "clientes"
+        },
+        {
+          "name": "fluxo_ref",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "fluxos_kanban"
+        },
+        {
+          "name": "categoria_ref",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "categorias_fluxo"
+        },
+        {
+          "name": "demanda_ref",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "demandas"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_convites_token ON convites_equipe (token)",
+        "CREATE INDEX idx_convites_email ON convites_equipe (email)",
+        "CREATE INDEX idx_convites_status ON convites_equipe (status)",
+        "CREATE INDEX idx_convites_escopo ON convites_equipe (escopo_tipo, escopo_id)"
       ]
     }
   ]
