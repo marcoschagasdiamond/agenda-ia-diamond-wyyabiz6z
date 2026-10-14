@@ -38,6 +38,16 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { useToast } from '@/hooks/use-toast'
 
 export default function Equipe() {
@@ -55,6 +65,7 @@ export default function Equipe() {
   const [tabAtiva, setTabAtiva] = useState<'membros' | 'convites' | 'todos'>('membros')
   const [filtroStatusConvite, setFiltroStatusConvite] = useState<string>('todos')
   const [processandoAcao, setProcessandoAcao] = useState<string | null>(null)
+  const [conviteParaExcluir, setConviteParaExcluir] = useState<ConviteEquipe | null>(null)
 
   // Membros filtrados
   const membrosFiltrados = membrosEquipe.filter((m) => {
@@ -119,6 +130,31 @@ export default function Equipe() {
       toast({ title: 'Convite revogado com sucesso.' })
     } catch {
       toast({ title: 'Erro ao revogar convite', variant: 'destructive' })
+    } finally {
+      setProcessandoAcao(null)
+    }
+  }
+
+  // Excluir convite definitivamente
+  const handleConfirmarExcluirConvite = async () => {
+    if (!conviteParaExcluir) return
+    const id = conviteParaExcluir.id
+    const email = conviteParaExcluir.email
+    setProcessandoAcao(id)
+    try {
+      await diamondApi.excluirConvite(id)
+      await recarregarDadosGlobais()
+      toast({
+        title: 'Convite excluído com sucesso',
+        description: `O convite para ${email} foi removido definitivamente.`,
+      })
+      setConviteParaExcluir(null)
+    } catch (err: unknown) {
+      toast({
+        title: 'Erro ao excluir convite',
+        description: (err as Error)?.message || 'Não foi possível excluir o convite.',
+        variant: 'destructive',
+      })
     } finally {
       setProcessandoAcao(null)
     }
@@ -596,7 +632,7 @@ export default function Equipe() {
                       )}
                     </div>
 
-                    {/* Ações: Reenviar, Revogar */}
+                    {/* Ações: Reenviar, Revogar, Excluir */}
                     <div className="flex items-center gap-1.5 shrink-0">
                       {isPendente && (
                         <>
@@ -607,6 +643,7 @@ export default function Equipe() {
                             disabled={processandoAcao === convite.id}
                             onClick={() => handleReenviarConvite(convite)}
                             className="text-xs h-7 px-2 text-[#0F766E] border-[#E5E1D8] hover:bg-[#0F766E]/10 gap-1 font-medium"
+                            title="Reenviar e-mail de convite"
                           >
                             <RotateCcw className="w-3 h-3" />
                             <span>Reenviar</span>
@@ -618,25 +655,69 @@ export default function Equipe() {
                             size="sm"
                             disabled={processandoAcao === convite.id}
                             onClick={() => handleRevogarConvite(convite)}
-                            className="text-xs h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 gap-1"
+                            className="text-xs h-7 px-2 text-amber-700 hover:text-amber-800 hover:bg-amber-50 gap-1 font-medium"
+                            title="Revogar link de acesso"
                           >
                             <Ban className="w-3 h-3" />
                             <span>Revogar</span>
+                          </Button>
+
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={processandoAcao === convite.id}
+                            onClick={() => setConviteParaExcluir(convite)}
+                            className="text-xs h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 gap-1 font-medium"
+                            title="Excluir convite definitivamente"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Excluir</span>
                           </Button>
                         </>
                       )}
 
                       {isExpirado && (
+                        <>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={processandoAcao === convite.id}
+                            onClick={() => handleReenviarConvite(convite)}
+                            className="text-xs h-7 px-2 text-[#0F766E] border-[#E5E1D8] hover:bg-[#0F766E]/10 gap-1 font-medium"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            <span>Renovar & Reenviar</span>
+                          </Button>
+
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={processandoAcao === convite.id}
+                            onClick={() => setConviteParaExcluir(convite)}
+                            className="text-xs h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 gap-1 font-medium"
+                            title="Excluir convite definitivamente"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Excluir</span>
+                          </Button>
+                        </>
+                      )}
+
+                      {isRevogado && (
                         <Button
                           type="button"
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
                           disabled={processandoAcao === convite.id}
-                          onClick={() => handleReenviarConvite(convite)}
-                          className="text-xs h-7 px-2 text-[#0F766E] border-[#E5E1D8] hover:bg-[#0F766E]/10 gap-1 font-medium"
+                          onClick={() => setConviteParaExcluir(convite)}
+                          className="text-xs h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 gap-1 font-medium"
+                          title="Excluir convite definitivamente"
                         >
-                          <RotateCcw className="w-3 h-3" />
-                          <span>Renovar & Reenviar</span>
+                          <Trash2 className="w-3 h-3" />
+                          <span>Excluir</span>
                         </Button>
                       )}
 
@@ -665,6 +746,58 @@ export default function Equipe() {
           </CardContent>
         </Card>
       )}
+
+      {/* Modal de confirmação de exclusão de convite */}
+      <AlertDialog
+        open={!!conviteParaExcluir}
+        onOpenChange={(open) => {
+          if (!open) setConviteParaExcluir(null)
+        }}
+      >
+        <AlertDialogContent className="bg-white border-[#E5E1D8] max-w-md">
+          <AlertDialogHeader>
+            <div className="w-10 h-10 rounded-full bg-red-50 text-red-600 flex items-center justify-center mb-2">
+              <Trash2 className="w-5 h-5" />
+            </div>
+            <AlertDialogTitle className="text-base font-bold text-[#1A1D21]">
+              Excluir convite?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-[#5B6470] space-y-1.5">
+              <span>
+                Esta ação não pode ser desfeita. O convite para{' '}
+                <strong className="text-[#1A1D21] font-semibold">
+                  {conviteParaExcluir?.email}
+                </strong>{' '}
+                será removido definitivamente do sistema.
+              </span>
+              {conviteParaExcluir?.escopo_nome && (
+                <span className="block text-[11px] text-[#0F766E] font-medium pt-1">
+                  Escopo: {conviteParaExcluir.escopo_tipo} &bull; {conviteParaExcluir.escopo_nome} (
+                  {conviteParaExcluir.nivel_acesso})
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel
+              disabled={!!processandoAcao}
+              className="text-xs h-9 border-[#E5E1D8] hover:bg-[#F4F2EE]"
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!!processandoAcao}
+              onClick={(e) => {
+                e.preventDefault()
+                handleConfirmarExcluirConvite()
+              }}
+              className="text-xs h-9 bg-red-600 hover:bg-red-700 text-white font-semibold"
+            >
+              {processandoAcao ? 'Excluindo...' : 'Excluir convite'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -684,6 +684,10 @@ export const diamondApi = {
     })
   },
 
+  async excluirConvite(conviteId: string): Promise<boolean> {
+    return await pb.collection('convites_equipe').delete(conviteId)
+  },
+
   async aceitarConvite(dados: {
     token: string
     nome?: string
