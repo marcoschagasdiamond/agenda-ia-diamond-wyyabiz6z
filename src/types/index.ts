@@ -146,9 +146,37 @@ export interface CategoriaFluxo {
   updated?: string
 }
 
+export interface FluxoKanban {
+  id: string
+  nome: string
+  cor?: string
+  ordem?: number
+  categoria?: string
+  titulo_fases?: string
+  template_origem?: string
+  created?: string
+  updated?: string
+}
+
+export interface ColunaFluxo {
+  id: string
+  chave: string
+  titulo: string
+  cor?: string
+  ordem?: number
+  categoria?: string
+  fluxo_id?: string
+  titulo_fases?: string
+  is_conclusao?: boolean
+  template_origem?: string
+  created?: string
+  updated?: string
+}
+
 export interface Card {
   id: string
   titulo: string
+  fluxo_id?: string
   descricao?: string
   projeto?: string
   negocio?: string

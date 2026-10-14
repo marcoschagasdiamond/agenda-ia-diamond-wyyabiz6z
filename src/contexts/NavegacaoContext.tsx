@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react'
 import { diamondApi } from '@/services/diamondApi'
 import type {
   CategoriaFluxo,
+  FluxoKanban,
   ColunaFluxo,
   Card as CardType,
   Projeto,
@@ -14,8 +15,13 @@ import type {
   FolhaDia,
 } from '@/types'
 
+export interface FluxoComContagem extends FluxoKanban {
+  cardCount: number
+  fasesCount: number
+}
+
 export interface CategoriaComFluxos extends CategoriaFluxo {
-  fluxos: ColunaFluxo[]
+  fluxos: FluxoComContagem[]
   cardCount: number
 }
 
@@ -23,9 +29,12 @@ interface NavegacaoContextData {
   // Estado de Fluxo Kanban
   categoriaAtivaId: string
   setCategoriaAtivaId: (id: string) => void
+  fluxoAtivoId: string
+  setFluxoAtivoId: (id: string) => void
   fluxoAtivoChave: string
   setFluxoAtivoChave: (chave: string) => void
   categorias: CategoriaFluxo[]
+  fluxos: FluxoKanban[]
   colunas: ColunaFluxo[]
   cards: CardType[]
   categoriasComFluxos: CategoriaComFluxos[]
@@ -71,8 +80,10 @@ const NavegacaoContext = createContext<NavegacaoContextData | undefined>(undefin
 export const NavegacaoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Fluxos
   const [categoriaAtivaId, setCategoriaAtivaId] = useState<string>('all')
+  const [fluxoAtivoId, setFluxoAtivoId] = useState<string>('all')
   const [fluxoAtivoChave, setFluxoAtivoChave] = useState<string>('all')
   const [categorias, setCategorias] = useState<CategoriaFluxo[]>([])
+  const [fluxos, setFluxos] = useState<FluxoKanban[]>([])
   const [colunas, setColunas] = useState<ColunaFluxo[]>([])
   const [cards, setCards] = useState<CardType[]>([])
   const [categoriasExpandidas, setCategoriasExpandidas] = useState<Record<string, boolean>>({})
@@ -104,13 +115,15 @@ export const NavegacaoProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const recarregarFluxo = async () => {
     try {
-      const [c, cats, cols] = await Promise.all([
+      const [c, cats, flxs, cols] = await Promise.all([
         diamondApi.listCards().catch(() => []),
         diamondApi.listCategoriasFluxo().catch(() => []),
+        diamondApi.listFluxosKanban().catch(() => []),
         diamondApi.listColunasFluxo().catch(() => []),
       ])
       setCards(c)
       setCategorias(cats)
+      setFluxos(flxs)
       setColunas(cols)
 
       setCategoriasExpandidas((prev) => {
@@ -164,16 +177,48 @@ export const NavegacaoProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }))
   }
 
-  // Agrupa categorias com seus fluxos e contagem
-  const colunasOrdenadas = [...colunas].sort((a, b) => (a.ordem || 0) - (b.ordem || 0))
+  // Agrupa categorias com seus fluxos REAIS (nunca as fases/colunas) e contagens
+  const fluxosOrdenados = [...fluxos].sort((a, b) => (a.ordem || 0) - (b.ordem || 0))
   const categoriasComFluxos: CategoriaComFluxos[] = categorias.map((cat) => {
-    const fluxosDaCat = colunasOrdenadas.filter((c) => c.categoria === cat.id)
-    const chavesDaCat = fluxosDaCat.map((c) => c.chave)
-    const cardCount = cards.filter((card) => chavesDaCat.includes(card.status as string)).length
+    const fluxosDaCat = fluxosOrdenados.filter((f) => f.categoria === cat.id)
+
+    const fluxosComContagem: FluxoComContagem[] = fluxosDaCat.map((fluxo) => {
+      // Fases pertencentes a este fluxo
+      const fasesDoFluxo = colunas.filter((col) => col.fluxo_id === fluxo.id)
+      const chavesDoFluxo = fasesDoFluxo.map((col) => col.chave)
+
+      // Cards vinculados diretamente pelo fluxo_id ou por status correspondente a uma de suas fases
+      const cardCount = cards.filter(
+        (card) =>
+          card.fluxo_id === fluxo.id ||
+          (chavesDoFluxo.length > 0 && chavesDoFluxo.includes(card.status as string)),
+      ).length
+
+      return {
+        ...fluxo,
+        cardCount,
+        fasesCount: fasesDoFluxo.length,
+      }
+    })
+
+    // Contagem total da categoria somando os cards dos fluxos da categoria ou vinculados a ela
+    const fasesDaCat = colunas.filter((col) => col.categoria === cat.id)
+    const chavesDaCat = new Set([
+      ...fasesDaCat.map((c) => c.chave),
+      ...fluxosComContagem.flatMap((f) =>
+        colunas.filter((col) => col.fluxo_id === f.id).map((c) => c.chave),
+      ),
+    ])
+
+    const catCardCount = cards.filter(
+      (card) =>
+        fluxosDaCat.some((f) => f.id === card.fluxo_id) || chavesDaCat.has(card.status as string),
+    ).length
+
     return {
       ...cat,
-      fluxos: fluxosDaCat,
-      cardCount,
+      fluxos: fluxosComContagem,
+      cardCount: catCardCount,
     }
   })
 
@@ -182,9 +227,12 @@ export const NavegacaoProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       value={{
         categoriaAtivaId,
         setCategoriaAtivaId,
+        fluxoAtivoId,
+        setFluxoAtivoId,
         fluxoAtivoChave,
         setFluxoAtivoChave,
         categorias,
+        fluxos,
         colunas,
         cards,
         categoriasComFluxos,

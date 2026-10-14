@@ -49,9 +49,12 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
   const {
     categoriaAtivaId,
     setCategoriaAtivaId,
+    fluxoAtivoId,
+    setFluxoAtivoId,
     fluxoAtivoChave,
     setFluxoAtivoChave,
     categorias,
+    fluxos,
     colunas,
     cards,
     categoriasComFluxos,
@@ -107,7 +110,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
       if (!buscaSecundaria.trim()) return true
       const b = buscaSecundaria.toLowerCase()
       const matchCat = cat.nome.toLowerCase().includes(b)
-      const matchFluxo = cat.fluxos.some((f) => f.titulo.toLowerCase().includes(b))
+      const matchFluxo = cat.fluxos.some((f) => f.nome.toLowerCase().includes(b))
       return matchCat || matchFluxo
     })
 
@@ -118,7 +121,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
           <div>
             <h2 className="text-sm font-bold text-[#1A1D21] tracking-tight">Fluxos</h2>
             <p className="text-[10px] text-[#5B6470]">
-              {categorias.length} categorias • {colunas.length} fluxos
+              {categorias.length} categorias • {fluxos.length} fluxos
             </p>
           </div>
 
@@ -150,7 +153,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
                 }}
               >
                 <GitBranch className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
-                Novo Fluxo (Coluna)
+                Novo Fluxo
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => {
@@ -196,10 +199,11 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
             onClick={() => {
               if (pathname !== '/fluxo') irPara('/fluxo')
               setCategoriaAtivaId('all')
+              setFluxoAtivoId('all')
               setFluxoAtivoChave('all')
             }}
             className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              categoriaAtivaId === 'all' && fluxoAtivoChave === 'all'
+              categoriaAtivaId === 'all' && fluxoAtivoId === 'all'
                 ? 'bg-[#1A1D21] text-white shadow-2xs'
                 : 'text-[#1A1D21] hover:bg-[#F4F2EE]'
             }`}
@@ -211,7 +215,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
             <Badge
               variant="outline"
               className={`text-[10px] px-1.5 py-0 h-4 border-none ${
-                categoriaAtivaId === 'all' && fluxoAtivoChave === 'all'
+                categoriaAtivaId === 'all' && fluxoAtivoId === 'all'
                   ? 'bg-white/20 text-white'
                   : 'bg-[#E5E1D8] text-[#5B6470]'
               }`}
@@ -221,7 +225,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
           </button>
         </div>
 
-        {/* Lista de Categorias Expansíveis com seus Fluxos */}
+        {/* Lista de Categorias Expansíveis com seus Fluxos (apenas nomes de fluxos, NUNCA fases) */}
         <div className="flex-1 p-2 space-y-1.5 overflow-y-auto">
           {catsFiltradas.map((cat) => {
             const isCatAtiva = categoriaAtivaId === cat.id
@@ -235,7 +239,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
                 {/* Linha da Categoria */}
                 <div
                   className={`flex items-center justify-between p-1.5 transition-colors ${
-                    isCatAtiva && fluxoAtivoChave === 'all'
+                    isCatAtiva && fluxoAtivoId === 'all'
                       ? 'bg-[#0F766E] text-white'
                       : 'hover:bg-[#F4F2EE] text-[#1A1D21]'
                   }`}
@@ -248,7 +252,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
                       toggleCategoriaExpandida(cat.id)
                     }}
                     className={`p-1 rounded transition-colors ${
-                      isCatAtiva && fluxoAtivoChave === 'all'
+                      isCatAtiva && fluxoAtivoId === 'all'
                         ? 'text-white/80 hover:text-white hover:bg-white/10'
                         : 'text-[#5B6470] hover:text-[#1A1D21]'
                     }`}
@@ -267,6 +271,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
                     onClick={() => {
                       if (pathname !== '/fluxo') irPara('/fluxo')
                       setCategoriaAtivaId(cat.id)
+                      setFluxoAtivoId('all')
                       setFluxoAtivoChave('all')
                     }}
                     className="flex-1 flex items-center gap-1.5 text-left text-xs font-semibold truncate ml-1"
@@ -278,10 +283,10 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
                     <span className="truncate">{cat.nome}</span>
                   </button>
 
-                  {/* Contagem de cards */}
+                  {/* Contagem de cards da categoria */}
                   <span
                     className={`text-[10px] px-1.5 py-0.2 rounded-full font-medium shrink-0 ${
-                      isCatAtiva && fluxoAtivoChave === 'all'
+                      isCatAtiva && fluxoAtivoId === 'all'
                         ? 'bg-white/20 text-white'
                         : 'bg-[#E5E1D8] text-[#5B6470]'
                     }`}
@@ -290,14 +295,11 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
                   </span>
                 </div>
 
-                {/* Subitens: Fluxos da categoria */}
+                {/* Subitens: Fluxos da categoria (nomes reais dos fluxos, NÃO as fases) */}
                 {isExpanded && (
                   <div className="p-1 pl-3 space-y-0.5 border-t border-[#E5E1D8]/60 bg-[#FAFAF9]">
                     {cat.fluxos.map((fluxo) => {
-                      const isFluxoAtivo = isCatAtiva && fluxoAtivoChave === fluxo.chave
-                      const cardsDoFluxo = cards.filter(
-                        (card) => card.status === fluxo.chave,
-                      ).length
+                      const isFluxoAtivo = isCatAtiva && fluxoAtivoId === fluxo.id
 
                       return (
                         <div
@@ -313,7 +315,8 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
                             onClick={() => {
                               if (pathname !== '/fluxo') irPara('/fluxo')
                               setCategoriaAtivaId(cat.id)
-                              setFluxoAtivoChave(fluxo.chave)
+                              setFluxoAtivoId(fluxo.id)
+                              setFluxoAtivoChave('all')
                             }}
                             className="flex-1 flex items-center gap-1.5 text-left truncate"
                           >
@@ -321,11 +324,11 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
                               className="w-1.5 h-1.5 rounded-full shrink-0"
                               style={{ backgroundColor: fluxo.cor || '#0F766E' }}
                             />
-                            <span className="truncate">{fluxo.titulo}</span>
+                            <span className="truncate">{fluxo.nome}</span>
                           </button>
 
                           <span className="text-[10px] text-[#5B6470] bg-[#E5E1D8]/60 px-1.5 py-0.2 rounded shrink-0">
-                            {cardsDoFluxo}
+                            {fluxo.cardCount}
                           </span>
                         </div>
                       )

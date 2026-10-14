@@ -9,6 +9,7 @@ import type {
   Contato,
   CardPrioridade,
   CategoriaFluxo,
+  FluxoKanban,
   ColunaFluxo,
   GrupoFamilia,
 } from '@/types'
@@ -90,6 +91,8 @@ export default function Fluxo() {
   const {
     categoriaAtivaId: globalCatId,
     setCategoriaAtivaId: setGlobalCatId,
+    fluxoAtivoId: globalFluxoId,
+    setFluxoAtivoId: setGlobalFluxoId,
     fluxoAtivoChave: globalFluxoChave,
     setFluxoAtivoChave: setGlobalFluxoChave,
     recarregarFluxo: recarregarFluxoGlobal,
@@ -113,14 +116,17 @@ export default function Fluxo() {
   const [negocios, setNegocios] = useState<Negocio[]>([])
   const [contatos, setContatos] = useState<Contato[]>([])
 
-  // Hierarquia: Categorias -> Fluxos (Colunas) -> Grupos de Família
+  // Hierarquia: Categorias -> Fluxos -> Fases (Colunas) -> Grupos de Família
   const [categorias, setCategorias] = useState<CategoriaFluxo[]>([])
+  const [fluxos, setFluxos] = useState<FluxoKanban[]>([])
   const [colunas, setColunas] = useState<ColunaFluxo[]>([])
   const [familias, setFamilias] = useState<GrupoFamilia[]>([])
 
   // Usamos as seleções ativas sincronizadas com o estado global
   const categoriaAtivaId = globalCatId
   const setCategoriaAtivaId = setGlobalCatId
+  const fluxoAtivoId = globalFluxoId
+  const setFluxoAtivoId = setGlobalFluxoId
   const fluxoAtivoChave = globalFluxoChave
   const setFluxoAtivoChave = setGlobalFluxoChave
 
@@ -181,16 +187,22 @@ export default function Fluxo() {
 
   // 3. Modal Fluxo / Coluna
   const [modalFluxoOpen, setModalFluxoOpen] = useState(false)
-  const [editingFluxo, setEditingFluxo] = useState<ColunaFluxo | null>(null)
+  const [editingFluxo, setEditingFluxo] = useState<FluxoKanban | null>(null)
   const [fluxoTitulo, setFluxoTitulo] = useState('')
-  const [fluxoChave, setFluxoChave] = useState('')
   const [fluxoCor, setFluxoCor] = useState('#0F766E')
   const [fluxoCategoriaId, setFluxoCategoriaId] = useState<string>('')
   const [fluxoTituloFases, setFluxoTituloFases] = useState('')
   const [fluxoTemplateSelecionado, setFluxoTemplateSelecionado] =
     useState<string>(TEMPLATE_PADRAO_ID)
-  const [fluxoIsConclusao, setFluxoIsConclusao] = useState(false)
   const [salvandoFluxo, setSalvandoFluxo] = useState(false)
+
+  // Modal para criar/editar uma fase avulsa (coluna direta) se desejado
+  const [modalFaseAvulsaOpen, setModalFaseAvulsaOpen] = useState(false)
+  const [editingColuna, setEditingColuna] = useState<ColunaFluxo | null>(null)
+  const [faseTitulo, setFaseTitulo] = useState('')
+  const [faseChave, setFaseChave] = useState('')
+  const [faseCor, setFaseCor] = useState('#0F766E')
+  const [faseIsConclusao, setFaseIsConclusao] = useState(false)
 
   // Modal Centralizado de Edição das Fases
   const [modalEditarFasesOpen, setModalEditarFasesOpen] = useState(false)
@@ -217,12 +229,13 @@ export default function Fluxo() {
 
   const carregarDados = async () => {
     try {
-      const [c, p, n, ct, cats, cols, fams] = await Promise.all([
+      const [c, p, n, ct, cats, flxs, cols, fams] = await Promise.all([
         diamondApi.listCards(),
         diamondApi.listProjetos(),
         diamondApi.listNegocios(),
         diamondApi.listContatos(),
         diamondApi.listCategoriasFluxo(),
+        diamondApi.listFluxosKanban(),
         diamondApi.listColunasFluxo(),
         diamondApi.listGruposFamilia(),
       ])
@@ -232,6 +245,7 @@ export default function Fluxo() {
       setNegocios(n)
       setContatos(ct)
       setCategorias(cats)
+      setFluxos(flxs)
       setColunas(cols)
       setFamilias(fams)
       recarregarFluxoGlobal().catch(() => {})
@@ -307,46 +321,60 @@ export default function Fluxo() {
     return map
   }, [colunas])
 
-  // Colunas a exibir no Kanban com base na categoria ativa e no foco de fluxo
-  const colunasFiltradas = useMemo(() => {
-    let filtradas = colunasOrdenadas
-
-    if (categoriaAtivaId !== 'all') {
-      filtradas = filtradas.filter((col) => col.categoria === categoriaAtivaId)
-    }
-
-    if (fluxoAtivoChave !== 'all') {
-      filtradas = filtradas.filter((col) => col.chave === fluxoAtivoChave)
-    }
-
-    return filtradas
-  }, [colunasOrdenadas, categoriaAtivaId, fluxoAtivoChave])
-
-  // Categorias com contagens e lista dos seus fluxos
-  const categoriasComFluxos = useMemo(() => {
-    return categorias.map((cat) => {
-      const fluxosDaCat = colunasOrdenadas.filter((c) => c.categoria === cat.id)
-      const chavesDaCat = fluxosDaCat.map((c) => c.chave)
-      const cardCount = cards.filter((card) => chavesDaCat.includes(card.status as string)).length
-      return {
-        ...cat,
-        fluxos: fluxosDaCat,
-        cardCount,
-      }
-    })
-  }, [categorias, colunasOrdenadas, cards])
+  // Fluxo ativo focado (pelo ID do fluxo em fluxos_kanban)
+  const fluxoAtivo = useMemo(() => {
+    if (fluxoAtivoId === 'all') return null
+    return fluxos.find((f) => f.id === fluxoAtivoId) || null
+  }, [fluxos, fluxoAtivoId])
 
   // Categoria ativa selecionada
   const categoriaAtiva = useMemo(() => {
-    if (categoriaAtivaId === 'all') return null
-    return categorias.find((c) => c.id === categoriaAtivaId) || null
-  }, [categorias, categoriaAtivaId])
+    if (categoriaAtivaId !== 'all') {
+      return categorias.find((c) => c.id === categoriaAtivaId) || null
+    }
+    if (fluxoAtivo?.categoria) {
+      return categorias.find((c) => c.id === fluxoAtivo.categoria) || null
+    }
+    return null
+  }, [categorias, categoriaAtivaId, fluxoAtivo])
 
-  // Fluxo ativo focado
-  const fluxoAtivo = useMemo(() => {
-    if (fluxoAtivoChave === 'all') return null
-    return colunas.find((c) => c.chave === fluxoAtivoChave) || null
-  }, [colunas, fluxoAtivoChave])
+  // Colunas a exibir no Kanban com base no fluxo ativo ou categoria ativa
+  // Regra clara: ao focar num fluxo, o board mostra as fases daquele fluxo.
+  // Se o usuário selecionou uma categoria inteira sem especificar fluxo, mostra as fases do primeiro fluxo dela ou as fases daquela categoria.
+  const colunasFiltradas = useMemo(() => {
+    // 1. Se houver um fluxo específico ativo
+    if (fluxoAtivoId !== 'all') {
+      const fasesDoFluxo = colunasOrdenadas.filter((col) => col.fluxo_id === fluxoAtivoId)
+      if (fasesDoFluxo.length > 0) return fasesDoFluxo
+    }
+
+    // 2. Se houver uma categoria ativa
+    if (categoriaAtivaId !== 'all') {
+      // Prioriza fases do primeiro fluxo da categoria se houver
+      const primeiroFluxoDaCat = fluxos.find((f) => f.categoria === categoriaAtivaId)
+      if (primeiroFluxoDaCat) {
+        const fasesDoFluxo = colunasOrdenadas.filter(
+          (col) => col.fluxo_id === primeiroFluxoDaCat.id,
+        )
+        if (fasesDoFluxo.length > 0) return fasesDoFluxo
+      }
+      const fasesDaCat = colunasOrdenadas.filter((col) => col.categoria === categoriaAtivaId)
+      if (fasesDaCat.length > 0) return fasesDaCat
+    }
+
+    // 3. Fallback 'all': se houver fluxos, mostra as fases do primeiro fluxo existente
+    if (fluxos.length > 0) {
+      const fasesPrimeiro = colunasOrdenadas.filter((col) => col.fluxo_id === fluxos[0].id)
+      if (fasesPrimeiro.length > 0) return fasesPrimeiro
+    }
+
+    return colunasOrdenadas
+  }, [colunasOrdenadas, fluxoAtivoId, categoriaAtivaId, fluxos])
+
+  // Categorias com contagens e lista dos seus fluxos reais (NUNCA as fases)
+  const categoriasComFluxos = useMemo(() => {
+    return navGlobal.categoriasComFluxos
+  }, [navGlobal.categoriasComFluxos])
 
   // Famílias visíveis para filtros
   const familiasVisiveis = useMemo(() => {
@@ -366,16 +394,33 @@ export default function Fluxo() {
 
   // Filtragem de cards baseada no escopo ativo e filtros
   const cardsFiltrados = useMemo(() => {
-    // Escopo de categoria/fluxo
-    const chavesPermitidas =
-      fluxoAtivoChave !== 'all'
-        ? [fluxoAtivoChave]
-        : categoriaAtivaId !== 'all'
-          ? colunas.filter((c) => c.categoria === categoriaAtivaId).map((c) => c.chave)
-          : null // 'all' permite todos os cards
+    // Escopo de fluxo / categoria:
+    // 1. Se um fluxo específico estiver ativo (fluxoAtivoId !== 'all'):
+    // Mostra os cards vinculados a este fluxo (via card.fluxo_id ou pelas chaves de fases deste fluxo)
+    let chavesPermitidas: string[] | null = null
+    let fluxoIdFiltro: string | null = null
+
+    if (fluxoAtivoId !== 'all') {
+      fluxoIdFiltro = fluxoAtivoId
+      const fasesDoFluxo = colunas.filter((c) => c.fluxo_id === fluxoAtivoId)
+      if (fasesDoFluxo.length > 0) {
+        chavesPermitidas = fasesDoFluxo.map((c) => c.chave)
+      }
+    } else if (categoriaAtivaId !== 'all') {
+      // Se apenas uma categoria estiver ativa, pega todas as fases dos fluxos dessa categoria
+      const fasesDaCat = colunas.filter((c) => c.categoria === categoriaAtivaId)
+      if (fasesDaCat.length > 0) {
+        chavesPermitidas = fasesDaCat.map((c) => c.chave)
+      }
+    }
 
     return cards.filter((card) => {
-      // Escopo de categoria/fluxo
+      // Escopo de fluxo: se card tiver fluxo_id e estivermos filtrando por fluxo específico
+      if (fluxoIdFiltro && card.fluxo_id && card.fluxo_id !== fluxoIdFiltro) {
+        return false
+      }
+
+      // Escopo por status/chave de coluna permitida
       if (chavesPermitidas && !chavesPermitidas.includes(card.status as string)) {
         return false
       }
@@ -411,7 +456,7 @@ export default function Fluxo() {
     cards,
     colunas,
     categoriaAtivaId,
-    fluxoAtivoChave,
+    fluxoAtivoId,
     filtroTexto,
     filtroProjeto,
     filtroPrioridade,
@@ -472,6 +517,7 @@ export default function Fluxo() {
       status: formStatus,
       proximo_passo: formProximoPasso.trim() || undefined,
       tags: tagsArray,
+      fluxo_id: fluxoAtivo?.id || undefined,
     }
 
     try {
@@ -712,18 +758,14 @@ export default function Fluxo() {
     setModalFluxoOpen(true)
   }
 
-  const abrirModalEditarFluxo = (col: ColunaFluxo) => {
-    setEditingFluxo(col)
-    setFluxoTitulo(col.titulo)
-    setFluxoChave(col.chave)
-    setFluxoCor(col.cor || '#0F766E')
-    setFluxoCategoriaId(col.categoria || '')
-    setFluxoTituloFases(col.titulo_fases || '')
-    setFluxoIsConclusao(
-      col.is_conclusao === true ||
-        col.titulo.toLowerCase().includes('finaliz') ||
-        col.titulo.toLowerCase().includes('termin'),
-    )
+  const abrirModalEditarFluxo = (f: FluxoKanban) => {
+    setEditingFluxo(f)
+    setFluxoTitulo(f.nome || f.titulo)
+    setFluxoChave(f.id)
+    setFluxoCor(f.cor || '#0F766E')
+    setFluxoCategoriaId(f.categoria || '')
+    setFluxoTituloFases(f.titulo_fases || '')
+    setFluxoIsConclusao(false)
     setModalFluxoOpen(true)
   }
 
@@ -734,93 +776,75 @@ export default function Fluxo() {
 
     try {
       if (editingFluxo) {
-        // Editando coluna existente
-        const chaveGerada = fluxoChave.trim() || editingFluxo.chave || gerarSlugChave(fluxoTitulo)
-
-        const payload: Partial<ColunaFluxo> = {
+        // Editando fluxo existente em fluxos_kanban
+        const payload: Partial<FluxoKanban> = {
+          nome: fluxoTitulo.trim(),
           titulo: fluxoTitulo.trim(),
-          chave: chaveGerada,
           cor: fluxoCor,
           categoria: fluxoCategoriaId || undefined,
           titulo_fases: fluxoTituloFases.trim() || undefined,
-          is_conclusao: fluxoIsConclusao,
-          ordem: editingFluxo.ordem || 1,
         }
 
-        await diamondApi.updateColunaFluxo(editingFluxo.id, payload)
+        await diamondApi.updateFluxoKanban(editingFluxo.id, payload)
         toast({ title: 'Fluxo atualizado com sucesso!' })
       } else {
-        // Criando fluxo novo. Se um template de modelo pronto foi selecionado com fases:
-        const templateEscolhido = MODELOS_FLUXO_TEMPLATES.find(
-          (t) => t.id === fluxoTemplateSelecionado,
-        )
+        // Criando fluxo novo dentro da categoria selecionada
+        const catDestinoId =
+          fluxoCategoriaId || (categoriaAtivaId !== 'all' ? categoriaAtivaId : categorias[0]?.id)
 
-        // Se o usuário selecionou uma categoria existente ou nenhuma, garantimos uma categoria dedicada para o fluxo
-        let catDestinoId = fluxoCategoriaId
-
-        // Se for um template com fases predefinidas (ex: DiamondGroup padrão ou Legado 5 colunas)
-        if (templateEscolhido && templateEscolhido.fases.length > 0) {
-          // Criamos uma categoria para organizar as fases desse fluxo (ex.: Business 'carros')
-          const novaCategoria = await diamondApi.createCategoriaFluxo({
-            nome: fluxoTitulo.trim(),
-            cor: fluxoCor || '#0F766E',
-            descricao: `Fluxo ${fluxoTitulo.trim()} com modelo ${templateEscolhido.nome}`,
-            titulo_fases: fluxoTituloFases.trim() || fluxoTitulo.trim(),
-          })
-          catDestinoId = novaCategoria.id
-
-          // Cria as fases do modelo na ordem correta, cores e marcação de conclusão
-          const colunasCriadas: ColunaFluxo[] = []
-          for (let i = 0; i < templateEscolhido.fases.length; i++) {
-            const f = templateEscolhido.fases[i]
-            const chaveFase = gerarSlugChave(f.titulo, `${Date.now()}_${i + 1}`)
-            const colCriada = await diamondApi.createColunaFluxo({
-              chave: chaveFase,
-              titulo: f.titulo,
-              cor: f.cor,
-              ordem: i + 1,
-              categoria: novaCategoria.id,
-              is_conclusao: f.is_conclusao ?? false,
-              template_origem: templateEscolhido.id,
-            })
-            colunasCriadas.push(colCriada)
-          }
-
-          toast({
-            title: `Fluxo "${fluxoTitulo}" criado com sucesso!`,
-            description: `${templateEscolhido.fases.length} fases criadas automaticamente (${templateEscolhido.nome}).`,
-          })
-
-          setCategoriaAtivaId(novaCategoria.id)
-          setFluxoAtivoChave('all')
-        } else {
-          // Criação personalizada sem template múltiplo (uma coluna avulsa na categoria escolhida)
-          const chaveGerada = fluxoChave.trim() || gerarSlugChave(fluxoTitulo)
-
-          const payload: Partial<ColunaFluxo> = {
-            titulo: fluxoTitulo.trim(),
-            chave: chaveGerada,
-            cor: fluxoCor,
-            categoria: catDestinoId || undefined,
-            titulo_fases: fluxoTituloFases.trim() || undefined,
-            is_conclusao: fluxoIsConclusao,
-            ordem: colunas.length + 1,
-            template_origem: 'personalizado',
-          }
-
-          const novo = await diamondApi.createColunaFluxo(payload)
-          toast({ title: `Fluxo "${fluxoTitulo}" criado com sucesso!` })
-          if (catDestinoId && catDestinoId !== 'all') {
-            setCategoriaAtivaId(catDestinoId)
-          }
-          if (novo?.chave) {
-            setFluxoAtivoChave(novo.chave)
-          }
+        if (!catDestinoId) {
+          throw new Error('Por favor, selecione ou crie uma categoria para o fluxo.')
         }
+
+        // 1. Criar o fluxo na coleção `fluxos_kanban`
+        const templateEscolhido =
+          MODELOS_FLUXO_TEMPLATES.find((t) => t.id === fluxoTemplateSelecionado) ||
+          MODELOS_FLUXO_TEMPLATES[0]
+
+        const novoFluxo = await diamondApi.createFluxoKanban({
+          nome: fluxoTitulo.trim(),
+          titulo: fluxoTitulo.trim(),
+          categoria: catDestinoId,
+          cor: fluxoCor || '#0F766E',
+          ordem: fluxos.length + 1,
+          titulo_fases: fluxoTituloFases.trim() || undefined,
+          modelo_origem: templateEscolhido.id,
+        })
+
+        // 2. Semear automaticamente as fases (colunas_fluxo) com base no modelo selecionado
+        // Vinculadas diretamente a esse fluxo via fluxo_id e com a categoria associada
+        const fasesCriar =
+          templateEscolhido.fases.length > 0
+            ? templateEscolhido.fases
+            : MODELOS_FLUXO_TEMPLATES[0].fases
+
+        for (let i = 0; i < fasesCriar.length; i++) {
+          const f = fasesCriar[i]
+          const chaveFase = gerarSlugChave(f.titulo, `${novoFluxo.id}_${Date.now()}_${i + 1}`)
+          await diamondApi.createColunaFluxo({
+            chave: chaveFase,
+            titulo: f.titulo,
+            cor: f.cor,
+            ordem: i + 1,
+            categoria: catDestinoId,
+            fluxo_id: novoFluxo.id,
+            is_conclusao: f.is_conclusao ?? false,
+            template_origem: templateEscolhido.id,
+          })
+        }
+
+        toast({
+          title: `Fluxo "${fluxoTitulo}" criado com sucesso!`,
+          description: `${fasesCriar.length} fases criadas no board (${templateEscolhido.nome}).`,
+        })
+
+        // Abre o board diretamente no fluxo recém-criado
+        setCategoriaAtivaId(catDestinoId)
+        setFluxoAtivoId(novoFluxo.id)
       }
 
       setModalFluxoOpen(false)
-      await carregarDados()
+      await Promise.all([recarregarFluxoGlobal().catch(() => {}), carregarDados().catch(() => {})])
     } catch (err) {
       toast({
         title: 'Erro ao salvar fluxo',
@@ -869,24 +893,52 @@ export default function Fluxo() {
     }
   }
 
-  const handleExcluirFluxo = async (col: ColunaFluxo) => {
+  const handleExcluirFluxoKanban = async (f: FluxoKanban) => {
+    const nomeFluxo = f.nome || f.titulo
     if (
       !confirm(
-        `Deseja realmente excluir o fluxo "${col.titulo}"? Os cards com esse status ficarão órfãos se não forem movidos.`,
+        `Deseja realmente excluir o fluxo "${nomeFluxo}"? As fases e cards vinculados a este fluxo serão removidos.`,
+      )
+    ) {
+      return
+    }
+    try {
+      // Remove fases associadas a este fluxo em colunas_fluxo
+      const fasesDoFluxo = colunas.filter((c) => c.fluxo_id === f.id)
+      for (const fase of fasesDoFluxo) {
+        await diamondApi.deleteColunaFluxo(fase.id).catch(() => {})
+      }
+
+      await diamondApi.deleteFluxoKanban(f.id)
+      toast({ title: `Fluxo "${nomeFluxo}" removido com sucesso.` })
+      if (fluxoAtivoId === f.id) {
+        setFluxoAtivoId('all')
+      }
+      await Promise.all([recarregarFluxoGlobal().catch(() => {}), carregarDados().catch(() => {})])
+    } catch (err) {
+      toast({
+        title: 'Erro ao excluir fluxo',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleExcluirColunaBoard = async (col: ColunaFluxo) => {
+    if (
+      !confirm(
+        `Deseja realmente excluir a coluna "${col.titulo}"? Os cards com esse status poderão ficar sem coluna.`,
       )
     ) {
       return
     }
     try {
       await diamondApi.deleteColunaFluxo(col.id)
-      toast({ title: 'Fluxo removido com sucesso.' })
-      if (fluxoAtivoChave === col.chave) {
-        setFluxoAtivoChave('all')
-      }
+      toast({ title: 'Coluna removida com sucesso.' })
       await carregarDados()
     } catch (err) {
       toast({
-        title: 'Erro ao excluir fluxo',
+        title: 'Erro ao excluir coluna',
         description: (err as Error)?.message,
         variant: 'destructive',
       })
@@ -1065,23 +1117,15 @@ export default function Fluxo() {
   }, [cardsFiltrados, contatos])
 
   // Entidade ativa que é dona do "Nome das fases" exibido no cabeçalho:
-  // Se houver um fluxo específico ativo, usa o fluxo.
+  // Se houver um fluxo específico ativo, usa o fluxoKanban ativo.
   // Se uma categoria estiver selecionada (com todos os seus fluxos), usa a categoria.
-  // Se estiver em "Todas as Categorias", usa a categoria do primeiro fluxo ou o primeiro fluxo.
   const entidadeFasesAtiva = useMemo(() => {
-    if (fluxoAtivo) return { tipo: 'coluna' as const, item: fluxoAtivo }
+    if (fluxoAtivo) return { tipo: 'fluxo' as const, item: fluxoAtivo }
     if (categoriaAtiva) return { tipo: 'categoria' as const, item: categoriaAtiva }
-    if (colunasFiltradas.length > 0) {
-      return { tipo: 'coluna' as const, item: colunasFiltradas[0] }
-    }
-    if (colunasOrdenadas.length > 0) {
-      return { tipo: 'coluna' as const, item: colunasOrdenadas[0] }
-    }
-    if (categorias.length > 0) {
-      return { tipo: 'categoria' as const, item: categorias[0] }
-    }
+    if (fluxos.length > 0) return { tipo: 'fluxo' as const, item: fluxos[0] }
+    if (categorias.length > 0) return { tipo: 'categoria' as const, item: categorias[0] }
     return null
-  }, [fluxoAtivo, categoriaAtiva, colunasFiltradas, colunasOrdenadas, categorias])
+  }, [fluxoAtivo, categoriaAtiva, fluxos, categorias])
 
   // "Nome das fases" para o cabeçalho do board DiamondGroup:
   // Totalmente independente do nome do fluxo ou da categoria.
@@ -1144,20 +1188,16 @@ export default function Fluxo() {
     }
 
     try {
-      if (entidadeAlvo.tipo === 'coluna') {
-        const colId = entidadeAlvo.item.id
-        // Atualização otimista local — NÃO altera o título do fluxo (col.titulo)
-        setColunas((prev) =>
-          prev.map((c) => (c.id === colId ? { ...c, titulo_fases: novoValor } : c)),
-        )
-        await diamondApi.updateColunaFluxo(colId, { titulo_fases: novoValor })
+      if (entidadeAlvo.tipo === 'fluxo') {
+        const fId = entidadeAlvo.item.id
+        setFluxos((prev) => prev.map((f) => (f.id === fId ? { ...f, titulo_fases: novoValor } : f)))
+        await diamondApi.updateFluxoKanban(fId, { titulo_fases: novoValor })
         toast({
           title: 'Nome das fases atualizado',
           description: novoValor ? `Definido como "${novoValor}"` : 'Nome das fases limpo.',
         })
       } else {
         const catId = entidadeAlvo.item.id
-        // Atualização otimista local — NÃO altera o nome da categoria (cat.nome)
         setCategorias((prev) =>
           prev.map((cat) => (cat.id === catId ? { ...cat, titulo_fases: novoValor } : cat)),
         )
@@ -1561,10 +1601,11 @@ export default function Fluxo() {
               type="button"
               onClick={() => {
                 setCategoriaAtivaId('all')
+                setFluxoAtivoId('all')
                 setFluxoAtivoChave('all')
               }}
               className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                categoriaAtivaId === 'all' && fluxoAtivoChave === 'all'
+                categoriaAtivaId === 'all' && fluxoAtivoId === 'all'
                   ? 'bg-[#1A1D21] text-white shadow-xs'
                   : 'text-[#1A1D21] hover:bg-[#F4F2EE]'
               }`}
@@ -1576,7 +1617,7 @@ export default function Fluxo() {
               <Badge
                 variant="outline"
                 className={`text-[10px] px-1.5 py-0 h-4 border-none ${
-                  categoriaAtivaId === 'all' && fluxoAtivoChave === 'all'
+                  categoriaAtivaId === 'all' && fluxoAtivoId === 'all'
                     ? 'bg-white/20 text-white'
                     : 'bg-[#E5E1D8] text-[#5B6470]'
                 }`}
@@ -1585,7 +1626,7 @@ export default function Fluxo() {
               </Badge>
             </button>
 
-            {/* Árvore de Categorias e Fluxos */}
+            {/* Árvore de Categorias e Fluxos (SOMENTE fluxos_kanban — FASES NUNCA aparecem aqui) */}
             <div className="space-y-1 max-h-[calc(100vh-280px)] overflow-y-auto pr-0.5">
               {categoriasComFluxos.map((cat) => {
                 const isCatAtiva = categoriaAtivaId === cat.id
@@ -1599,7 +1640,7 @@ export default function Fluxo() {
                     {/* Linha da Categoria */}
                     <div
                       className={`flex items-center justify-between p-2 transition-colors ${
-                        isCatAtiva && fluxoAtivoChave === 'all'
+                        isCatAtiva && fluxoAtivoId === 'all'
                           ? 'bg-[#0F766E] text-white'
                           : 'hover:bg-[#F4F2EE] text-[#1A1D21]'
                       }`}
@@ -1612,7 +1653,7 @@ export default function Fluxo() {
                           toggleCategoriaExpandida(cat.id)
                         }}
                         className={`p-1 rounded transition-colors ${
-                          isCatAtiva && fluxoAtivoChave === 'all'
+                          isCatAtiva && fluxoAtivoId === 'all'
                             ? 'text-white/80 hover:text-white hover:bg-white/10'
                             : 'text-[#5B6470] hover:text-[#1A1D21]'
                         }`}
@@ -1630,6 +1671,7 @@ export default function Fluxo() {
                         type="button"
                         onClick={() => {
                           setCategoriaAtivaId(cat.id)
+                          setFluxoAtivoId('all')
                           setFluxoAtivoChave('all')
                         }}
                         className="flex-1 flex items-center gap-2 text-left text-xs font-semibold truncate ml-1"
@@ -1645,7 +1687,7 @@ export default function Fluxo() {
                       <div className="flex items-center gap-1 shrink-0">
                         <span
                           className={`text-[10px] px-1.5 py-0.2 rounded-full font-medium ${
-                            isCatAtiva && fluxoAtivoChave === 'all'
+                            isCatAtiva && fluxoAtivoId === 'all'
                               ? 'bg-white/20 text-white'
                               : 'bg-[#E5E1D8] text-[#5B6470]'
                           }`}
@@ -1659,7 +1701,7 @@ export default function Fluxo() {
                               type="button"
                               aria-label="Opções da categoria"
                               className={`p-1 rounded transition-colors opacity-70 hover:opacity-100 ${
-                                isCatAtiva && fluxoAtivoChave === 'all'
+                                isCatAtiva && fluxoAtivoId === 'all'
                                   ? 'text-white hover:bg-white/10'
                                   : 'text-[#5B6470] hover:text-[#1A1D21]'
                               }`}
@@ -1688,13 +1730,17 @@ export default function Fluxo() {
                       </div>
                     </div>
 
-                    {/* Subitens: Fluxos pertencentes a essa categoria */}
+                    {/* Subitens: SOMENTE Fluxos pertencentes a essa categoria (NUNCA fases) */}
                     {isExpanded && (
                       <div className="p-1 pl-4 space-y-0.5 border-t border-[#E5E1D8]/60 bg-white">
                         {cat.fluxos.map((fluxo) => {
-                          const isFluxoAtivo = isCatAtiva && fluxoAtivoChave === fluxo.chave
+                          const isFluxoAtivo = fluxoAtivoId === fluxo.id
+                          const fasesDesteFluxo = colunas.filter((c) => c.fluxo_id === fluxo.id)
+                          const chavesFases = fasesDesteFluxo.map((c) => c.chave)
                           const cardsDoFluxo = cards.filter(
-                            (card) => card.status === fluxo.chave,
+                            (card) =>
+                              card.fluxo_id === fluxo.id ||
+                              chavesFases.includes(card.status as string),
                           ).length
 
                           return (
@@ -1710,7 +1756,8 @@ export default function Fluxo() {
                                 type="button"
                                 onClick={() => {
                                   setCategoriaAtivaId(cat.id)
-                                  setFluxoAtivoChave(fluxo.chave)
+                                  setFluxoAtivoId(fluxo.id)
+                                  setFluxoAtivoChave('all')
                                 }}
                                 className="flex-1 flex items-center gap-2 text-left truncate"
                               >
@@ -1718,7 +1765,7 @@ export default function Fluxo() {
                                   className="w-1.5 h-1.5 rounded-full shrink-0"
                                   style={{ backgroundColor: fluxo.cor || '#0F766E' }}
                                 />
-                                <span className="truncate">{fluxo.titulo}</span>
+                                <span className="truncate">{fluxo.nome || fluxo.titulo}</span>
                               </button>
 
                               <div className="flex items-center gap-1 shrink-0">
@@ -1738,7 +1785,14 @@ export default function Fluxo() {
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end" className="text-xs">
                                     <DropdownMenuItem
-                                      onClick={() => abrirModalCriarCard(fluxo.chave)}
+                                      onClick={() => {
+                                        setCategoriaAtivaId(cat.id)
+                                        setFluxoAtivoId(fluxo.id)
+                                        const primeiraFase = colunas.find(
+                                          (c) => c.fluxo_id === fluxo.id,
+                                        )?.chave
+                                        abrirModalCriarCard(primeiraFase)
+                                      }}
                                     >
                                       <Plus className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />+ Card
                                       neste fluxo
@@ -1754,7 +1808,7 @@ export default function Fluxo() {
                                       Editar Fluxo
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
-                                      onClick={() => handleExcluirFluxo(fluxo)}
+                                      onClick={() => handleExcluirFluxoKanban(fluxo)}
                                       className="text-red-600"
                                     >
                                       <Trash2 className="w-3.5 h-3.5 mr-2" />
@@ -1925,7 +1979,7 @@ export default function Fluxo() {
                         className="w-2 h-2 rounded-full"
                         style={{ backgroundColor: fluxoAtivo.cor || '#0F766E' }}
                       />
-                      {fluxoAtivo.titulo}
+                      {fluxoAtivo.nome || fluxoAtivo.titulo}
                     </span>
                   </>
                 )}
@@ -1935,6 +1989,7 @@ export default function Fluxo() {
                 type="button"
                 onClick={() => {
                   setCategoriaAtivaId('all')
+                  setFluxoAtivoId('all')
                   setFluxoAtivoChave('all')
                 }}
                 className="text-[11px] text-[#0F766E] hover:underline font-medium"
@@ -1943,7 +1998,6 @@ export default function Fluxo() {
               </button>
             </div>
           )}
-
           {/* ======================================================== */}
           {/* ABA 1: QUADRO (KANBAN COM DRAG-AND-DROP E MODELO VISUAL) */}
           {/* ======================================================== */}
@@ -2063,17 +2117,13 @@ export default function Fluxo() {
                               <Layers className="w-3.5 h-3.5 mr-2 text-blue-600" />+ Grupo de
                               Família aqui
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => abrirModalEditarFluxo(col)}>
-                              <Edit2 className="w-3.5 h-3.5 mr-2" />
-                              Editar Coluna
-                            </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => handleExcluirFluxo(col)}
+                              onClick={() => handleExcluirColunaBoard(col)}
                               className="text-red-600"
                             >
                               <Trash2 className="w-3.5 h-3.5 mr-2" />
                               Excluir Coluna
-                            </DropdownMenuItem>
+                            </DropdownMenuItem>{' '}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -2815,13 +2865,13 @@ export default function Fluxo() {
           <form onSubmit={handleSalvarFluxo} className="space-y-4 pt-2">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-[#1A1D21]">
-                {editingFluxo ? 'Título da Etapa / Fluxo *' : 'Nome do Fluxo / Negócio *'}
+                {editingFluxo ? 'Nome do Fluxo *' : 'Nome do Fluxo / Negócio *'}
               </label>
               <Input
                 required
                 placeholder={
                   editingFluxo
-                    ? 'Ex: Backlog, A Fazer...'
+                    ? 'Ex: Operação Comercial, Manutenção, Business Carros...'
                     : 'Ex: Business Carros, Vendas Imóveis, Suporte...'
                 }
                 value={fluxoTitulo}
@@ -2830,7 +2880,7 @@ export default function Fluxo() {
               />
               <span className="text-[10px] text-[#5B6470]">
                 {editingFluxo
-                  ? 'Nome individual desta etapa no quadro.'
+                  ? 'Nome deste fluxo dentro da categoria.'
                   : 'Exemplo: "Business Carros" criará o fluxo com suas fases automaticamente.'}
               </span>
             </div>
@@ -2938,24 +2988,6 @@ export default function Fluxo() {
                   />
                 </div>
               </div>
-
-              {editingFluxo && (
-                <div className="flex items-center gap-2 pt-4">
-                  <input
-                    type="checkbox"
-                    id="fluxoIsConclusao"
-                    checked={fluxoIsConclusao}
-                    onChange={(e) => setFluxoIsConclusao(e.target.checked)}
-                    className="rounded border-[#E5E1D8] text-[#0F766E] focus:ring-[#0F766E] w-4 h-4 cursor-pointer"
-                  />
-                  <label
-                    htmlFor="fluxoIsConclusao"
-                    className="text-xs font-medium text-[#1A1D21] cursor-pointer"
-                  >
-                    Fase de Conclusão (Finalizado)
-                  </label>
-                </div>
-              )}
             </div>
 
             <DialogFooter className="flex justify-end gap-2 pt-4 border-t border-[#E5E1D8]">
@@ -3091,6 +3123,7 @@ export default function Fluxo() {
         open={modalEditarFasesOpen}
         onOpenChange={setModalEditarFasesOpen}
         categoriaAtiva={categoriaAtiva}
+        fluxoAtivo={fluxoAtivo}
         colunas={colunas}
         onFasesAtualizadas={async () => {
           await Promise.all([

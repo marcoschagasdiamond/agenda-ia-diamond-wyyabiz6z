@@ -20,7 +20,7 @@ import {
   HelpCircle,
   Layers,
 } from 'lucide-react'
-import type { ColunaFluxo, CategoriaFluxo } from '@/types'
+import type { ColunaFluxo, CategoriaFluxo, FluxoKanban } from '@/types'
 import { diamondApi } from '@/services/diamondApi'
 import { gerarSlugChave } from './fluxoTemplates'
 
@@ -28,6 +28,7 @@ export interface ModalEditarFasesProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   categoriaAtiva: CategoriaFluxo | null
+  fluxoAtivo?: FluxoKanban | null
   colunas: ColunaFluxo[]
   onFasesAtualizadas: () => Promise<void>
 }
@@ -47,6 +48,7 @@ export function ModalEditarFases({
   open,
   onOpenChange,
   categoriaAtiva,
+  fluxoAtivo,
   colunas,
   onFasesAtualizadas,
 }: ModalEditarFasesProps) {
@@ -56,16 +58,21 @@ export function ModalEditarFases({
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
-  // Quando o modal abre, carrega as colunas da categoria ativa (ou todas as colunas visíveis)
+  // Quando o modal abre, carrega as colunas do fluxo ativo ou categoria ativa
   useEffect(() => {
     if (!open) return
 
     setErro(null)
     setNovaFaseTitulo('')
 
-    const colunasAlvo = categoriaAtiva
-      ? colunas.filter((c) => c.categoria === categoriaAtiva.id)
-      : colunas
+    let colunasAlvo: ColunaFluxo[] = []
+    if (fluxoAtivo) {
+      colunasAlvo = colunas.filter((c) => c.fluxo_id === fluxoAtivo.id)
+    } else if (categoriaAtiva) {
+      colunasAlvo = colunas.filter((c) => c.categoria === categoriaAtiva.id)
+    } else {
+      colunasAlvo = colunas
+    }
 
     const fasesIniciais: FaseItemEditavel[] = [...colunasAlvo]
       .sort((a, b) => (a.ordem || 0) - (b.ordem || 0))
@@ -82,7 +89,7 @@ export function ModalEditarFases({
       }))
 
     setFases(fasesIniciais)
-  }, [open, categoriaAtiva, colunas])
+  }, [open, categoriaAtiva, fluxoAtivo, colunas])
 
   const fasesVisiveis = fases.filter((f) => !f.isDeleted)
 
@@ -177,7 +184,8 @@ export function ModalEditarFases({
     setErro(null)
 
     try {
-      const catId = categoriaAtiva?.id
+      const catId = categoriaAtiva?.id || fluxoAtivo?.categoria
+      const flxId = fluxoAtivo?.id
 
       // 1. Processar deletadas (se existiam no banco)
       const deletadas = fases.filter((f) => f.isDeleted && f.id)
@@ -200,6 +208,7 @@ export function ModalEditarFases({
             ordem: ordemFinal,
             is_conclusao: item.is_conclusao,
             categoria: catId || undefined,
+            fluxo_id: flxId || undefined,
           })
         } else {
           // Criação de nova fase
@@ -210,6 +219,7 @@ export function ModalEditarFases({
             ordem: ordemFinal,
             is_conclusao: item.is_conclusao,
             categoria: catId || undefined,
+            fluxo_id: flxId || undefined,
           })
         }
       }
@@ -236,9 +246,11 @@ export function ModalEditarFases({
                 Editar Fases do Fluxo
               </DialogTitle>
               <DialogDescription className="text-xs text-[#5B6470]">
-                {categoriaAtiva
-                  ? `Gerenciando colunas/fases da categoria "${categoriaAtiva.nome}".`
-                  : 'Gerenciando colunas/fases do board ativo.'}
+                {fluxoAtivo
+                  ? `Gerenciando fases do fluxo "${fluxoAtivo.nome || fluxoAtivo.titulo}".`
+                  : categoriaAtiva
+                    ? `Gerenciando colunas/fases da categoria "${categoriaAtiva.nome}".`
+                    : 'Gerenciando colunas/fases do board ativo.'}
               </DialogDescription>
             </div>
           </div>

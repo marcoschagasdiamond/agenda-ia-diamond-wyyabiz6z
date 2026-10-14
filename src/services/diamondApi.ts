@@ -381,7 +381,35 @@ export const diamondApi = {
     return await pb.collection('categorias_fluxo').delete(id)
   },
 
-  // Colunas do Fluxo
+  // Fluxos Kanban (Entidade Fluxo em Categorias)
+  async listFluxosKanban(categoriaId?: string): Promise<FluxoKanban[]> {
+    try {
+      let filter = ''
+      if (categoriaId && categoriaId !== 'all') {
+        filter = `categoria = "${categoriaId}"`
+      }
+      return await pb.collection('fluxos_kanban').getFullList<FluxoKanban>({
+        filter,
+        sort: 'ordem,created',
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async createFluxoKanban(data: Partial<FluxoKanban>): Promise<FluxoKanban> {
+    return await pb.collection('fluxos_kanban').create<FluxoKanban>(data)
+  },
+
+  async updateFluxoKanban(id: string, data: Partial<FluxoKanban>): Promise<FluxoKanban> {
+    return await pb.collection('fluxos_kanban').update<FluxoKanban>(id, data)
+  },
+
+  async deleteFluxoKanban(id: string): Promise<boolean> {
+    return await pb.collection('fluxos_kanban').delete(id)
+  },
+
+  // Colunas/Fases do Fluxo
   async listColunasFluxo(categoriaId?: string): Promise<ColunaFluxo[]> {
     try {
       let filter = ''
