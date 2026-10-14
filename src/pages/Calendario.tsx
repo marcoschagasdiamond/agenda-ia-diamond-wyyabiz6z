@@ -90,6 +90,22 @@ export default function Calendario() {
     recarregarFluxo,
   } = useNavegacao()
 
+  // Fases físicas de projetos para exibir no calendário
+  const [fasesProjetos, setFasesProjetos] = useState<import('@/types').ProjetoFase[]>([])
+
+  useEffect(() => {
+    let ativo = true
+    diamondApi
+      .listProjetoFases()
+      .then((res) => {
+        if (ativo) setFasesProjetos(res)
+      })
+      .catch(() => {})
+    return () => {
+      ativo = false
+    }
+  }, [projetos])
+
   // Visão atual (Mês, Semana, Lista)
   const [visao, setVisao] = useState<VisaoTipo>('mes')
 
@@ -163,7 +179,14 @@ export default function Calendario() {
   const [salvandoEvento, setSalvandoEvento] = useState(false)
 
   // Definição dos tipos de atividade para a grade mensal (DiamondGroup)
-  type TipoAtividadeGrade = 'evento' | 'reuniao' | 'demanda' | 'folha' | 'card' | 'marco'
+  type TipoAtividadeGrade =
+    | 'evento'
+    | 'reuniao'
+    | 'demanda'
+    | 'folha'
+    | 'card'
+    | 'marco'
+    | 'projeto_fase'
 
   const TIPOS_ATIVIDADE_CONFIG: Record<
     TipoAtividadeGrade,
@@ -224,6 +247,14 @@ export default function Calendario() {
       bgBase: 'bg-emerald-50 hover:bg-emerald-100/80',
       borderBase: 'border-emerald-200/80',
     },
+    projeto_fase: {
+      labelSingular: 'etapa de projeto',
+      labelPlural: 'etapas de projetos',
+      icone: CalendarRange,
+      corBase: '#0D9488', // Teal vibrante Diamond
+      bgBase: 'bg-teal-50 hover:bg-teal-100/80',
+      borderBase: 'border-teal-300/80',
+    },
   }
 
   // Identifica a qual categoria de atividade da grade o item pertence
@@ -239,6 +270,7 @@ export default function Calendario() {
     if (item.tipo === 'folha') return 'folha'
     if (item.tipo === 'card') return 'card'
     if (item.tipo === 'marco') return 'marco'
+    if (item.tipo === 'projeto_fase') return 'projeto_fase'
     return 'evento'
   }
 
@@ -280,6 +312,8 @@ export default function Calendario() {
         return '#2563EB' // Azul
       case 'marco':
         return '#059669' // Esmeralda
+      case 'projeto_fase':
+        return '#0D9488' // Teal Fases Projeto
       default:
         return '#5B6470'
     }
@@ -424,6 +458,28 @@ export default function Calendario() {
       })
     })
 
+    // 6. Fases e Cronograma Físico de Projetos (Requisito 3 do usuário)
+    fasesProjetos.forEach((fase) => {
+      const dataRef = fase.data_fim || fase.data_inicio
+      if (!dataRef) return
+      const proj = fase.projeto ? projetoMap.get(fase.projeto) : undefined
+
+      lista.push({
+        id: `projfase_${fase.id}`,
+        titulo: `Fase do Projeto: ${fase.nome}`,
+        descricao: `Projeto: ${proj?.nome || 'Projeto'} • Progresso: ${fase.progresso || 0}% (${fase.status || 'em_andamento'})`,
+        dataHora: dataRef.split('T')[0],
+        dataHoraFim: fase.data_fim ? fase.data_fim.split('T')[0] : undefined,
+        diaInteiro: true,
+        tipo: 'projeto_fase',
+        status: fase.status === 'concluida' ? 'concluido' : 'pendente',
+        cor: fase.cor || '#0D9488',
+        projetoNome: proj?.nome,
+        projetoId: proj?.id,
+        rawItem: fase,
+      })
+    })
+
     return lista
   }, [
     eventosCalendario,
@@ -432,6 +488,7 @@ export default function Calendario() {
     colunas,
     folhaItems,
     marcosTimeline,
+    fasesProjetos,
     projetoMap,
     contatoMap,
   ])
@@ -825,6 +882,7 @@ export default function Calendario() {
                     folha: [],
                     card: [],
                     marco: [],
+                    projeto_fase: [],
                   }
 
                   itensDoDia.forEach((item) => {
@@ -840,6 +898,7 @@ export default function Calendario() {
                     'folha',
                     'card',
                     'marco',
+                    'projeto_fase',
                   ]
                   const tiposAtivos = ordemTipos.filter((t) => gruposPorTipo[t].length > 0)
 

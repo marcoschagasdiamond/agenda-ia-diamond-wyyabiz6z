@@ -22,6 +22,10 @@ import type {
   MembroEquipe,
   ConviteEquipe,
   EscopoItem,
+  ProjetoFase,
+  ProjetoEquipeMembro,
+  ProjetoInvestidor,
+  ProjetoFinanceiroLancamento,
 } from '@/types'
 
 export const diamondApi = {
@@ -67,14 +71,14 @@ export const diamondApi = {
   // Projetos
   async listProjetos(): Promise<Projeto[]> {
     return await pb.collection('projetos').getFullList<Projeto>({
-      sort: '-updated',
-      expand: 'pasta_raiz',
+      sort: '-created',
+      expand: 'pasta_raiz,cliente,responsavel',
     })
   },
 
   async getProjeto(id: string): Promise<Projeto> {
     return await pb.collection('projetos').getOne<Projeto>(id, {
-      expand: 'pasta_raiz',
+      expand: 'pasta_raiz,cliente,responsavel',
     })
   },
 
@@ -88,6 +92,123 @@ export const diamondApi = {
 
   async deleteProjeto(id: string): Promise<boolean> {
     return await pb.collection('projetos').delete(id)
+  },
+
+  // Projeto Fases
+  async listProjetoFases(projetoId?: string): Promise<ProjetoFase[]> {
+    try {
+      const filter = projetoId ? `projeto = "${projetoId}"` : ''
+      return await pb.collection('projeto_fases').getFullList<ProjetoFase>({
+        filter,
+        sort: 'ordem,created',
+        expand: 'projeto',
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async createProjetoFase(data: Partial<ProjetoFase>): Promise<ProjetoFase> {
+    return await pb.collection('projeto_fases').create<ProjetoFase>(data)
+  },
+
+  async updateProjetoFase(id: string, data: Partial<ProjetoFase>): Promise<ProjetoFase> {
+    return await pb.collection('projeto_fases').update<ProjetoFase>(id, data)
+  },
+
+  async deleteProjetoFase(id: string): Promise<boolean> {
+    return await pb.collection('projeto_fases').delete(id)
+  },
+
+  // Projeto Equipe
+  async listProjetoEquipe(projetoId?: string): Promise<ProjetoEquipeMembro[]> {
+    try {
+      const filter = projetoId ? `projeto = "${projetoId}"` : ''
+      return await pb.collection('projeto_equipe').getFullList<ProjetoEquipeMembro>({
+        filter,
+        sort: 'created',
+        expand: 'projeto,usuario',
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async createProjetoEquipeMembro(
+    data: Partial<ProjetoEquipeMembro>,
+  ): Promise<ProjetoEquipeMembro> {
+    return await pb.collection('projeto_equipe').create<ProjetoEquipeMembro>(data)
+  },
+
+  async updateProjetoEquipeMembro(
+    id: string,
+    data: Partial<ProjetoEquipeMembro>,
+  ): Promise<ProjetoEquipeMembro> {
+    return await pb.collection('projeto_equipe').update<ProjetoEquipeMembro>(id, data)
+  },
+
+  async deleteProjetoEquipeMembro(id: string): Promise<boolean> {
+    return await pb.collection('projeto_equipe').delete(id)
+  },
+
+  // Projeto Investidores
+  async listProjetoInvestidores(projetoId?: string): Promise<ProjetoInvestidor[]> {
+    try {
+      const filter = projetoId ? `projeto = "${projetoId}"` : ''
+      return await pb.collection('projeto_investidores').getFullList<ProjetoInvestidor>({
+        filter,
+        sort: '-data_aporte,created',
+        expand: 'projeto',
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async createProjetoInvestidor(data: Partial<ProjetoInvestidor>): Promise<ProjetoInvestidor> {
+    return await pb.collection('projeto_investidores').create<ProjetoInvestidor>(data)
+  },
+
+  async updateProjetoInvestidor(
+    id: string,
+    data: Partial<ProjetoInvestidor>,
+  ): Promise<ProjetoInvestidor> {
+    return await pb.collection('projeto_investidores').update<ProjetoInvestidor>(id, data)
+  },
+
+  async deleteProjetoInvestidor(id: string): Promise<boolean> {
+    return await pb.collection('projeto_investidores').delete(id)
+  },
+
+  // Projeto Financeiro
+  async listProjetoFinanceiro(projetoId?: string): Promise<ProjetoFinanceiroLancamento[]> {
+    try {
+      const filter = projetoId ? `projeto = "${projetoId}"` : ''
+      return await pb.collection('projeto_financeiro').getFullList<ProjetoFinanceiroLancamento>({
+        filter,
+        sort: '-data,created',
+        expand: 'projeto,fase',
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async createProjetoFinanceiro(
+    data: Partial<ProjetoFinanceiroLancamento>,
+  ): Promise<ProjetoFinanceiroLancamento> {
+    return await pb.collection('projeto_financeiro').create<ProjetoFinanceiroLancamento>(data)
+  },
+
+  async updateProjetoFinanceiro(
+    id: string,
+    data: Partial<ProjetoFinanceiroLancamento>,
+  ): Promise<ProjetoFinanceiroLancamento> {
+    return await pb.collection('projeto_financeiro').update<ProjetoFinanceiroLancamento>(id, data)
+  },
+
+  async deleteProjetoFinanceiro(id: string): Promise<boolean> {
+    return await pb.collection('projeto_financeiro').delete(id)
   },
 
   // Negócios

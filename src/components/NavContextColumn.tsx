@@ -932,71 +932,97 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
   }
 
   // =========================================================================
-  // 4. SEGUNDA COLUNA: PROJETOS
+  // 4. SEGUNDA COLUNA: PROJETOS (Padrão DiamondGroup)
   // =========================================================================
   const renderColunaProjetos = () => {
     return (
       <div className="flex flex-col h-full">
         <div className="p-3.5 border-b border-[#E5E1D8] flex items-center justify-between bg-white shrink-0">
           <div>
-            <h2 className="text-sm font-bold text-[#1A1D21] tracking-tight">Projetos</h2>
-            <p className="text-[10px] text-[#5B6470]">{projetos.length} frentes ativas</p>
+            <h2 className="text-sm font-bold text-[#1A1D21] tracking-tight">Projetos & Negócios</h2>
+            <p className="text-[10px] text-[#5B6470]">{projetos.length} frentes cadastradas</p>
           </div>
           <Button
             size="sm"
             onClick={() => irPara('/projetos')}
-            className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-7 px-2.5 font-medium shadow-2xs"
+            className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-7 px-2.5 font-medium shadow-2xs gap-1"
           >
-            <Plus className="w-3.5 h-3.5 mr-1" />
+            <Plus className="w-3.5 h-3.5" />
             Novo
           </Button>
         </div>
 
-        <div className="flex-1 p-2 space-y-1 overflow-y-auto">
+        <div className="flex-1 p-2 space-y-1.5 overflow-y-auto">
           <button
             onClick={() => irPara('/projetos')}
-            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold mb-1 transition-colors ${
+            className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-colors ${
               pathname === '/projetos'
                 ? 'bg-[#1A1D21] text-white'
                 : 'hover:bg-[#F4F2EE] text-[#1A1D21]'
             }`}
           >
-            <span>Todos os Projetos</span>
+            <div className="flex items-center gap-2">
+              <FolderTree className="w-3.5 h-3.5 text-[#0F766E]" />
+              <span>Painel de Todos os Projetos</span>
+            </div>
             <Badge
               variant="outline"
-              className="text-[10px] h-4 border-none bg-[#E5E1D8] text-[#5B6470]"
+              className={`text-[10px] h-4 border-none ${
+                pathname === '/projetos' ? 'bg-white/20 text-white' : 'bg-[#E5E1D8] text-[#5B6470]'
+              }`}
             >
               {projetos.length}
             </Badge>
           </button>
 
-          {projetos.map((p) => {
-            const isAtivo = pathname === `/projetos/${p.id}`
-            return (
-              <button
-                key={p.id}
-                onClick={() => irPara(`/projetos/${p.id}`)}
-                className={`w-full text-left p-2 rounded-lg border transition-all block ${
-                  isAtivo
-                    ? 'bg-[#0F766E]/10 border-[#0F766E] text-[#0F766E]'
-                    : 'bg-white border-[#E5E1D8]/80 hover:bg-[#FAFAF9] text-[#1A1D21]'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold truncate">{p.nome}</span>
-                  <Badge variant="outline" className="text-[9px] capitalize">
-                    {p.status}
-                  </Badge>
-                </div>
-                <p className="text-[11px] text-[#5B6470] truncate mt-0.5">
-                  Tipo: <span className="capitalize">{p.tipo}</span>
-                </p>
-              </button>
-            )
-          })}
+          <div className="pt-1 space-y-1">
+            <span className="text-[10px] font-bold text-[#5B6470] uppercase tracking-wider px-2 block">
+              Lista de Projetos
+            </span>
+
+            {projetos.map((p) => {
+              const isAtivo = pathname === `/projetos/${p.id}`
+              const cor = p.cor || '#0F766E'
+
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => irPara(`/projetos/${p.id}`)}
+                  className={`w-full text-left p-2.5 rounded-lg border transition-all block ${
+                    isAtivo
+                      ? 'bg-[#0F766E]/10 border-[#0F766E] text-[#0F766E] shadow-2xs'
+                      : 'bg-white border-[#E5E1D8]/80 hover:bg-[#FAFAF9] text-[#1A1D21]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: cor }}
+                    />
+                    <span className="text-xs font-bold truncate flex-1">{p.nome}</span>
+                    <Badge
+                      variant="outline"
+                      className="text-[9px] capitalize border-none bg-[#E5E1D8]/60 text-[#5B6470] px-1 py-0 shrink-0"
+                    >
+                      {p.tipo || 'geral'}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[10px] text-[#5B6470] mt-1 pl-4.5">
+                    <span>
+                      {p.orcamento_total
+                        ? `R$ ${p.orcamento_total.toLocaleString('pt-BR')}`
+                        : 'Sem orçamento'}
+                    </span>
+                    <span className="capitalize">{p.status || 'ativo'}</span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
 
           {projetos.length === 0 && (
-            <div className="text-center py-6 text-xs text-[#5B6470]">
+            <div className="text-center py-8 text-xs text-[#5B6470]">
               Nenhum projeto cadastrado.
             </div>
           )}

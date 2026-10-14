@@ -27,7 +27,7 @@ export type EventoCalendarioCategoria =
 
 export type EventoCalendarioStatus = 'pendente' | 'em_andamento' | 'concluido' | 'cancelado'
 
-export type CalendarioItemTipo = 'evento' | 'demanda' | 'card' | 'folha' | 'marco'
+export type CalendarioItemTipo = 'evento' | 'demanda' | 'card' | 'folha' | 'marco' | 'projeto_fase'
 
 export interface ItemCalendarioUnificado {
   id: string
@@ -102,10 +102,96 @@ export interface Projeto {
   status?: ProjetoStatus
   pasta_raiz?: string
   contexto_resumido?: string
+  cliente?: string
+  data_inicio?: string
+  data_fim?: string
+  orcamento_total?: number
+  cor?: string
+  responsavel?: string
   created: string
   updated: string
   expand?: {
     pasta_raiz?: Pasta
+    cliente?: Cliente
+    responsavel?: User
+  }
+}
+
+export type ProjetoFaseStatus = 'nao_iniciada' | 'em_andamento' | 'bloqueada' | 'concluida'
+
+export interface ProjetoFase {
+  id: string
+  projeto: string
+  nome: string
+  descricao?: string
+  ordem?: number
+  cor?: string
+  data_inicio?: string
+  data_fim?: string
+  progresso?: number // 0 a 100
+  status?: ProjetoFaseStatus
+  is_conclusao?: boolean
+  created: string
+  updated: string
+  expand?: {
+    projeto?: Projeto
+  }
+}
+
+export interface ProjetoEquipeMembro {
+  id: string
+  projeto: string
+  usuario?: string
+  nome?: string
+  email?: string
+  funcao?: string // coordenador, técnico, financeiro, etc.
+  nivel_acesso?: NivelAcesso
+  status?: MembroStatus
+  created: string
+  updated: string
+  expand?: {
+    projeto?: Projeto
+    usuario?: User
+  }
+}
+
+export interface ProjetoInvestidor {
+  id: string
+  projeto: string
+  nome: string
+  email?: string
+  telefone?: string
+  valor_investido?: number
+  participacao_percentual?: number
+  data_aporte?: string
+  observacoes?: string
+  created: string
+  updated: string
+  expand?: {
+    projeto?: Projeto
+  }
+}
+
+export type ProjetoFinanceiroTipo = 'entrada' | 'desembolso'
+export type ProjetoFinanceiroStatus = 'previsto' | 'realizado' | 'cancelado'
+
+export interface ProjetoFinanceiroLancamento {
+  id: string
+  projeto: string
+  tipo: ProjetoFinanceiroTipo
+  valor: number
+  data: string
+  descricao: string
+  fase?: string
+  categoria_custo?: string
+  status?: ProjetoFinanceiroStatus
+  comprovante_ref?: string
+  observacoes?: string
+  created: string
+  updated: string
+  expand?: {
+    projeto?: Projeto
+    fase?: ProjetoFase
   }
 }
 
