@@ -27,7 +27,15 @@ export type EventoCalendarioCategoria =
 
 export type EventoCalendarioStatus = 'pendente' | 'em_andamento' | 'concluido' | 'cancelado'
 
-export type CalendarioItemTipo = 'evento' | 'demanda' | 'card' | 'folha' | 'marco' | 'projeto_fase'
+export type CalendarioItemTipo =
+  | 'evento'
+  | 'demanda'
+  | 'card'
+  | 'folha'
+  | 'marco'
+  | 'projeto_fase'
+  | 'projeto_inicio'
+  | 'projeto_fim'
 
 export interface ItemCalendarioUnificado {
   id: string

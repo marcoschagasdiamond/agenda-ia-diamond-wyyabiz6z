@@ -46,6 +46,8 @@ import {
   ListChecks,
   Users,
   FileText,
+  Rocket,
+  CheckCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -187,6 +189,8 @@ export default function Calendario() {
     | 'card'
     | 'marco'
     | 'projeto_fase'
+    | 'projeto_inicio'
+    | 'projeto_fim'
 
   const TIPOS_ATIVIDADE_CONFIG: Record<
     TipoAtividadeGrade,
@@ -255,6 +259,22 @@ export default function Calendario() {
       bgBase: 'bg-teal-50 hover:bg-teal-100/80',
       borderBase: 'border-teal-300/80',
     },
+    projeto_inicio: {
+      labelSingular: 'início de projeto',
+      labelPlural: 'inícios de projetos',
+      icone: Rocket,
+      corBase: '#2563EB', // Azul Diamond
+      bgBase: 'bg-blue-50 hover:bg-blue-100/80',
+      borderBase: 'border-blue-300/80',
+    },
+    projeto_fim: {
+      labelSingular: 'conclusão de projeto',
+      labelPlural: 'conclusões de projetos',
+      icone: CheckCircle,
+      corBase: '#4338CA', // Índigo elegante Diamond
+      bgBase: 'bg-indigo-50 hover:bg-indigo-100/80',
+      borderBase: 'border-indigo-300/80',
+    },
   }
 
   // Identifica a qual categoria de atividade da grade o item pertence
@@ -271,6 +291,8 @@ export default function Calendario() {
     if (item.tipo === 'card') return 'card'
     if (item.tipo === 'marco') return 'marco'
     if (item.tipo === 'projeto_fase') return 'projeto_fase'
+    if (item.tipo === 'projeto_inicio') return 'projeto_inicio'
+    if (item.tipo === 'projeto_fim') return 'projeto_fim'
     return 'evento'
   }
 
@@ -314,6 +336,10 @@ export default function Calendario() {
         return '#059669' // Esmeralda
       case 'projeto_fase':
         return '#0D9488' // Teal Fases Projeto
+      case 'projeto_inicio':
+        return '#2563EB' // Azul Diamond
+      case 'projeto_fim':
+        return '#4338CA' // Índigo Diamond
       default:
         return '#5B6470'
     }
@@ -480,6 +506,50 @@ export default function Calendario() {
       })
     })
 
+    // 7. Início e Fim de Projetos (cadastro do projeto / wizard ModalNovoProjeto)
+    projetos.forEach((proj) => {
+      // 7.1 Início do Projeto
+      if (proj.data_inicio) {
+        const diaInicio = proj.data_inicio.split('T')[0].split(' ')[0]
+        if (diaInicio) {
+          lista.push({
+            id: `proj_ini_${proj.id}`,
+            titulo: `Início do Projeto: ${proj.nome}`,
+            descricao: proj.descricao || `Início oficial do projeto ${proj.nome}`,
+            dataHora: diaInicio,
+            dataHoraFim: proj.data_fim ? proj.data_fim.split('T')[0].split(' ')[0] : undefined,
+            diaInteiro: true,
+            tipo: 'projeto_inicio',
+            status: proj.status === 'concluido' ? 'concluido' : 'pendente',
+            cor: '#2563EB',
+            projetoNome: proj.nome,
+            projetoId: proj.id,
+            rawItem: proj,
+          })
+        }
+      }
+
+      // 7.2 Fim do Projeto
+      if (proj.data_fim) {
+        const diaFim = proj.data_fim.split('T')[0].split(' ')[0]
+        if (diaFim) {
+          lista.push({
+            id: `proj_fim_${proj.id}`,
+            titulo: `Fim do Projeto: ${proj.nome}`,
+            descricao: proj.descricao || `Conclusão / entrega prevista do projeto ${proj.nome}`,
+            dataHora: diaFim,
+            diaInteiro: true,
+            tipo: 'projeto_fim',
+            status: proj.status === 'concluido' ? 'concluido' : 'pendente',
+            cor: '#4338CA',
+            projetoNome: proj.nome,
+            projetoId: proj.id,
+            rawItem: proj,
+          })
+        }
+      }
+    })
+
     return lista
   }, [
     eventosCalendario,
@@ -489,6 +559,7 @@ export default function Calendario() {
     folhaItems,
     marcosTimeline,
     fasesProjetos,
+    projetos,
     projetoMap,
     contatoMap,
   ])
@@ -883,6 +954,8 @@ export default function Calendario() {
                     card: [],
                     marco: [],
                     projeto_fase: [],
+                    projeto_inicio: [],
+                    projeto_fim: [],
                   }
 
                   itensDoDia.forEach((item) => {
@@ -899,6 +972,8 @@ export default function Calendario() {
                     'card',
                     'marco',
                     'projeto_fase',
+                    'projeto_inicio',
+                    'projeto_fim',
                   ]
                   const tiposAtivos = ordemTipos.filter((t) => gruposPorTipo[t].length > 0)
 
@@ -1067,7 +1142,13 @@ export default function Calendario() {
                       >
                         <div className="flex items-center justify-between gap-1 text-[10px] text-[#5B6470] mb-0.5">
                           <span className="font-semibold uppercase text-[9px] text-[#0F766E]">
-                            {item.tipo}
+                            {item.tipo === 'projeto_inicio'
+                              ? 'Início do Projeto'
+                              : item.tipo === 'projeto_fim'
+                                ? 'Fim do Projeto'
+                                : item.tipo === 'projeto_fase'
+                                  ? 'Fase do Projeto'
+                                  : item.tipo}
                           </span>
                           {horaFormatada && <span>{horaFormatada}</span>}
                         </div>
@@ -1193,7 +1274,13 @@ export default function Calendario() {
                                 variant="outline"
                                 className="text-[10px] uppercase font-bold px-1.5 py-0 border-none bg-[#E5E1D8]/60 text-[#1A1D21]"
                               >
-                                {item.tipo}
+                                {item.tipo === 'projeto_inicio'
+                                  ? 'Início do Projeto'
+                                  : item.tipo === 'projeto_fim'
+                                    ? 'Fim do Projeto'
+                                    : item.tipo === 'projeto_fase'
+                                      ? 'Fase do Projeto'
+                                      : item.tipo}
                               </Badge>
                               {item.status && (
                                 <Badge
@@ -1478,7 +1565,13 @@ export default function Calendario() {
                       ),
                     }}
                   >
-                    {itemSelecionado.tipo}
+                    {itemSelecionado.tipo === 'projeto_inicio'
+                      ? 'Início do Projeto'
+                      : itemSelecionado.tipo === 'projeto_fim'
+                        ? 'Fim do Projeto'
+                        : itemSelecionado.tipo === 'projeto_fase'
+                          ? 'Fase do Projeto'
+                          : itemSelecionado.tipo}
                   </Badge>
                   {itemSelecionado.status && (
                     <Badge variant="secondary" className="text-[10px] uppercase">
@@ -1610,7 +1703,13 @@ export default function Calendario() {
                         navigate('/folha')
                       } else if (itemSelecionado.tipo === 'demanda') {
                         navigate('/listas')
-                      } else if (itemSelecionado.tipo === 'marco' && itemSelecionado.projetoId) {
+                      } else if (
+                        (itemSelecionado.tipo === 'marco' ||
+                          itemSelecionado.tipo === 'projeto_inicio' ||
+                          itemSelecionado.tipo === 'projeto_fim' ||
+                          itemSelecionado.tipo === 'projeto_fase') &&
+                        itemSelecionado.projetoId
+                      ) {
                         navigate(`/projetos/${itemSelecionado.projetoId}`)
                       } else {
                         navigate('/projetos')
@@ -1660,7 +1759,17 @@ export default function Calendario() {
           {(() => {
             const todosItensDia = itensPorDia.get(diaVisualizado) || []
             const tiposPresentes: TipoAtividadeGrade[] = (
-              ['evento', 'reuniao', 'demanda', 'folha', 'card', 'marco'] as TipoAtividadeGrade[]
+              [
+                'evento',
+                'reuniao',
+                'demanda',
+                'folha',
+                'card',
+                'marco',
+                'projeto_fase',
+                'projeto_inicio',
+                'projeto_fim',
+              ] as TipoAtividadeGrade[]
             ).filter((t) => todosItensDia.some((item) => getTipoAtividadeGrade(item) === t))
 
             if (tiposPresentes.length <= 1) return null
@@ -1749,7 +1858,15 @@ export default function Calendario() {
                     <div className="flex items-center justify-between text-[10px] text-[#5B6470]">
                       <span className="uppercase font-bold text-[#0F766E] flex items-center gap-1">
                         <IconeItem className="w-3 h-3" />
-                        {tipoGrade === 'reuniao' ? 'Reunião' : item.tipo}
+                        {tipoGrade === 'reuniao'
+                          ? 'Reunião'
+                          : tipoGrade === 'projeto_inicio'
+                            ? 'Início do Projeto'
+                            : tipoGrade === 'projeto_fim'
+                              ? 'Fim do Projeto'
+                              : tipoGrade === 'projeto_fase'
+                                ? 'Fase do Projeto'
+                                : item.tipo}
                       </span>
                       {horaFormatada && <span>{horaFormatada}</span>}
                     </div>
