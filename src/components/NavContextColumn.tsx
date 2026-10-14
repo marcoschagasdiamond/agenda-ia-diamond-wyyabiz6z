@@ -334,7 +334,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
                       )
                     })}
 
-                    {cat.fluxos.length === 0 && (
+                    {cat.fluxos.length === 0 ? (
                       <div className="py-1 px-2 text-[11px] text-[#5B6470]/70 italic flex items-center justify-between">
                         <span>Sem fluxos</span>
                         <button
@@ -344,9 +344,24 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
                             setModalNovoFluxoCatId(cat.id)
                             setModalNovoFluxoOpen(true)
                           }}
-                          className="text-[#0F766E] hover:underline text-[10px]"
+                          className="text-[#0F766E] hover:underline text-[10px] font-semibold"
                         >
-                          + Adicionar
+                          + Criar Fluxo
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="pt-1 pb-0.5 px-2 flex justify-end border-t border-[#E5E1D8]/40">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (pathname !== '/fluxo') irPara('/fluxo')
+                            setModalNovoFluxoCatId(cat.id)
+                            setModalNovoFluxoOpen(true)
+                          }}
+                          className="text-[11px] text-[#0F766E] hover:text-[#0D5C56] font-semibold hover:underline flex items-center gap-1 py-0.5"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>Criar Fluxo</span>
                         </button>
                       </div>
                     )}

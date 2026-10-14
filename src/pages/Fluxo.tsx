@@ -697,10 +697,11 @@ export default function Fluxo() {
         const novaCat = await diamondApi.createCategoriaFluxo(payload)
         toast({ title: `Categoria "${novaCat.nome}" criada!` })
         setCategoriaAtivaId(novaCat.id)
+        setFluxoCategoriaId(novaCat.id)
         setFluxoAtivoChave('all')
       }
       setModalCategoriaOpen(false)
-      await carregarDados()
+      await Promise.all([recarregarFluxoGlobal().catch(() => {}), carregarDados().catch(() => {})])
     } catch (err) {
       toast({
         title: 'Erro ao salvar categoria',
@@ -1254,44 +1255,77 @@ export default function Fluxo() {
             )}
           </Button>
 
-          {/* Título das fases com ponto de cor ao lado — independente do nome do fluxo e editável inline */}
-          <div className="flex items-center gap-2.5 min-w-0">
+          {/* Nome do Fluxo em destaque + Título das Fases independente */}
+          <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
             <span
               className="w-3 h-3 rounded-full shrink-0 shadow-2xs"
               style={{ backgroundColor: corFluxoDestaque }}
             />
-            {editandoTituloFases ? (
-              <Input
-                autoFocus
-                value={valorTituloFases}
-                placeholder="Nome das fases"
-                onChange={(e) => setValorTituloFases(e.target.value)}
-                onBlur={handleSalvarTituloFasesInline}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    handleSalvarTituloFasesInline()
-                  } else if (e.key === 'Escape') {
-                    e.preventDefault()
-                    handleCancelarEdicaoTituloFases()
-                  }
-                }}
-                className="h-8 text-base sm:text-lg md:text-xl font-bold tracking-tight px-2 py-0 bg-white border-[#0F766E] text-[#1A1D21] w-[200px] sm:w-[280px]"
-              />
-            ) : (
+
+            {/* NOME DO FLUXO (ou da categoria / contexto geral) em destaque principal */}
+            <div className="flex items-center gap-2 min-w-0">
               <h1
-                onClick={handleIniciarEdicaoTituloFases}
-                title="Clique para editar o nome das fases"
-                className={`text-base sm:text-lg md:text-xl font-bold truncate tracking-tight cursor-pointer hover:text-[#0F766E] transition-colors flex items-center gap-1.5 group/header ${
-                  entidadeFasesAtiva?.item?.titulo_fases?.trim()
-                    ? 'text-[#1A1D21]'
-                    : 'text-[#5B6470]/80 italic font-medium'
-                }`}
+                className="text-base sm:text-lg md:text-xl font-bold text-[#1A1D21] truncate tracking-tight"
+                title={
+                  fluxoAtivo
+                    ? `Fluxo: ${fluxoAtivo.nome || fluxoAtivo.titulo}`
+                    : categoriaAtiva
+                      ? `Categoria: ${categoriaAtiva.nome}`
+                      : 'Todos os Fluxos'
+                }
               >
-                <span>{tituloFasesExibicao}</span>
-                <Edit2 className="w-3.5 h-3.5 text-[#5B6470]/40 group-hover/header:text-[#0F766E] opacity-0 group-hover/header:opacity-100 transition-opacity shrink-0" />
+                {fluxoAtivo
+                  ? fluxoAtivo.nome || fluxoAtivo.titulo
+                  : categoriaAtiva
+                    ? categoriaAtiva.nome
+                    : fluxos[0]?.nome || fluxos[0]?.titulo || 'Fluxo Kanban'}
               </h1>
-            )}
+
+              {/* Separador visual elegante */}
+              <span className="text-[#CBD5E1] font-light hidden sm:inline">•</span>
+
+              {/* Título das fases com edição inline mantida (nunca "Fluxo sem nome", padrão "Nome das fases") */}
+              <div className="flex items-center gap-1 min-w-0">
+                {editandoTituloFases ? (
+                  <Input
+                    autoFocus
+                    value={valorTituloFases}
+                    placeholder="Nome das fases"
+                    onChange={(e) => setValorTituloFases(e.target.value)}
+                    onBlur={handleSalvarTituloFasesInline}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        handleSalvarTituloFasesInline()
+                      } else if (e.key === 'Escape') {
+                        e.preventDefault()
+                        handleCancelarEdicaoTituloFases()
+                      }
+                    }}
+                    className="h-7 text-xs sm:text-sm font-semibold tracking-tight px-2 py-0 bg-white border-[#0F766E] text-[#1A1D21] w-[160px] sm:w-[220px]"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleIniciarEdicaoTituloFases}
+                    title="Clique para editar o nome das fases"
+                    className="text-xs sm:text-sm font-medium text-[#5B6470] hover:text-[#0F766E] truncate flex items-center gap-1 group/header transition-colors px-1.5 py-0.5 rounded hover:bg-[#F4F2EE]"
+                  >
+                    <span
+                      className={`truncate ${
+                        entidadeFasesAtiva?.item?.titulo_fases?.trim()
+                          ? 'text-[#5B6470]'
+                          : 'italic text-[#5B6470]/70'
+                      }`}
+                    >
+                      {tituloFasesExibicao}
+                    </span>
+                    <Edit2 className="w-3 h-3 text-[#5B6470]/40 group-hover/header:text-[#0F766E] opacity-0 group-hover/header:opacity-100 transition-opacity shrink-0" />
+                  </button>
+                )}
+              </div>
+            </div>
+
             <Badge
               variant="outline"
               className="hidden sm:inline-flex text-[10px] bg-[#F4F2EE] text-[#5B6470] border-[#E5E1D8] font-semibold px-2 py-0.5"
@@ -1817,15 +1851,26 @@ export default function Fluxo() {
                           )
                         })}
 
-                        {cat.fluxos.length === 0 && (
+                        {cat.fluxos.length === 0 ? (
                           <div className="py-1 px-2 text-[11px] text-[#5B6470]/70 italic flex items-center justify-between">
                             <span>Sem fluxos</span>
                             <button
                               type="button"
                               onClick={() => abrirModalNovoFluxo(cat.id)}
-                              className="text-[#0F766E] hover:underline text-[10px]"
+                              className="text-[#0F766E] hover:underline text-[10px] font-semibold"
                             >
-                              + Adicionar
+                              + Criar Fluxo
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="pt-1 pb-0.5 px-2 flex justify-end border-t border-[#E5E1D8]/40">
+                            <button
+                              type="button"
+                              onClick={() => abrirModalNovoFluxo(cat.id)}
+                              className="text-[11px] text-[#0F766E] hover:text-[#0D5C56] font-semibold hover:underline flex items-center gap-1 py-0.5"
+                            >
+                              <Plus className="w-3 h-3" />
+                              <span>Criar Fluxo</span>
                             </button>
                           </div>
                         )}
@@ -2881,6 +2926,46 @@ export default function Fluxo() {
               </span>
             </div>
 
+            {/* SELEÇÃO DA CATEGORIA (disponível tanto na criação quanto na edição) */}
+            <div className="space-y-1.5 p-3 rounded-xl bg-[#FAFAF9] border border-[#E5E1D8]">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-[#1A1D21] flex items-center gap-1.5">
+                  <FolderTree className="w-3.5 h-3.5 text-[#0F766E]" />
+                  <span>Categoria do Fluxo *</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => abrirModalNovaCategoria()}
+                  className="text-[11px] font-semibold text-[#0F766E] hover:underline flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" />
+                  Nova Categoria
+                </button>
+              </div>
+
+              <Select value={fluxoCategoriaId} onValueChange={setFluxoCategoriaId}>
+                <SelectTrigger className="text-xs bg-white border-[#E5E1D8]">
+                  <SelectValue placeholder="Selecione a categoria para este fluxo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categorias.map((c) => (
+                    <SelectItem key={c.id} value={c.id} className="text-xs">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: c.cor || '#0F766E' }}
+                        />
+                        <span>{c.nome}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-[10px] text-[#5B6470] block">
+                O fluxo ficará organizado dentro desta categoria na árvore lateral.
+              </span>
+            </div>
+
             {/* SELEÇÃO DE MODELO PRONTO DE FASES (apenas ao criar novo fluxo) */}
             {!editingFluxo && (
               <div className="space-y-2 p-3 rounded-xl bg-[#F4F2EE]/50 border border-[#E5E1D8]">
@@ -2946,26 +3031,6 @@ export default function Fluxo() {
                 Título exibido no cabeçalho do board, independente do nome do fluxo.
               </span>
             </div>
-
-            {editingFluxo && (
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#5B6470]">
-                  Categoria Pertencente
-                </label>
-                <Select value={fluxoCategoriaId} onValueChange={setFluxoCategoriaId}>
-                  <SelectTrigger className="text-xs border-[#E5E1D8]">
-                    <SelectValue placeholder="Selecione a Categoria" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categorias.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
 
             <div className="flex items-center justify-between gap-3">
               <div className="space-y-1 flex-1">
