@@ -166,51 +166,63 @@ export default function ConstrutorFormularios({ onRecarregarGlobal }: Construtor
     setModalBuilderOpen(true)
   }
 
-  // Estado para Edição Detalhada de um Campo específico
+  // Estado para Criação / Edição Detalhada de um Campo específico
   const [modalEditarCampoOpen, setModalEditarCampoOpen] = useState(false)
   const [campoEmEdicao, setCampoEmEdicao] = useState<FormCampoConfig | null>(null)
+  const [isNovoCampo, setIsNovoCampo] = useState(false)
   const [novaOpcaoTexto, setNovaOpcaoTexto] = useState('')
 
-  // Gerenciador de campos do formulário
-  const adicionarCampo = (tipo: FormCampoTipo = 'texto') => {
-    const labelsPorTipo: Record<FormCampoTipo, string> = {
-      texto: 'Novo Campo de Texto',
-      texto_longo: 'Nova Pergunta Aberta',
-      email: 'E-mail de Contato',
-      telefone: 'Telefone / WhatsApp',
-      data: 'Selecione a Data',
-      escolha_unica: 'Selecione uma opção',
-      escolha_multipla: 'Marque uma ou mais opções',
-      dropdown: 'Estado Conjugal / Selecione uma opção',
-      sim_nao: 'Você concorda com os termos?',
-      numero: 'Informe a Quantidade ou Valor',
-      avaliacao: 'Qual o seu nível de satisfação?',
-      titulo_secao: 'Seção: Informações Importantes',
-    }
+  const labelsPadraoPorTipo: Record<FormCampoTipo, string> = {
+    texto: 'Novo Campo de Texto',
+    texto_longo: 'Nova Pergunta Aberta',
+    email: 'E-mail de Contato',
+    telefone: 'Telefone / WhatsApp',
+    data: 'Selecione a Data',
+    escolha_unica: 'Selecione uma opção',
+    escolha_multipla: 'Marque uma ou mais opções',
+    dropdown: 'Estado Conjugal / Selecione uma opção',
+    sim_nao: 'Você concorda com os termos?',
+    numero: 'Informe a Quantidade ou Valor',
+    avaliacao: 'Qual o seu nível de satisfação?',
+    titulo_secao: 'Seção: Informações Importantes',
+  }
 
-    const novoCampo: FormCampoConfig = {
-      id: `c_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      label: labelsPorTipo[tipo],
-      tipo,
-      obrigatorio: tipo === 'titulo_secao' ? false : false,
-      placeholder:
-        tipo === 'dropdown'
-          ? 'Selecione...'
-          : tipo === 'numero'
-            ? '0'
-            : tipo === 'titulo_secao'
-              ? 'Texto explicativo para esta seção...'
-              : '',
-      opcoes:
-        tipo === 'dropdown'
-          ? ['Solteiro(a)', 'Casado(a)', 'União Estável', 'Divorciado(a)', 'Viúvo(a)']
-          : tipo === 'escolha_unica' || tipo === 'escolha_multipla'
-            ? ['Opção 1', 'Opção 2', 'Opção 3']
-            : undefined,
-      moeda: false,
-      prefixoMoeda: 'R$',
-    }
+  const gerarNovoCampo = (tipo: FormCampoTipo = 'texto'): FormCampoConfig => ({
+    id: `c_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    label: labelsPadraoPorTipo[tipo],
+    tipo,
+    obrigatorio: false,
+    placeholder:
+      tipo === 'dropdown'
+        ? 'Selecione...'
+        : tipo === 'numero'
+          ? '0'
+          : tipo === 'titulo_secao'
+            ? 'Texto explicativo para esta seção...'
+            : '',
+    opcoes:
+      tipo === 'dropdown'
+        ? ['Solteiro(a)', 'Casado(a)', 'União Estável', 'Divorciado(a)', 'Viúvo(a)']
+        : tipo === 'escolha_unica' || tipo === 'escolha_multipla'
+          ? ['Opção 1', 'Opção 2', 'Opção 3']
+          : undefined,
+    moeda: false,
+    prefixoMoeda: 'R$',
+  })
+
+  // Gerenciador de campos do formulário (inserção rápida no final)
+  const adicionarCampo = (tipo: FormCampoTipo = 'texto') => {
+    const novoCampo = gerarNovoCampo(tipo)
     setCampos([...campos, novoCampo])
+  }
+
+  // Abertura do fluxo de criação de nova pergunta via modal completo
+  const abrirNovaPergunta = (tipo: FormCampoTipo = 'texto') => {
+    const novoCampo = gerarNovoCampo(tipo)
+    setIsNovoCampo(true)
+    setCampoEmEdicao({ ...novoCampo, opcoes: novoCampo.opcoes ? [...novoCampo.opcoes] : [] })
+    setNovaOpcaoTexto('')
+    setModalEditarCampoOpen(true)
   }
 
   const atualizarCampo = (id: string, updates: Partial<FormCampoConfig>) => {
@@ -239,6 +251,7 @@ export default function ConstrutorFormularios({ onRecarregarGlobal }: Construtor
   }
 
   const abrirEditorDeCampo = (campo: FormCampoConfig) => {
+    setIsNovoCampo(false)
     setCampoEmEdicao({ ...campo, opcoes: campo.opcoes ? [...campo.opcoes] : [] })
     setNovaOpcaoTexto('')
     setModalEditarCampoOpen(true)
@@ -250,10 +263,18 @@ export default function ConstrutorFormularios({ onRecarregarGlobal }: Construtor
       toast({ title: 'A pergunta / título não pode ficar em branco', variant: 'destructive' })
       return
     }
-    atualizarCampo(campoEmEdicao.id, campoEmEdicao)
+
+    if (isNovoCampo) {
+      setCampos([...campos, campoEmEdicao])
+      toast({ title: 'Pergunta adicionada com sucesso!' })
+    } else {
+      atualizarCampo(campoEmEdicao.id, campoEmEdicao)
+      toast({ title: 'Pergunta atualizada com sucesso!' })
+    }
+
     setModalEditarCampoOpen(false)
     setCampoEmEdicao(null)
-    toast({ title: 'Pergunta atualizada com sucesso!' })
+    setIsNovoCampo(false)
   }
 
   // Salvar formulário
@@ -794,16 +815,34 @@ export default function ConstrutorFormularios({ onRecarregarGlobal }: Construtor
                     Perguntas e Campos do Formulário ({campos.length})
                   </span>
                   <span className="text-[11px] text-[#5B6470]">
-                    Clique em "Editar" em qualquer pergunta para alterar tipo, opções e
-                    configurações
+                    Configure perguntas, tipos, opções e regras de preenchimento
                   </span>
                 </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => abrirNovaPergunta('texto')}
+                  className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs gap-1.5 h-8 shrink-0 font-semibold shadow-2xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Adicionar Pergunta</span>
+                </Button>
               </div>
 
               {/* Botões rápidos de inserção de perguntas */}
               <div className="p-2.5 bg-[#FAFAF9] border border-[#E5E1D8] rounded-xl mb-3 space-y-2">
-                <div className="text-[10px] font-bold text-[#5B6470] uppercase tracking-wider">
-                  + Adicionar Nova Pergunta por Tipo:
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-[#5B6470] uppercase tracking-wider">
+                    + Inserção Rápida por Tipo:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => abrirNovaPergunta('texto')}
+                    className="text-[11px] text-[#0F766E] hover:underline font-semibold flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Personalizar nova pergunta completa</span>
+                  </button>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
                   <Button
@@ -1137,11 +1176,36 @@ export default function ConstrutorFormularios({ onRecarregarGlobal }: Construtor
                 })}
 
                 {campos.length === 0 && (
-                  <div className="p-8 text-center text-xs text-[#5B6470] bg-[#FAFAF9] border border-dashed border-[#E5E1D8] rounded-xl">
-                    Nenhuma pergunta cadastrada. Use os botões coloridos acima para adicionar
-                    Dropdown (como Estado Conjugal), Sim/Não, Número, Avaliação, Texto ou Seções.
+                  <div className="p-8 text-center text-xs text-[#5B6470] bg-[#FAFAF9] border border-dashed border-[#E5E1D8] rounded-xl space-y-3">
+                    <p>
+                      Nenhuma pergunta cadastrada ainda. Clique no botão abaixo ou use os atalhos
+                      acima para criar a primeira pergunta do formulário.
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => abrirNovaPergunta('texto')}
+                      className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs gap-1.5 font-semibold"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Adicionar Primeira Pergunta</span>
+                    </Button>
                   </div>
                 )}
+
+                {/* Botão de Destaque no Final da Lista de Perguntas */}
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => abrirNovaPergunta('texto')}
+                    className="w-full flex items-center justify-center gap-2 py-3 px-4 border-2 border-dashed border-[#0F766E]/40 hover:border-[#0F766E] rounded-xl bg-[#0F766E]/5 hover:bg-[#0F766E]/10 text-[#0F766E] font-semibold text-xs transition-all cursor-pointer shadow-2xs group"
+                  >
+                    <div className="w-5 h-5 rounded-full bg-[#0F766E] text-white flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Plus className="w-3.5 h-3.5" />
+                    </div>
+                    <span>Adicionar Pergunta</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1168,19 +1232,31 @@ export default function ConstrutorFormularios({ onRecarregarGlobal }: Construtor
         </DialogContent>
       </Dialog>
 
-      {/* Modal de Edição Completa da Pergunta / Campo */}
+      {/* Modal de Criação / Edição Completa da Pergunta / Campo */}
       <Dialog open={modalEditarCampoOpen} onOpenChange={setModalEditarCampoOpen}>
         <DialogContent className="max-w-xl max-h-[88vh] overflow-y-auto bg-white border-[#E5E1D8]">
           <DialogHeader>
             <DialogTitle className="text-sm font-bold text-[#1A1D21] flex items-center justify-between pr-4">
               <span className="flex items-center gap-2">
-                <Pencil className="w-4 h-4 text-[#0F766E]" />
-                Editar Pergunta / Campo
+                {isNovoCampo ? (
+                  <Plus className="w-4 h-4 text-[#0F766E]" />
+                ) : (
+                  <Pencil className="w-4 h-4 text-[#0F766E]" />
+                )}
+                {isNovoCampo ? 'Adicionar Nova Pergunta / Campo' : 'Editar Pergunta / Campo'}
               </span>
-              {campoEmEdicao && (
+              {campoEmEdicao && !isNovoCampo && (
                 <span className="text-[10px] font-mono text-[#5B6470] bg-[#FAFAF9] px-2 py-0.5 rounded border border-[#E5E1D8]">
                   id: {campoEmEdicao.id}
                 </span>
+              )}
+              {isNovoCampo && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] bg-emerald-50 text-emerald-800 border-emerald-200"
+                >
+                  Nova Pergunta
+                </Badge>
               )}
             </DialogTitle>
           </DialogHeader>
@@ -1462,6 +1538,7 @@ export default function ConstrutorFormularios({ onRecarregarGlobal }: Construtor
               onClick={() => {
                 setModalEditarCampoOpen(false)
                 setCampoEmEdicao(null)
+                setIsNovoCampo(false)
               }}
               className="text-xs border-[#E5E1D8]"
             >
@@ -1471,10 +1548,10 @@ export default function ConstrutorFormularios({ onRecarregarGlobal }: Construtor
               type="button"
               size="sm"
               onClick={salvarCampoEdicao}
-              className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs gap-1.5"
+              className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs gap-1.5 font-semibold"
             >
               <Check className="w-3.5 h-3.5" />
-              <span>Salvar Alterações na Pergunta</span>
+              <span>{isNovoCampo ? 'Adicionar Pergunta' : 'Salvar Alterações na Pergunta'}</span>
             </Button>
           </DialogFooter>
         </DialogContent>
