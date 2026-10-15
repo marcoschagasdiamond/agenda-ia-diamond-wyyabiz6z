@@ -144,7 +144,7 @@ export default function Config() {
               Diamond Executive
             </Badge>
             <Badge variant="outline" className="text-[10px] text-[#5B6470] border-[#E5E1D8]">
-              v0.0.33
+              v0.0.36
             </Badge>
           </div>
           <p className="text-xs text-[#5B6470] mt-1">

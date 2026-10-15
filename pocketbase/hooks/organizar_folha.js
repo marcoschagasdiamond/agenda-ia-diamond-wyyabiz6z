@@ -63,9 +63,10 @@ routerAdd(
           const cont = f.getString('contato') ? `[ContatoID: ${f.getString('contato')}]` : ''
           const flx = f.getString('fluxo') ? `[Fluxo: ${f.getString('fluxo')}]` : ''
           const time = f.getString('timeline') ? `[Timeline: ${f.getString('timeline')}]` : ''
+          const isReuniao = f.getBool('is_reuniao') ? '[REUNIÃO GRAVADA]' : ''
           const orig = f.getString('tipo_origem') ? `[Origem: ${f.getString('tipo_origem')}]` : ''
           const dh = dataHora ? `[Data e Hora: ${dataHora}]` : ''
-          return `Assunto ${num}. [ID: ${f.id}] ${dh} ${orig} ${proj} ${cont} ${flx} ${time}\nConteúdo: ${f.getString('registro')}`
+          return `Assunto ${num}. [ID: ${f.id}] ${isReuniao} ${dh} ${orig} ${proj} ${cont} ${flx} ${time}\nConteúdo: ${f.getString('registro')}`
         })
         .join('\n\n')
 

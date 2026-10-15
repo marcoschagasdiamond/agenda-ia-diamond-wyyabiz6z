@@ -37,7 +37,12 @@ import {
   CheckSquare,
   ListPlus,
   AlertCircle,
+  Mic,
+  Volume2,
+  CalendarCheck,
+  CheckCircle,
 } from 'lucide-react'
+import { GravadorReuniao } from '@/components/folha/GravadorReuniao'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
@@ -167,6 +172,9 @@ export default function Folha() {
   const [novoTimelineDescricao, setNovoTimelineDescricao] = useState('')
   const [criandoTimeline, setCriandoTimeline] = useState(false)
 
+  // Aba ativa de captura: 'assuntos' (texto livre multi-assunto) ou 'gravador' (gravador de reuniões)
+  const [modoCaptura, setModoCaptura] = useState<'assuntos' | 'gravador'>('assuntos')
+
   // Lista de assuntos múltiplos em elaboração na sessão, persistida no localStorage
   const [assuntos, setAssuntos] = useState<ItemRascunhoAssunto[]>(() => carregarRascunhoSalvo())
 
@@ -193,6 +201,10 @@ export default function Folha() {
   const [demandaContato, setDemandaContato] = useState('none')
   const [demandaTimeline, setDemandaTimeline] = useState('')
   const [criandoDemanda, setCriandoDemanda] = useState(false)
+
+  // Modal de Detalhes da Reunião Gravada
+  const [modalReuniaoDetalhesOpen, setModalReuniaoDetalhesOpen] = useState(false)
+  const [reuniaoSelecionada, setReuniaoSelecionada] = useState<FolhaDia | null>(null)
 
   // Modal de Organizar com IA
   const [organizando, setOrganizando] = useState(false)
@@ -924,7 +936,10 @@ export default function Folha() {
   const pendentes = folhaItems.filter((item) => item.status === 'pendente')
   const processados = folhaItems.filter((item) => item.status === 'processado')
 
-  const getOrigemIcon = (tipo?: OrigemTipo) => {
+  const getOrigemIcon = (tipo?: OrigemTipo, isReuniao?: boolean) => {
+    if (isReuniao) {
+      return <Mic className="w-3.5 h-3.5 text-red-600" />
+    }
     switch (tipo) {
       case 'whatsapp':
         return <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
@@ -935,6 +950,18 @@ export default function Folha() {
       default:
         return <PhoneCall className="w-3.5 h-3.5 text-amber-600" />
     }
+  }
+
+  const formatarSegundos = (seg?: number) => {
+    if (!seg || seg <= 0) return '00:00'
+    const mins = Math.floor(seg / 60)
+    const secs = seg % 60
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
+
+  const handleAbrirDetalhesReuniao = (item: FolhaDia) => {
+    setReuniaoSelecionada(item)
+    setModalReuniaoDetalhesOpen(true)
   }
 
   const getFluxoBadge = (fluxoChave?: string) => {
@@ -1019,462 +1046,534 @@ export default function Folha() {
         </div>
       </div>
 
-      {/* Formulário de Múltiplos Assuntos da Folha */}
-      <Card className="border-[#E5E1D8] bg-white shadow-xs">
-        <CardHeader className="pb-3 border-b border-[#E5E1D8]/60">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold text-[#1A1D21] flex items-center gap-2">
-              <FileEdit className="w-4 h-4 text-[#0F766E]" />
-              Folha do Dia: Lançamento de Assuntos por Área
-            </CardTitle>
-            <span className="text-xs font-medium text-[#0F766E] bg-[#0F766E]/10 px-2.5 py-1 rounded-full">
-              {assuntos.length} {assuntos.length === 1 ? 'assunto' : 'assuntos'} na folha
-            </span>
-          </div>
-          <CardDescription className="text-xs text-[#5B6470]">
-            Escreva como vier: ligações, conversas, prazos. A agenda separa por negócio, pessoa e
-            tarefa, e você confirma.
-          </CardDescription>
-        </CardHeader>
+      {/* Seletor de Modo de Captura: Texto Multi-Assuntos vs Gravador de Reuniões */}
+      <div className="flex items-center gap-2 border-b border-[#E5E1D8] pb-1">
+        <button
+          type="button"
+          onClick={() => setModoCaptura('assuntos')}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-t-lg transition-all ${
+            modoCaptura === 'assuntos'
+              ? 'bg-white text-[#0F766E] border-t-2 border-t-[#0F766E] border-x border-[#E5E1D8] shadow-2xs'
+              : 'text-[#5B6470] hover:text-[#1A1D21] hover:bg-white/50'
+          }`}
+        >
+          <FileEdit className="w-4 h-4" />
+          <span>Assuntos da Folha ({assuntos.length})</span>
+        </button>
 
-        <form onSubmit={handleLancarTodosAssuntos}>
-          <CardContent className="space-y-5 pt-4">
-            {/* Texto de orientação preservado visível */}
-            <div className="rounded-lg bg-[#0F766E]/5 border border-[#0F766E]/20 p-3 text-xs text-[#0D5C56] leading-relaxed flex items-start gap-2.5">
-              <Sparkles className="w-4 h-4 text-[#0F766E] shrink-0 mt-0.5" />
-              <span>
-                Escreva como vier: ligações, conversas, prazos. A agenda separa por negócio, pessoa
-                e tarefa, e você confirma.
+        <button
+          type="button"
+          onClick={() => setModoCaptura('gravador')}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-t-lg transition-all ${
+            modoCaptura === 'gravador'
+              ? 'bg-white text-[#0F766E] border-t-2 border-t-[#0F766E] border-x border-[#E5E1D8] shadow-2xs'
+              : 'text-[#5B6470] hover:text-[#1A1D21] hover:bg-white/50'
+          }`}
+        >
+          <Mic className="w-4 h-4 text-red-600" />
+          <span className="flex items-center gap-1.5">
+            Gravador de Reuniões
+            <Badge className="bg-red-100 text-red-700 hover:bg-red-100 border-none text-[9px] px-1.5 py-0 font-bold">
+              NOVO
+            </Badge>
+          </span>
+        </button>
+      </div>
+
+      {/* Modo Gravador de Reuniões */}
+      {modoCaptura === 'gravador' && (
+        <GravadorReuniao
+          projetos={projetos}
+          contatos={contatos}
+          colunasFluxo={colunasFluxo}
+          marcosTimeline={marcosTimeline}
+          onReuniaoCriada={(novaFolha) => {
+            setFolhaItems((prev) => [novaFolha, ...prev])
+            setModoCaptura('assuntos')
+            carregarDados()
+          }}
+          onAbrirCriarProjeto={() => handleAbrirCriarProjeto('reuniao_temp')}
+          onAbrirCriarContato={() => handleAbrirCriarContato('reuniao_temp')}
+          onAbrirCriarFluxo={() => handleAbrirCriarFluxo('reuniao_temp')}
+          onAbrirCriarTimeline={() => handleAbrirCriarTimeline('reuniao_temp')}
+        />
+      )}
+
+      {/* Formulário de Múltiplos Assuntos da Folha */}
+      {modoCaptura === 'assuntos' && (
+        <Card className="border-[#E5E1D8] bg-white shadow-xs">
+          <CardHeader className="pb-3 border-b border-[#E5E1D8]/60">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold text-[#1A1D21] flex items-center gap-2">
+                <FileEdit className="w-4 h-4 text-[#0F766E]" />
+                Folha do Dia: Lançamento de Assuntos por Área
+              </CardTitle>
+              <span className="text-xs font-medium text-[#0F766E] bg-[#0F766E]/10 px-2.5 py-1 rounded-full">
+                {assuntos.length} {assuntos.length === 1 ? 'assunto' : 'assuntos'} na folha
               </span>
             </div>
+            <CardDescription className="text-xs text-[#5B6470]">
+              Escreva como vier: ligações, conversas, prazos. A agenda separa por negócio, pessoa e
+              tarefa, e você confirma.
+            </CardDescription>
+          </CardHeader>
 
-            {/* Lista dos Assuntos Numerados */}
-            <div className="space-y-4">
-              {assuntos.map((item, idx) => {
-                const numeroAssunto = idx + 1
-                return (
-                  <div
-                    key={item.idTemp}
-                    className="p-4 rounded-xl border border-[#E5E1D8] bg-[#FAFAF9] space-y-3 relative hover:border-[#0F766E]/40 transition-colors"
-                  >
-                    {/* Cabeçalho do Assunto com Numeração e Controles */}
-                    <div className="flex items-center justify-between gap-2 border-b border-[#E5E1D8]/70 pb-2.5">
-                      <div className="flex items-center gap-2">
-                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-[#0F766E] text-white text-xs font-bold shadow-2xs">
-                          {numeroAssunto}
-                        </span>
-                        <span className="text-xs font-bold text-[#1A1D21]">
-                          Assunto {numeroAssunto}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={idx === 0}
-                          onClick={() => handleMoverAssuntoPorId(item.idTemp, 'cima')}
-                          className="h-7 w-7 p-0 text-[#5B6470] hover:text-[#1A1D21]"
-                          title="Subir assunto"
-                        >
-                          <ArrowUp className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={idx === assuntos.length - 1}
-                          onClick={() => handleMoverAssuntoPorId(item.idTemp, 'baixo')}
-                          className="h-7 w-7 p-0 text-[#5B6470] hover:text-[#1A1D21]"
-                          title="Descer assunto"
-                        >
-                          <ArrowDown className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            handleAbrirCriarDemanda({
-                              idTemp: item.idTemp,
-                              numero: numeroAssunto,
-                              texto: item.registro,
-                              projetoId: item.projetoId,
-                              contatoId: item.contatoId,
-                              timeline: item.timeline,
-                            })
-                          }
-                          disabled={!item.registro.trim()}
-                          className="h-7 px-2 text-[11px] font-medium text-[#0F766E] hover:bg-[#0F766E]/10 gap-1"
-                          title="Criar demanda imediata a partir deste assunto"
-                        >
-                          <CheckSquare className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">Criar demanda</span>
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={!item.registro.trim() || loadingLancarId === item.idTemp}
-                          onClick={() => handleLancarAssuntoIndividual(item.idTemp)}
-                          className="h-7 px-2 text-[11px] font-medium text-[#0F766E] hover:bg-[#0F766E]/10 gap-1"
-                          title="Lançar somente este assunto na folha"
-                        >
-                          {loadingLancarId === item.idTemp ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <Send className="w-3 h-3" />
-                          )}
-                          <span className="hidden sm:inline">Lançar</span>
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemoverAssuntoPorId(item.idTemp)}
-                          className="h-7 w-7 p-0 text-[#5B6470] hover:text-red-600"
-                          title="Remover este assunto"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Campo de Texto do Assunto */}
-                    <div>
-                      <Textarea
-                        rows={2}
-                        placeholder="Escreva como vier: ligações, conversas, prazos. A agenda separa por negócio, pessoa e tarefa, e você confirma."
-                        value={item.registro}
-                        onChange={(e) =>
-                          handleAtualizarAssuntoPorId(item.idTemp, 'registro', e.target.value)
-                        }
-                        className="text-sm bg-white border-[#E5E1D8] resize-none focus-visible:ring-1 focus-visible:ring-[#0F766E]"
-                      />
-                    </div>
-
-                    {/* Linha 1: Data e hora + Origem + Referência */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div>
-                        <label className="text-[11px] font-semibold text-[#5B6470] block mb-1">
-                          Data e hora
-                        </label>
-                        <Input
-                          type="datetime-local"
-                          value={item.dataHora}
-                          onChange={(e) =>
-                            handleAtualizarAssuntoPorId(item.idTemp, 'dataHora', e.target.value)
-                          }
-                          className="text-xs h-8 bg-white border-[#E5E1D8]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-[11px] font-semibold text-[#5B6470] block mb-1">
-                          Origem do Registro
-                        </label>
-                        <Select
-                          value={item.tipoOrigem}
-                          onValueChange={(v) =>
-                            handleAtualizarAssuntoPorId(item.idTemp, 'tipoOrigem', v as OrigemTipo)
-                          }
-                        >
-                          <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="manual">Manual / Anotação</SelectItem>
-                            <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                            <SelectItem value="email">E-mail</SelectItem>
-                            <SelectItem value="importado">Importado / Outro</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div>
-                        <label className="text-[11px] font-semibold text-[#5B6470] block mb-1">
-                          Referência (Opcional)
-                        </label>
-                        <Input
-                          placeholder="Ex: Grupo Diretoria / Ligação 14h"
-                          value={item.origemRef}
-                          onChange={(e) =>
-                            handleAtualizarAssuntoPorId(item.idTemp, 'origemRef', e.target.value)
-                          }
-                          className="text-xs h-8 bg-white border-[#E5E1D8]"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Linha 2: Vínculos Opcionais (Fluxo, Projeto, Timeline, Contato) */}
-                    <div className="pt-2 border-t border-[#E5E1D8]/50">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#0F766E] block mb-2">
-                        Vínculos do Assunto (Opcionais)
-                      </span>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                        {/* 1. Vincular a Fluxo */}
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <label className="text-[11px] font-semibold text-[#5B6470] flex items-center gap-1">
-                              <Layers className="w-3 h-3 text-[#0F766E]" />
-                              Vincular a Fluxo
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => handleAbrirCriarFluxo(item.idTemp)}
-                              className="text-[10px] font-medium text-[#0F766E] hover:underline flex items-center gap-0.5"
-                              title="Adicionar nova etapa/coluna de fluxo"
-                            >
-                              <Plus className="w-3 h-3" />
-                              Criar
-                            </button>
-                          </div>
-                          <Select
-                            value={item.fluxo}
-                            onValueChange={(v) => {
-                              if (v === '__create_new__') {
-                                handleAbrirCriarFluxo(item.idTemp)
-                              } else {
-                                handleAtualizarAssuntoPorId(item.idTemp, 'fluxo', v)
-                              }
-                            }}
-                          >
-                            <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
-                              <SelectValue placeholder="Automático (IA)" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem
-                                value="__create_new__"
-                                className="text-[#0F766E] font-semibold bg-[#0F766E]/5 hover:bg-[#0F766E]/15 focus:bg-[#0F766E]/15 cursor-pointer border-b border-[#E5E1D8] mb-1"
-                              >
-                                + Criar nova coluna / fluxo...
-                              </SelectItem>
-                              <SelectItem value="none">Automático (Deixar para IA)</SelectItem>
-                              {colunasFluxo.map((col) => (
-                                <SelectItem key={col.id || col.chave} value={col.chave}>
-                                  <span className="flex items-center gap-1.5">
-                                    <span
-                                      className="w-2 h-2 rounded-full shrink-0"
-                                      style={{ backgroundColor: col.cor || '#0F766E' }}
-                                    />
-                                    {col.titulo}
-                                  </span>
-                                </SelectItem>
-                              ))}
-                              {/* Fallbacks padrão se não estiverem na lista */}
-                              {!colunasFluxo.some((c) => c.chave === 'novo') && (
-                                <SelectItem value="novo">Novo / Triagem</SelectItem>
-                              )}
-                              {!colunasFluxo.some((c) => c.chave === 'em_andamento') && (
-                                <SelectItem value="em_andamento">Em Andamento</SelectItem>
-                              )}
-                              {!colunasFluxo.some((c) => c.chave === 'bloqueado') && (
-                                <SelectItem value="bloqueado">Bloqueado</SelectItem>
-                              )}
-                              {!colunasFluxo.some((c) => c.chave === 'concluido') && (
-                                <SelectItem value="concluido">Concluído</SelectItem>
-                              )}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {/* 2. Vincular a Projeto */}
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <label className="text-[11px] font-semibold text-[#5B6470] flex items-center gap-1">
-                              <FolderGit2 className="w-3 h-3 text-[#0F766E]" />
-                              Vincular a Projeto
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => handleAbrirCriarProjeto(item.idTemp)}
-                              className="text-[10px] font-medium text-[#0F766E] hover:underline flex items-center gap-0.5"
-                              title="Cadastrar novo projeto imediatamente"
-                            >
-                              <Plus className="w-3 h-3" />
-                              Criar
-                            </button>
-                          </div>
-                          <Select
-                            value={item.projetoId}
-                            onValueChange={(v) => {
-                              if (v === '__create_new__') {
-                                handleAbrirCriarProjeto(item.idTemp)
-                              } else {
-                                handleAtualizarAssuntoPorId(item.idTemp, 'projetoId', v)
-                              }
-                            }}
-                          >
-                            <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
-                              <SelectValue placeholder="Automático (IA)" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem
-                                value="__create_new__"
-                                className="text-[#0F766E] font-semibold bg-[#0F766E]/5 hover:bg-[#0F766E]/15 focus:bg-[#0F766E]/15 cursor-pointer border-b border-[#E5E1D8] mb-1"
-                              >
-                                + Criar novo projeto...
-                              </SelectItem>
-                              <SelectItem value="none">Automático (Deixar para IA)</SelectItem>
-                              {projetos.map((p) => (
-                                <SelectItem key={p.id} value={p.id}>
-                                  {p.nome}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {/* 3. Vincular a Timeline */}
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <label className="text-[11px] font-semibold text-[#5B6470] flex items-center gap-1">
-                              <CalendarDays className="w-3 h-3 text-[#0F766E]" />
-                              Vincular a Timeline
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => handleAbrirCriarTimeline(item.idTemp)}
-                              className="text-[10px] font-medium text-[#0F766E] hover:underline flex items-center gap-0.5"
-                              title="Criar novo marco de timeline"
-                            >
-                              <Plus className="w-3 h-3" />
-                              Criar
-                            </button>
-                          </div>
-                          <Select
-                            value={item.timeline || '__empty__'}
-                            onValueChange={(v) => {
-                              if (v === '__create_new__') {
-                                handleAbrirCriarTimeline(item.idTemp)
-                              } else if (v === '__empty__') {
-                                handleAtualizarAssuntoPorId(item.idTemp, 'timeline', '')
-                              } else {
-                                handleAtualizarAssuntoPorId(item.idTemp, 'timeline', v)
-                              }
-                            }}
-                          >
-                            <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
-                              <SelectValue placeholder="Selecione ou crie um marco" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem
-                                value="__create_new__"
-                                className="text-[#0F766E] font-semibold bg-[#0F766E]/5 hover:bg-[#0F766E]/15 focus:bg-[#0F766E]/15 cursor-pointer border-b border-[#E5E1D8] mb-1"
-                              >
-                                + Criar novo marco de timeline...
-                              </SelectItem>
-                              <SelectItem value="__empty__">Nenhum (Livre)</SelectItem>
-                              {marcosTimeline.map((m) => (
-                                <SelectItem key={m.id} value={m.nome}>
-                                  ⏳ {m.nome}
-                                </SelectItem>
-                              ))}
-                              {/* Se o usuário digitou ou tem um valor customizado que não está na lista de marcos */}
-                              {item.timeline &&
-                                !marcosTimeline.some((m) => m.nome === item.timeline) && (
-                                  <SelectItem value={item.timeline}>
-                                    ⏳ {item.timeline} (Personalizado)
-                                  </SelectItem>
-                                )}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {/* 4. Vincular a Contato */}
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <label className="text-[11px] font-semibold text-[#5B6470] flex items-center gap-1">
-                              <UserCheck className="w-3 h-3 text-[#0F766E]" />
-                              Vincular a Contato
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => handleAbrirCriarContato(item.idTemp)}
-                              className="text-[10px] font-medium text-[#0F766E] hover:underline flex items-center gap-0.5"
-                              title="Cadastrar novo contato imediatamente"
-                            >
-                              <Plus className="w-3 h-3" />
-                              Criar
-                            </button>
-                          </div>
-                          <Select
-                            value={item.contatoId}
-                            onValueChange={(v) => {
-                              if (v === '__create_new__') {
-                                handleAbrirCriarContato(item.idTemp)
-                              } else {
-                                handleAtualizarAssuntoPorId(item.idTemp, 'contatoId', v)
-                              }
-                            }}
-                          >
-                            <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
-                              <SelectValue placeholder="Automático (IA)" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem
-                                value="__create_new__"
-                                className="text-[#0F766E] font-semibold bg-[#0F766E]/5 hover:bg-[#0F766E]/15 focus:bg-[#0F766E]/15 cursor-pointer border-b border-[#E5E1D8] mb-1"
-                              >
-                                + Criar novo contato...
-                              </SelectItem>
-                              <SelectItem value="none">Automático (Deixar para IA)</SelectItem>
-                              {contatos.map((c) => (
-                                <SelectItem key={c.id} value={c.id}>
-                                  {c.nome} {c.empresa ? `(${c.empresa})` : ''}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Barra de Ações: Adicionar mais assuntos e Lançar tudo */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-[#E5E1D8]">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleAdicionarAssunto}
-                className="text-xs h-9 text-[#0F766E] border-[#0F766E]/30 hover:bg-[#0F766E]/10 gap-1.5 w-full sm:w-auto"
-              >
-                <Plus className="w-4 h-4" />
-                Adicionar Outro Assunto à Folha
-              </Button>
-
-              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleLimparTodosAssuntos}
-                  className="text-xs h-9 text-[#5B6470] hover:text-red-600 gap-1.5"
-                  title="Apagar todos os assuntos digitados"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Limpar Rascunho
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={loadingAdd}
-                  className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-9 px-5 font-medium shadow-sm gap-2 w-full sm:w-auto"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  {loadingAdd
-                    ? 'Lançando na Folha...'
-                    : `Lançar ${assuntos.length} ${assuntos.length === 1 ? 'Assunto' : 'Assuntos'} na Folha`}
-                </Button>
+          <form onSubmit={handleLancarTodosAssuntos}>
+            <CardContent className="space-y-5 pt-4">
+              {/* Texto de orientação preservado visível */}
+              <div className="rounded-lg bg-[#0F766E]/5 border border-[#0F766E]/20 p-3 text-xs text-[#0D5C56] leading-relaxed flex items-start gap-2.5">
+                <Sparkles className="w-4 h-4 text-[#0F766E] shrink-0 mt-0.5" />
+                <span>
+                  Escreva como vier: ligações, conversas, prazos. A agenda separa por negócio,
+                  pessoa e tarefa, e você confirma.
+                </span>
               </div>
-            </div>
-          </CardContent>
-        </form>
-      </Card>
+
+              {/* Lista dos Assuntos Numerados */}
+              <div className="space-y-4">
+                {assuntos.map((item, idx) => {
+                  const numeroAssunto = idx + 1
+                  return (
+                    <div
+                      key={item.idTemp}
+                      className="p-4 rounded-xl border border-[#E5E1D8] bg-[#FAFAF9] space-y-3 relative hover:border-[#0F766E]/40 transition-colors"
+                    >
+                      {/* Cabeçalho do Assunto com Numeração e Controles */}
+                      <div className="flex items-center justify-between gap-2 border-b border-[#E5E1D8]/70 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-[#0F766E] text-white text-xs font-bold shadow-2xs">
+                            {numeroAssunto}
+                          </span>
+                          <span className="text-xs font-bold text-[#1A1D21]">
+                            Assunto {numeroAssunto}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={idx === 0}
+                            onClick={() => handleMoverAssuntoPorId(item.idTemp, 'cima')}
+                            className="h-7 w-7 p-0 text-[#5B6470] hover:text-[#1A1D21]"
+                            title="Subir assunto"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={idx === assuntos.length - 1}
+                            onClick={() => handleMoverAssuntoPorId(item.idTemp, 'baixo')}
+                            className="h-7 w-7 p-0 text-[#5B6470] hover:text-[#1A1D21]"
+                            title="Descer assunto"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              handleAbrirCriarDemanda({
+                                idTemp: item.idTemp,
+                                numero: numeroAssunto,
+                                texto: item.registro,
+                                projetoId: item.projetoId,
+                                contatoId: item.contatoId,
+                                timeline: item.timeline,
+                              })
+                            }
+                            disabled={!item.registro.trim()}
+                            className="h-7 px-2 text-[11px] font-medium text-[#0F766E] hover:bg-[#0F766E]/10 gap-1"
+                            title="Criar demanda imediata a partir deste assunto"
+                          >
+                            <CheckSquare className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Criar demanda</span>
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={!item.registro.trim() || loadingLancarId === item.idTemp}
+                            onClick={() => handleLancarAssuntoIndividual(item.idTemp)}
+                            className="h-7 px-2 text-[11px] font-medium text-[#0F766E] hover:bg-[#0F766E]/10 gap-1"
+                            title="Lançar somente este assunto na folha"
+                          >
+                            {loadingLancarId === item.idTemp ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Send className="w-3 h-3" />
+                            )}
+                            <span className="hidden sm:inline">Lançar</span>
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoverAssuntoPorId(item.idTemp)}
+                            className="h-7 w-7 p-0 text-[#5B6470] hover:text-red-600"
+                            title="Remover este assunto"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Campo de Texto do Assunto */}
+                      <div>
+                        <Textarea
+                          rows={2}
+                          placeholder="Escreva como vier: ligações, conversas, prazos. A agenda separa por negócio, pessoa e tarefa, e você confirma."
+                          value={item.registro}
+                          onChange={(e) =>
+                            handleAtualizarAssuntoPorId(item.idTemp, 'registro', e.target.value)
+                          }
+                          className="text-sm bg-white border-[#E5E1D8] resize-none focus-visible:ring-1 focus-visible:ring-[#0F766E]"
+                        />
+                      </div>
+
+                      {/* Linha 1: Data e hora + Origem + Referência */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-[11px] font-semibold text-[#5B6470] block mb-1">
+                            Data e hora
+                          </label>
+                          <Input
+                            type="datetime-local"
+                            value={item.dataHora}
+                            onChange={(e) =>
+                              handleAtualizarAssuntoPorId(item.idTemp, 'dataHora', e.target.value)
+                            }
+                            className="text-xs h-8 bg-white border-[#E5E1D8]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-semibold text-[#5B6470] block mb-1">
+                            Origem do Registro
+                          </label>
+                          <Select
+                            value={item.tipoOrigem}
+                            onValueChange={(v) =>
+                              handleAtualizarAssuntoPorId(
+                                item.idTemp,
+                                'tipoOrigem',
+                                v as OrigemTipo,
+                              )
+                            }
+                          >
+                            <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="manual">Manual / Anotação</SelectItem>
+                              <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                              <SelectItem value="email">E-mail</SelectItem>
+                              <SelectItem value="importado">Importado / Outro</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-semibold text-[#5B6470] block mb-1">
+                            Referência (Opcional)
+                          </label>
+                          <Input
+                            placeholder="Ex: Grupo Diretoria / Ligação 14h"
+                            value={item.origemRef}
+                            onChange={(e) =>
+                              handleAtualizarAssuntoPorId(item.idTemp, 'origemRef', e.target.value)
+                            }
+                            className="text-xs h-8 bg-white border-[#E5E1D8]"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Linha 2: Vínculos Opcionais (Fluxo, Projeto, Timeline, Contato) */}
+                      <div className="pt-2 border-t border-[#E5E1D8]/50">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#0F766E] block mb-2">
+                          Vínculos do Assunto (Opcionais)
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                          {/* 1. Vincular a Fluxo */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[11px] font-semibold text-[#5B6470] flex items-center gap-1">
+                                <Layers className="w-3 h-3 text-[#0F766E]" />
+                                Vincular a Fluxo
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => handleAbrirCriarFluxo(item.idTemp)}
+                                className="text-[10px] font-medium text-[#0F766E] hover:underline flex items-center gap-0.5"
+                                title="Adicionar nova etapa/coluna de fluxo"
+                              >
+                                <Plus className="w-3 h-3" />
+                                Criar
+                              </button>
+                            </div>
+                            <Select
+                              value={item.fluxo}
+                              onValueChange={(v) => {
+                                if (v === '__create_new__') {
+                                  handleAbrirCriarFluxo(item.idTemp)
+                                } else {
+                                  handleAtualizarAssuntoPorId(item.idTemp, 'fluxo', v)
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
+                                <SelectValue placeholder="Automático (IA)" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem
+                                  value="__create_new__"
+                                  className="text-[#0F766E] font-semibold bg-[#0F766E]/5 hover:bg-[#0F766E]/15 focus:bg-[#0F766E]/15 cursor-pointer border-b border-[#E5E1D8] mb-1"
+                                >
+                                  + Criar nova coluna / fluxo...
+                                </SelectItem>
+                                <SelectItem value="none">Automático (Deixar para IA)</SelectItem>
+                                {colunasFluxo.map((col) => (
+                                  <SelectItem key={col.id || col.chave} value={col.chave}>
+                                    <span className="flex items-center gap-1.5">
+                                      <span
+                                        className="w-2 h-2 rounded-full shrink-0"
+                                        style={{ backgroundColor: col.cor || '#0F766E' }}
+                                      />
+                                      {col.titulo}
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                                {/* Fallbacks padrão se não estiverem na lista */}
+                                {!colunasFluxo.some((c) => c.chave === 'novo') && (
+                                  <SelectItem value="novo">Novo / Triagem</SelectItem>
+                                )}
+                                {!colunasFluxo.some((c) => c.chave === 'em_andamento') && (
+                                  <SelectItem value="em_andamento">Em Andamento</SelectItem>
+                                )}
+                                {!colunasFluxo.some((c) => c.chave === 'bloqueado') && (
+                                  <SelectItem value="bloqueado">Bloqueado</SelectItem>
+                                )}
+                                {!colunasFluxo.some((c) => c.chave === 'concluido') && (
+                                  <SelectItem value="concluido">Concluído</SelectItem>
+                                )}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* 2. Vincular a Projeto */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[11px] font-semibold text-[#5B6470] flex items-center gap-1">
+                                <FolderGit2 className="w-3 h-3 text-[#0F766E]" />
+                                Vincular a Projeto
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => handleAbrirCriarProjeto(item.idTemp)}
+                                className="text-[10px] font-medium text-[#0F766E] hover:underline flex items-center gap-0.5"
+                                title="Cadastrar novo projeto imediatamente"
+                              >
+                                <Plus className="w-3 h-3" />
+                                Criar
+                              </button>
+                            </div>
+                            <Select
+                              value={item.projetoId}
+                              onValueChange={(v) => {
+                                if (v === '__create_new__') {
+                                  handleAbrirCriarProjeto(item.idTemp)
+                                } else {
+                                  handleAtualizarAssuntoPorId(item.idTemp, 'projetoId', v)
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
+                                <SelectValue placeholder="Automático (IA)" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem
+                                  value="__create_new__"
+                                  className="text-[#0F766E] font-semibold bg-[#0F766E]/5 hover:bg-[#0F766E]/15 focus:bg-[#0F766E]/15 cursor-pointer border-b border-[#E5E1D8] mb-1"
+                                >
+                                  + Criar novo projeto...
+                                </SelectItem>
+                                <SelectItem value="none">Automático (Deixar para IA)</SelectItem>
+                                {projetos.map((p) => (
+                                  <SelectItem key={p.id} value={p.id}>
+                                    {p.nome}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* 3. Vincular a Timeline */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[11px] font-semibold text-[#5B6470] flex items-center gap-1">
+                                <CalendarDays className="w-3 h-3 text-[#0F766E]" />
+                                Vincular a Timeline
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => handleAbrirCriarTimeline(item.idTemp)}
+                                className="text-[10px] font-medium text-[#0F766E] hover:underline flex items-center gap-0.5"
+                                title="Criar novo marco de timeline"
+                              >
+                                <Plus className="w-3 h-3" />
+                                Criar
+                              </button>
+                            </div>
+                            <Select
+                              value={item.timeline || '__empty__'}
+                              onValueChange={(v) => {
+                                if (v === '__create_new__') {
+                                  handleAbrirCriarTimeline(item.idTemp)
+                                } else if (v === '__empty__') {
+                                  handleAtualizarAssuntoPorId(item.idTemp, 'timeline', '')
+                                } else {
+                                  handleAtualizarAssuntoPorId(item.idTemp, 'timeline', v)
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
+                                <SelectValue placeholder="Selecione ou crie um marco" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem
+                                  value="__create_new__"
+                                  className="text-[#0F766E] font-semibold bg-[#0F766E]/5 hover:bg-[#0F766E]/15 focus:bg-[#0F766E]/15 cursor-pointer border-b border-[#E5E1D8] mb-1"
+                                >
+                                  + Criar novo marco de timeline...
+                                </SelectItem>
+                                <SelectItem value="__empty__">Nenhum (Livre)</SelectItem>
+                                {marcosTimeline.map((m) => (
+                                  <SelectItem key={m.id} value={m.nome}>
+                                    ⏳ {m.nome}
+                                  </SelectItem>
+                                ))}
+                                {/* Se o usuário digitou ou tem um valor customizado que não está na lista de marcos */}
+                                {item.timeline &&
+                                  !marcosTimeline.some((m) => m.nome === item.timeline) && (
+                                    <SelectItem value={item.timeline}>
+                                      ⏳ {item.timeline} (Personalizado)
+                                    </SelectItem>
+                                  )}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* 4. Vincular a Contato */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[11px] font-semibold text-[#5B6470] flex items-center gap-1">
+                                <UserCheck className="w-3 h-3 text-[#0F766E]" />
+                                Vincular a Contato
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => handleAbrirCriarContato(item.idTemp)}
+                                className="text-[10px] font-medium text-[#0F766E] hover:underline flex items-center gap-0.5"
+                                title="Cadastrar novo contato imediatamente"
+                              >
+                                <Plus className="w-3 h-3" />
+                                Criar
+                              </button>
+                            </div>
+                            <Select
+                              value={item.contatoId}
+                              onValueChange={(v) => {
+                                if (v === '__create_new__') {
+                                  handleAbrirCriarContato(item.idTemp)
+                                } else {
+                                  handleAtualizarAssuntoPorId(item.idTemp, 'contatoId', v)
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
+                                <SelectValue placeholder="Automático (IA)" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem
+                                  value="__create_new__"
+                                  className="text-[#0F766E] font-semibold bg-[#0F766E]/5 hover:bg-[#0F766E]/15 focus:bg-[#0F766E]/15 cursor-pointer border-b border-[#E5E1D8] mb-1"
+                                >
+                                  + Criar novo contato...
+                                </SelectItem>
+                                <SelectItem value="none">Automático (Deixar para IA)</SelectItem>
+                                {contatos.map((c) => (
+                                  <SelectItem key={c.id} value={c.id}>
+                                    {c.nome} {c.empresa ? `(${c.empresa})` : ''}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Barra de Ações: Adicionar mais assuntos e Lançar tudo */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-[#E5E1D8]">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleAdicionarAssunto}
+                    className="text-xs h-9 text-[#0F766E] border-[#0F766E]/30 hover:bg-[#0F766E]/10 gap-1.5 w-full sm:w-auto"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Adicionar Outro Assunto
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setModoCaptura('gravador')}
+                    className="text-xs h-9 text-red-700 border-red-200 hover:bg-red-50 gap-1.5 w-full sm:w-auto"
+                  >
+                    <Mic className="w-4 h-4 text-red-600" />
+                    Gravar Reunião
+                  </Button>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleLimparTodosAssuntos}
+                    className="text-xs h-9 text-[#5B6470] hover:text-red-600 gap-1.5"
+                    title="Apagar todos os assuntos digitados"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Limpar Rascunho
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={loadingAdd}
+                    className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-9 px-5 font-medium shadow-sm gap-2 w-full sm:w-auto"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    {loadingAdd
+                      ? 'Lançando na Folha...'
+                      : `Lançar ${assuntos.length} ${assuntos.length === 1 ? 'Assunto' : 'Assuntos'} na Folha`}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </form>
+        </Card>
+      )}
 
       {/* Listagem de Assuntos Pendentes na Folha */}
       <div className="space-y-4">
@@ -1511,12 +1610,24 @@ export default function Folha() {
                     {/* Header do card com numeração, data e controles */}
                     <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-[#E5E1D8]/60">
                       <div className="flex items-center gap-2">
-                        <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#0F766E]/15 text-[#0F766E] text-[11px] font-bold">
+                        <span
+                          className={`flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-bold ${
+                            item.is_reuniao
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-[#0F766E]/15 text-[#0F766E]'
+                          }`}
+                        >
                           {numeroDisplay}
                         </span>
                         <div className="flex items-center gap-1.5 text-[11px] text-[#5B6470]">
-                          {getOrigemIcon(item.tipo_origem)}
-                          <span className="capitalize font-medium">{item.tipo_origem}</span>
+                          {getOrigemIcon(item.tipo_origem, item.is_reuniao)}
+                          {item.is_reuniao ? (
+                            <Badge className="bg-red-50 text-red-700 hover:bg-red-50 border border-red-200 text-[10px] font-bold px-1.5 py-0">
+                              REUNIÃO GRAVADA
+                            </Badge>
+                          ) : (
+                            <span className="capitalize font-medium">{item.tipo_origem}</span>
+                          )}
                           {item.origem_ref && <span>• {item.origem_ref}</span>}
                         </div>
                       </div>
@@ -1567,6 +1678,49 @@ export default function Folha() {
                           : item.data || item.created?.slice(0, 16).replace('T', ' ')}
                       </span>
                     </div>
+
+                    {/* Player de áudio e indicadores de reunião gravada */}
+                    {item.is_reuniao && (
+                      <div className="mb-2 p-2.5 rounded-lg bg-red-50/60 border border-red-200/80 space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-red-800 flex items-center gap-1.5">
+                            <Mic className="w-3.5 h-3.5 text-red-600" />
+                            Áudio da Reunião ({formatarSegundos(item.duracao_gravacao)})
+                          </span>
+                          <span className="text-[10px] text-red-700 font-medium">
+                            {item.status_transcricao === 'processado'
+                              ? '✓ Síntese organizada'
+                              : 'Aguardando transcrição'}
+                          </span>
+                        </div>
+
+                        {item.audio_gravacao && (
+                          <div className="pt-1">
+                            <audio
+                              controls
+                              className="w-full h-8"
+                              src={
+                                diamondApi.getAudioUrl({
+                                  id: item.id,
+                                  audio_gravacao: item.audio_gravacao,
+                                }) || undefined
+                              }
+                            />
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between pt-1">
+                          <button
+                            type="button"
+                            onClick={() => handleAbrirDetalhesReuniao(item)}
+                            className="text-[11px] font-semibold text-[#0F766E] hover:underline flex items-center gap-1"
+                          >
+                            <CalendarCheck className="w-3 h-3" />
+                            Ver Ata & Detalhes da Reunião
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Conteúdo do Assunto */}
                     <p className="text-xs text-[#1A1D21] whitespace-pre-wrap leading-relaxed">
@@ -2376,6 +2530,231 @@ export default function Folha() {
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Detalhes da Reunião Gravada */}
+      <Dialog open={modalReuniaoDetalhesOpen} onOpenChange={setModalReuniaoDetalhesOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto bg-white border border-[#E5E1D8]">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 bg-red-100 text-red-700 rounded-lg">
+                <Mic className="w-4 h-4" />
+              </span>
+              <div>
+                <DialogTitle className="text-base font-bold text-[#1A1D21]">
+                  Ata da Reunião Gravada
+                </DialogTitle>
+                <DialogDescription className="text-xs text-[#5B6470]">
+                  {reuniaoSelecionada?.data_hora?.replace('T', ' ') || reuniaoSelecionada?.data} •
+                  Duração: {formatarSegundos(reuniaoSelecionada?.duracao_gravacao)}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {reuniaoSelecionada && (
+            <div className="space-y-4 pt-2 text-xs">
+              {/* Player do Áudio */}
+              {reuniaoSelecionada.audio_gravacao && (
+                <div className="p-3 bg-red-50/50 rounded-xl border border-red-200/70 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-semibold text-red-900">
+                    <span className="flex items-center gap-1.5">
+                      <Volume2 className="w-4 h-4 text-red-600" />
+                      Reproduzir Áudio Completo da Reunião
+                    </span>
+                    <span className="font-mono text-[11px] text-red-700">
+                      {formatarSegundos(reuniaoSelecionada.duracao_gravacao)}
+                    </span>
+                  </div>
+                  <audio
+                    controls
+                    className="w-full h-8"
+                    src={
+                      diamondApi.getAudioUrl({
+                        id: reuniaoSelecionada.id,
+                        audio_gravacao: reuniaoSelecionada.audio_gravacao,
+                      }) || undefined
+                    }
+                  />
+                </div>
+              )}
+
+              {/* Ata Organizada pela IA se houver */}
+              {(() => {
+                let ataObj: any = null
+                if (reuniaoSelecionada.ata_organizada) {
+                  if (typeof reuniaoSelecionada.ata_organizada === 'string') {
+                    try {
+                      ataObj = JSON.parse(reuniaoSelecionada.ata_organizada)
+                    } catch {
+                      /* intentionally ignored */
+                    }
+                  } else {
+                    ataObj = reuniaoSelecionada.ata_organizada
+                  }
+                }
+
+                if (ataObj) {
+                  return (
+                    <div className="space-y-3.5">
+                      {ataObj.resumo_executivo && (
+                        <div className="p-3 rounded-lg bg-[#0F766E]/5 border border-[#0F766E]/20 space-y-1">
+                          <span className="text-[11px] font-bold text-[#0D5C56] uppercase tracking-wide">
+                            Resumo Executivo da Reunião
+                          </span>
+                          <p className="text-[#1A1D21] leading-relaxed">
+                            {ataObj.resumo_executivo}
+                          </p>
+                        </div>
+                      )}
+
+                      {ataObj.topicos_discutidos && ataObj.topicos_discutidos.length > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-[11px] font-bold text-[#1A1D21] uppercase tracking-wide">
+                            Tópicos Tratados
+                          </span>
+                          <ul className="list-disc list-inside space-y-0.5 text-[#5B6470]">
+                            {ataObj.topicos_discutidos.map((topico: string, i: number) => (
+                              <li key={i}>{topico}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {ataObj.decisoes && ataObj.decisoes.length > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wide">
+                            Decisões Firmadas
+                          </span>
+                          <ul className="list-disc list-inside space-y-0.5 text-[#5B6470]">
+                            {ataObj.decisoes.map((dec: string, i: number) => (
+                              <li key={i}>{dec}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {ataObj.proximos_passos && ataObj.proximos_passos.length > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-[11px] font-bold text-[#0F766E] uppercase tracking-wide">
+                            Próximos Passos
+                          </span>
+                          <ul className="list-disc list-inside space-y-0.5 text-[#5B6470]">
+                            {ataObj.proximos_passos.map((passo: string, i: number) => (
+                              <li key={i}>{passo}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {ataObj.demandas_sugeridas && ataObj.demandas_sugeridas.length > 0 && (
+                        <div className="space-y-2 pt-2 border-t border-[#E5E1D8]">
+                          <span className="text-[11px] font-bold text-[#1A1D21] uppercase tracking-wide block">
+                            Demandas Acionáveis Sugeridas
+                          </span>
+                          <div className="space-y-2">
+                            {ataObj.demandas_sugeridas.map((dem: any, idx: number) => (
+                              <div
+                                key={idx}
+                                className="p-2.5 rounded-lg border border-[#E5E1D8] bg-[#FAFAF9] flex items-center justify-between gap-2"
+                              >
+                                <div className="space-y-0.5">
+                                  <p className="font-semibold text-[#1A1D21]">{dem.titulo}</p>
+                                  {dem.descricao && (
+                                    <p className="text-[11px] text-[#5B6470]">{dem.descricao}</p>
+                                  )}
+                                </div>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setModalReuniaoDetalhesOpen(false)
+                                    handleAbrirCriarDemanda({
+                                      id: reuniaoSelecionada.id,
+                                      numero: reuniaoSelecionada.ordem || 1,
+                                      texto: `${dem.titulo}\n${dem.descricao || ''}`,
+                                      projetoId: reuniaoSelecionada.projeto,
+                                      contatoId: reuniaoSelecionada.contato,
+                                      timeline: reuniaoSelecionada.timeline,
+                                    })
+                                  }}
+                                  className="h-7 text-[11px] text-[#0F766E] border-[#0F766E]/30 shrink-0 gap-1"
+                                >
+                                  <CheckSquare className="w-3 h-3" />
+                                  Criar Demanda
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                }
+
+                return (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-amber-800 space-y-1">
+                      <p className="font-semibold">
+                        Reunião gravada — status:{' '}
+                        {reuniaoSelecionada.status_transcricao === 'processado'
+                          ? 'Processado'
+                          : 'Aguardando transcrição'}
+                      </p>
+                      <p className="text-[11px]">
+                        Você pode criar demandas imediatas ou rodar "Organizar com IA" na Folha para
+                        sintetizar todos os assuntos pendentes.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-[11px] font-bold text-[#5B6470] uppercase">
+                        Conteúdo Registrado
+                      </span>
+                      <p className="p-3 bg-[#FAFAF9] rounded-lg border border-[#E5E1D8] whitespace-pre-wrap text-[#1A1D21]">
+                        {reuniaoSelecionada.registro}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Botão de Ação Direta no Modal de Detalhes */}
+              <div className="pt-3 border-t border-[#E5E1D8] flex justify-between items-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setModalReuniaoDetalhesOpen(false)}
+                  className="text-xs"
+                >
+                  Fechar
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    setModalReuniaoDetalhesOpen(false)
+                    handleAbrirCriarDemanda({
+                      id: reuniaoSelecionada.id,
+                      numero: reuniaoSelecionada.ordem || 1,
+                      texto: reuniaoSelecionada.registro,
+                      projetoId: reuniaoSelecionada.projeto,
+                      contatoId: reuniaoSelecionada.contato,
+                      timeline: reuniaoSelecionada.timeline,
+                    })
+                  }}
+                  className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs px-4 gap-1.5"
+                >
+                  <CheckSquare className="w-3.5 h-3.5" />
+                  Criar Demanda desta Reunião
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

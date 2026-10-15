@@ -223,6 +223,30 @@ export interface Contato {
   }
 }
 
+export interface AtaOrganizadaReuniao {
+  titulo?: string
+  resumo_executivo?: string
+  topicos_discutidos?: string[]
+  decisoes?: string[]
+  proximos_passos?: string[]
+  demandas_sugeridas?: Array<{
+    titulo: string
+    descricao?: string
+    prioridade?: CardPrioridade
+    responsavel_sugerido?: string
+    prazo_dias?: number
+  }>
+  cards_kanban?: Array<{
+    titulo: string
+    descricao?: string
+    prioridade?: CardPrioridade
+    status?: CardStatus | string
+    proximo_passo?: string
+  }>
+}
+
+export type StatusTranscricao = 'aguardando' | 'processado' | 'sem_transcricao'
+
 export interface FolhaDia {
   id: string
   data?: string
@@ -237,6 +261,11 @@ export interface FolhaDia {
   contato?: string
   fluxo?: CardStatus | string
   timeline?: string
+  is_reuniao?: boolean
+  audio_gravacao?: string
+  duracao_gravacao?: number
+  status_transcricao?: StatusTranscricao
+  ata_organizada?: AtaOrganizadaReuniao | string
   created: string
   updated: string
   expand?: {

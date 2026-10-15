@@ -4,6 +4,8 @@ import type {
   Negocio,
   Contato,
   FolhaDia,
+  AtaOrganizadaReuniao,
+  StatusTranscricao,
   Card,
   Demanda,
   Lista,
@@ -266,12 +268,40 @@ export const diamondApi = {
     })
   },
 
-  async createFolhaDia(data: Partial<FolhaDia>): Promise<FolhaDia> {
+  async createFolhaDia(data: Partial<FolhaDia> | FormData): Promise<FolhaDia> {
     return await pb.collection('folha_dia').create<FolhaDia>(data)
   },
 
-  async updateFolhaDia(id: string, data: Partial<FolhaDia>): Promise<FolhaDia> {
+  async updateFolhaDia(id: string, data: Partial<FolhaDia> | FormData): Promise<FolhaDia> {
     return await pb.collection('folha_dia').update<FolhaDia>(id, data)
+  },
+
+  getAudioUrl(record: { id: string; audio_gravacao?: string }): string | null {
+    if (!record.audio_gravacao) return null
+    return pb.files.getURL(record as any, record.audio_gravacao)
+  },
+
+  async organizarReuniao(dados: {
+    folha_id?: string
+    titulo?: string
+    texto_transcricao?: string
+    projeto_id?: string
+    contato_id?: string
+    negocio_id?: string
+  }): Promise<{ sucesso: boolean; folha_id: string | null; ata: AtaOrganizadaReuniao }> {
+    const res = await fetch(`${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/organizar-reuniao`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: pb.authStore.token,
+      },
+      body: JSON.stringify(dados),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Falha ao organizar reunião com IA')
+    }
+    return await res.json()
   },
 
   async deleteFolhaDia(id: string): Promise<boolean> {
