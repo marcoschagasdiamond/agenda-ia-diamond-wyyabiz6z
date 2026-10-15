@@ -546,3 +546,72 @@ export interface ConviteEquipe {
     demanda_ref?: Demanda
   }
 }
+
+export interface TagSistema {
+  id: string
+  nome: string
+  cor?: string
+  descricao?: string
+  categoria?: string
+  created?: string
+  updated?: string
+}
+
+export interface PastaFormulario {
+  id: string
+  nome: string
+  cor?: string
+  descricao?: string
+  created?: string
+  updated?: string
+}
+
+export type FormCampoTipo =
+  | 'texto'
+  | 'texto_longo'
+  | 'email'
+  | 'telefone'
+  | 'data'
+  | 'escolha_unica'
+  | 'escolha_multipla'
+
+export interface FormCampoConfig {
+  id: string
+  label: string
+  tipo: FormCampoTipo
+  obrigatorio?: boolean
+  placeholder?: string
+  opcoes?: string[]
+}
+
+export interface Formulario {
+  id: string
+  titulo: string
+  descricao?: string
+  slug: string
+  publicado: boolean
+  pasta_grupo?: string
+  campos: FormCampoConfig[] | string
+  criado_por?: string
+  mensagem_sucesso?: string
+  cor_tema?: string
+  created: string
+  updated: string
+  expand?: {
+    criado_por?: User
+  }
+}
+
+export interface FormularioResposta {
+  id: string
+  formulario: string
+  dados: Record<string, unknown> | string
+  respondente_identificacao?: string
+  respondente_email?: string
+  ip_origem?: string
+  created: string
+  updated: string
+  expand?: {
+    formulario?: Formulario
+  }
+}

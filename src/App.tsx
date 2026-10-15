@@ -12,6 +12,7 @@ import VerifyEmail from '@/pages/VerifyEmail'
 import ForgotPassword from '@/pages/ForgotPassword'
 import ResetPassword from '@/pages/ResetPassword'
 import Onboarding from '@/pages/Onboarding'
+import FormularioPublico from '@/pages/FormularioPublico'
 
 // Páginas Principais
 import Dashboard from '@/pages/Dashboard'
@@ -62,6 +63,7 @@ export default function App() {
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/convite/:token" element={<AceitarConvite />} />
+              <Route path="/f/:slug" element={<FormularioPublico />} />
 
               {/* Onboarding Obrigatório Fixo */}
               <Route
@@ -193,6 +195,10 @@ export default function App() {
                     <Config />
                   </ProtectedRoute>
                 }
+              />
+              <Route
+                path="/config/formularios"
+                element={<Navigate to="/config?aba=formularios" replace />}
               />
 
               {/* Portal do Cliente */}

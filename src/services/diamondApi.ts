@@ -26,6 +26,11 @@ import type {
   ProjetoEquipeMembro,
   ProjetoInvestidor,
   ProjetoFinanceiroLancamento,
+  TagSistema,
+  PastaFormulario,
+  FormCampoConfig,
+  Formulario,
+  FormularioResposta,
 } from '@/types'
 
 export const diamondApi = {
@@ -830,5 +835,212 @@ export const diamondApi = {
       throw new Error(err.error || 'Falha ao aceitar convite')
     }
     return await res.json()
+  },
+
+  // Tags do Sistema
+  async listTagsSistema(): Promise<TagSistema[]> {
+    try {
+      return await pb.collection('tags_sistema').getFullList<TagSistema>({
+        sort: 'nome',
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async createTagSistema(data: Partial<TagSistema>): Promise<TagSistema> {
+    return await pb.collection('tags_sistema').create<TagSistema>(data)
+  },
+
+  async updateTagSistema(id: string, data: Partial<TagSistema>): Promise<TagSistema> {
+    return await pb.collection('tags_sistema').update<TagSistema>(id, data)
+  },
+
+  async deleteTagSistema(id: string): Promise<boolean> {
+    return await pb.collection('tags_sistema').delete(id)
+  },
+
+  // Pastas de Formulários
+  async listPastasFormularios(): Promise<PastaFormulario[]> {
+    try {
+      return await pb.collection('pastas_formularios').getFullList<PastaFormulario>({
+        sort: 'nome',
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async createPastaFormulario(data: Partial<PastaFormulario>): Promise<PastaFormulario> {
+    return await pb.collection('pastas_formularios').create<PastaFormulario>(data)
+  },
+
+  async updatePastaFormulario(
+    id: string,
+    data: Partial<PastaFormulario>,
+  ): Promise<PastaFormulario> {
+    return await pb.collection('pastas_formularios').update<PastaFormulario>(id, data)
+  },
+
+  async deletePastaFormulario(id: string): Promise<boolean> {
+    return await pb.collection('pastas_formularios').delete(id)
+  },
+
+  // Formulários
+  async listFormularios(): Promise<Formulario[]> {
+    try {
+      const records = await pb.collection('formularios').getFullList<Formulario>({
+        sort: '-created',
+        expand: 'criado_por',
+      })
+      return records.map((f) => {
+        let parsedCampos: FormCampoConfig[] = []
+        if (typeof f.campos === 'string') {
+          try {
+            parsedCampos = JSON.parse(f.campos)
+          } catch {
+            parsedCampos = []
+          }
+        } else if (Array.isArray(f.campos)) {
+          parsedCampos = f.campos
+        }
+        return {
+          ...f,
+          campos: parsedCampos,
+        }
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async getFormularioPorSlug(slug: string): Promise<Formulario | null> {
+    try {
+      const f = await pb.collection('formularios').getFirstListItem<Formulario>(`slug = "${slug}"`)
+      let parsedCampos: FormCampoConfig[] = []
+      if (typeof f.campos === 'string') {
+        try {
+          parsedCampos = JSON.parse(f.campos)
+        } catch {
+          parsedCampos = []
+        }
+      } else if (Array.isArray(f.campos)) {
+        parsedCampos = f.campos
+      }
+      return {
+        ...f,
+        campos: parsedCampos,
+      }
+    } catch {
+      return null
+    }
+  },
+
+  async getFormulario(id: string): Promise<Formulario> {
+    const f = await pb.collection('formularios').getOne<Formulario>(id)
+    let parsedCampos: FormCampoConfig[] = []
+    if (typeof f.campos === 'string') {
+      try {
+        parsedCampos = JSON.parse(f.campos)
+      } catch {
+        parsedCampos = []
+      }
+    } else if (Array.isArray(f.campos)) {
+      parsedCampos = f.campos
+    }
+    return {
+      ...f,
+      campos: parsedCampos,
+    }
+  },
+
+  async createFormulario(data: Partial<Formulario>): Promise<Formulario> {
+    const payload = {
+      ...data,
+      campos: typeof data.campos === 'object' ? JSON.stringify(data.campos) : data.campos,
+    }
+    const created = await pb.collection('formularios').create<Formulario>(payload)
+    return {
+      ...created,
+      campos: Array.isArray(data.campos) ? data.campos : [],
+    }
+  },
+
+  async updateFormulario(id: string, data: Partial<Formulario>): Promise<Formulario> {
+    const payload = {
+      ...data,
+      campos: typeof data.campos === 'object' ? JSON.stringify(data.campos) : data.campos,
+    }
+    const updated = await pb.collection('formularios').update<Formulario>(id, payload)
+    return {
+      ...updated,
+      campos: Array.isArray(data.campos) ? data.campos : [],
+    }
+  },
+
+  async deleteFormulario(id: string): Promise<boolean> {
+    return await pb.collection('formularios').delete(id)
+  },
+
+  async duplicarFormulario(id: string): Promise<Formulario> {
+    const original = await this.getFormulario(id)
+    const novoSlug = `${original.slug}-copia-${Date.now().toString(36).slice(-4)}`
+    return await this.createFormulario({
+      titulo: `${original.titulo} (Cópia)`,
+      descricao: original.descricao,
+      slug: novoSlug,
+      publicado: false,
+      pasta_grupo: original.pasta_grupo,
+      campos: original.campos,
+      cor_tema: original.cor_tema,
+      mensagem_sucesso: original.mensagem_sucesso,
+    })
+  },
+
+  // Respostas de Formulário
+  async listRespostasFormulario(formularioId?: string): Promise<FormularioResposta[]> {
+    try {
+      const filter = formularioId ? `formulario = "${formularioId}"` : ''
+      const records = await pb.collection('formulario_respostas').getFullList<FormularioResposta>({
+        filter,
+        sort: '-created',
+        expand: 'formulario',
+      })
+      return records.map((r) => {
+        let parsedDados: Record<string, unknown> = {}
+        if (typeof r.dados === 'string') {
+          try {
+            parsedDados = JSON.parse(r.dados)
+          } catch {
+            parsedDados = {}
+          }
+        } else if (typeof r.dados === 'object' && r.dados !== null) {
+          parsedDados = r.dados as Record<string, unknown>
+        }
+        return {
+          ...r,
+          dados: parsedDados,
+        }
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async enviarRespostaPublica(
+    formularioId: string,
+    dados: Record<string, unknown>,
+    ident?: { nome?: string; email?: string },
+  ): Promise<FormularioResposta> {
+    return await pb.collection('formulario_respostas').create<FormularioResposta>({
+      formulario: formularioId,
+      dados: JSON.stringify(dados),
+      respondente_identificacao: ident?.nome || '',
+      respondente_email: ident?.email || '',
+    })
+  },
+
+  async deleteRespostaFormulario(id: string): Promise<boolean> {
+    return await pb.collection('formulario_respostas').delete(id)
   },
 }

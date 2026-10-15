@@ -33,6 +33,10 @@ import {
   Flag,
   Rocket,
   CheckCircle,
+  Tag,
+  CreditCard,
+  FileText,
+  Brain,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -1343,27 +1347,95 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
         </div>
 
         <div className="flex-1 p-2 space-y-1 overflow-y-auto">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-[#5B6470] px-2 pt-1 mb-1">
+            Central de Gestão
+          </div>
+
           <button
-            onClick={() => irPara('/config')}
-            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-semibold bg-[#1A1D21] text-white"
+            onClick={() => irPara('/config?aba=central&gestao=categorias_fluxos')}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
           >
-            <Settings className="w-3.5 h-3.5" />
-            <span>Preferências & Preços</span>
+            <FolderTree className="w-3.5 h-3.5 text-[#0F766E]" />
+            <span>1. Categorias & Fluxos</span>
           </button>
+
           <button
-            onClick={() => irPara('/config')}
-            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors"
+            onClick={() => irPara('/config?aba=central&gestao=projetos')}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
           >
-            <ShieldCheck className="w-3.5 h-3.5 text-[#0F766E]" />
-            <span>Status das Integrações</span>
+            <FolderKanban className="w-3.5 h-3.5 text-[#0F766E]" />
+            <span>2. Projetos</span>
           </button>
+
           <button
-            onClick={() => irPara('/resumos')}
-            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors"
+            onClick={() => irPara('/config?aba=central&gestao=contatos')}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
           >
-            <History className="w-3.5 h-3.5 text-[#0F766E]" />
-            <span>Consolidações Semanais</span>
+            <Users className="w-3.5 h-3.5 text-[#0F766E]" />
+            <span>3. Contatos</span>
           </button>
+
+          <button
+            onClick={() => irPara('/config?aba=central&gestao=clientes')}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
+          >
+            <UserCheck className="w-3.5 h-3.5 text-[#0F766E]" />
+            <span>4. Clientes</span>
+          </button>
+
+          <button
+            onClick={() => irPara('/config?aba=central&gestao=equipes')}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
+          >
+            <Users className="w-3.5 h-3.5 text-[#0F766E]" />
+            <span>5. Equipes & Convites</span>
+          </button>
+
+          <button
+            onClick={() => irPara('/config?aba=central&gestao=tags')}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
+          >
+            <Tag className="w-3.5 h-3.5 text-[#0F766E]" />
+            <span>6. Tags Globais</span>
+          </button>
+
+          <button
+            onClick={() => irPara('/config?aba=central&gestao=grupos_tarefas')}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
+          >
+            <Layers className="w-3.5 h-3.5 text-[#0F766E]" />
+            <span>7. Grupos de Tarefas</span>
+          </button>
+
+          <button
+            onClick={() => irPara('/config?aba=central&gestao=cards')}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
+          >
+            <CreditCard className="w-3.5 h-3.5 text-[#0F766E]" />
+            <span>8. Cards Globais</span>
+          </button>
+
+          <div className="pt-2 border-t border-[#E5E1D8]/70">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-[#5B6470] px-2 mb-1">
+              Formulários & Diretrizes
+            </div>
+
+            <button
+              onClick={() => irPara('/config?aba=formularios')}
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
+            >
+              <FileText className="w-3.5 h-3.5 text-[#0F766E]" />
+              <span>Construtor de Formulários</span>
+            </button>
+
+            <button
+              onClick={() => irPara('/config?aba=preferencias')}
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
+            >
+              <Brain className="w-3.5 h-3.5 text-[#0F766E]" />
+              <span>Memória & Conectores</span>
+            </button>
+          </div>
         </div>
       </div>
     )

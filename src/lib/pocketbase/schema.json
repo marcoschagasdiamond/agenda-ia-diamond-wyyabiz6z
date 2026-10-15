@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-14T23:10:44.263Z",
+  "generatedAt": "2026-10-14T23:51:58.663Z",
   "collections": [
     {
       "name": "users",
@@ -2126,6 +2126,249 @@
         "CREATE INDEX idx_proj_fin_tipo ON projeto_financeiro (tipo)",
         "CREATE INDEX idx_proj_fin_data ON projeto_financeiro (data)"
       ]
+    },
+    {
+      "name": "tags_sistema",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "cor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "categoria",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE UNIQUE INDEX idx_tags_sistema_nome ON tags_sistema (nome)"]
+    },
+    {
+      "name": "pastas_formularios",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "cor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_pastas_form_nome ON pastas_formularios (nome)"]
+    },
+    {
+      "name": "formularios",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' || publicado = true",
+        "view": "@request.auth.id != '' || publicado = true",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "titulo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "slug",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "publicado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pasta_grupo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "campos",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "criado_por",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "mensagem_sucesso",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cor_tema",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_form_slug ON formularios (slug)",
+        "CREATE INDEX idx_form_publicado ON formularios (publicado)"
+      ]
+    },
+    {
+      "name": "formulario_respostas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "formulario",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "formularios"
+        },
+        {
+          "name": "dados",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "respondente_identificacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "respondente_email",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ip_origem",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_form_resp_form ON formulario_respostas (formulario)"]
     }
   ]
 }

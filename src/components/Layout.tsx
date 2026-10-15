@@ -110,7 +110,9 @@ export default function Layout({ children }: LayoutProps) {
       '/forgot-password',
       '/reset-password',
       '/onboarding',
-    ].includes(location.pathname) || location.pathname.startsWith('/convite/')
+    ].includes(location.pathname) ||
+    location.pathname.startsWith('/convite/') ||
+    location.pathname.startsWith('/f/')
 
   if (isAuthRoute) {
     return <main className="min-h-screen bg-[#F4F2EE]">{children}</main>
