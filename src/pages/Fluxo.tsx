@@ -22,6 +22,7 @@ import {
   GitBranch,
   Layers,
   MoreVertical,
+  Pencil,
   Edit2,
   Trash2,
   Columns,
@@ -198,6 +199,17 @@ export default function Fluxo() {
   const [fluxoTemplateSelecionado, setFluxoTemplateSelecionado] =
     useState<string>(TEMPLATE_PADRAO_ID)
   const [salvandoFluxo, setSalvandoFluxo] = useState(false)
+
+  // Modais dedicados e focados para RENOMEAR Categoria e Fluxo
+  const [modalRenomearCatOpen, setModalRenomearCatOpen] = useState(false)
+  const [categoriaRenomeando, setCategoriaRenomeando] = useState<CategoriaFluxo | null>(null)
+  const [novoNomeCategoria, setNovoNomeCategoria] = useState('')
+  const [salvandoRenomearCat, setSalvandoRenomearCat] = useState(false)
+
+  const [modalRenomearFluxoOpen, setModalRenomearFluxoOpen] = useState(false)
+  const [fluxoRenomeando, setFluxoRenomeando] = useState<FluxoKanban | null>(null)
+  const [novoNomeFluxo, setNovoNomeFluxo] = useState('')
+  const [salvandoRenomearFluxo, setSalvandoRenomearFluxo] = useState(false)
 
   // Modal para criar/editar uma fase avulsa (coluna direta) se desejado
   const [modalFaseAvulsaOpen, setModalFaseAvulsaOpen] = useState(false)
@@ -741,6 +753,46 @@ export default function Fluxo() {
     }
   }
 
+  // Abertura e salvamento do modal focado de RENOMEAR CATEGORIA
+  const abrirModalRenomearCategoria = (cat: CategoriaFluxo) => {
+    setCategoriaRenomeando(cat)
+    setNovoNomeCategoria(cat.nome || '')
+    setModalRenomearCatOpen(true)
+  }
+
+  const handleSalvarRenomearCategoria = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!categoriaRenomeando) return
+
+    const nomeFormatado = novoNomeCategoria.trim()
+    if (!nomeFormatado) {
+      toast({
+        title: 'Nome obrigatório',
+        description: 'O nome da categoria não pode ficar vazio.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setSalvandoRenomearCat(true)
+    try {
+      await diamondApi.updateCategoriaFluxo(categoriaRenomeando.id, {
+        nome: nomeFormatado,
+      })
+      toast({ title: 'Categoria renomeada' })
+      setModalRenomearCatOpen(false)
+      await Promise.all([recarregarFluxoGlobal().catch(() => {}), carregarDados().catch(() => {})])
+    } catch (err) {
+      toast({
+        title: 'Erro ao renomear categoria',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoRenomearCat(false)
+    }
+  }
+
   // ==========================================
   // HANDLERS DE FLUXO / COLUNA
   // ==========================================
@@ -921,6 +973,47 @@ export default function Fluxo() {
         description: (err as Error)?.message,
         variant: 'destructive',
       })
+    }
+  }
+
+  // Abertura e salvamento do modal focado de RENOMEAR FLUXO
+  const abrirModalRenomearFluxo = (f: FluxoKanban) => {
+    setFluxoRenomeando(f)
+    setNovoNomeFluxo(f.nome || f.titulo || '')
+    setModalRenomearFluxoOpen(true)
+  }
+
+  const handleSalvarRenomearFluxo = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!fluxoRenomeando) return
+
+    const nomeFormatado = novoNomeFluxo.trim()
+    if (!nomeFormatado) {
+      toast({
+        title: 'Nome obrigatório',
+        description: 'O nome do fluxo não pode ficar vazio.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setSalvandoRenomearFluxo(true)
+    try {
+      await diamondApi.updateFluxoKanban(fluxoRenomeando.id, {
+        nome: nomeFormatado,
+        titulo: nomeFormatado,
+      })
+      toast({ title: 'Fluxo renomeado' })
+      setModalRenomearFluxoOpen(false)
+      await Promise.all([recarregarFluxoGlobal().catch(() => {}), carregarDados().catch(() => {})])
+    } catch (err) {
+      toast({
+        title: 'Erro ao renomear fluxo',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoRenomearFluxo(false)
     }
   }
 
@@ -1965,6 +2058,10 @@ export default function Fluxo() {
                               <Plus className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
                               Adicionar fluxo aqui
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => abrirModalRenomearCategoria(cat)}>
+                              <Pencil className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
+                              Renomear
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => abrirModalEditarCategoria(cat)}>
                               <Edit2 className="w-3.5 h-3.5 mr-2" />
                               Editar Categoria
@@ -2053,6 +2150,12 @@ export default function Fluxo() {
                                     >
                                       <Layers className="w-3.5 h-3.5 mr-2 text-blue-600" />+ Família
                                       neste fluxo
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => abrirModalRenomearFluxo(fluxo)}
+                                    >
+                                      <Pencil className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
+                                      Renomear
                                     </DropdownMenuItem>
                                     <DropdownMenuItem onClick={() => abrirModalEditarFluxo(fluxo)}>
                                       <Edit2 className="w-3.5 h-3.5 mr-2" />
@@ -3392,6 +3495,102 @@ export default function Fluxo() {
                 className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs px-4"
               >
                 {salvandoFamilia ? 'Salvando...' : 'Salvar Grupo de Família'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================== */}
+      {/* MODAL: RENOMEAR CATEGORIA (FOCADO)                       */}
+      {/* ======================================================== */}
+      <Dialog open={modalRenomearCatOpen} onOpenChange={setModalRenomearCatOpen}>
+        <DialogContent className="max-w-md bg-white border border-[#E5E1D8]">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-[#1A1D21] flex items-center gap-2">
+              <Pencil className="w-4 h-4 text-[#0F766E]" />
+              <span>Renomear Categoria</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleSalvarRenomearCategoria} className="space-y-4 pt-2">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-[#1A1D21]">Nome da Categoria *</label>
+              <Input
+                autoFocus
+                required
+                placeholder="Ex: Geral, Propostas, Atendimento..."
+                value={novoNomeCategoria}
+                onChange={(e) => setNovoNomeCategoria(e.target.value)}
+                className="text-sm border-[#E5E1D8]"
+              />
+            </div>
+
+            <DialogFooter className="flex justify-end gap-2 pt-4 border-t border-[#E5E1D8]">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setModalRenomearCatOpen(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={salvandoRenomearCat}
+                className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs px-4"
+              >
+                {salvandoRenomearCat ? 'Salvando...' : 'Confirmar'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================== */}
+      {/* MODAL: RENOMEAR FLUXO (FOCADO)                           */}
+      {/* ======================================================== */}
+      <Dialog open={modalRenomearFluxoOpen} onOpenChange={setModalRenomearFluxoOpen}>
+        <DialogContent className="max-w-md bg-white border border-[#E5E1D8]">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-[#1A1D21] flex items-center gap-2">
+              <Pencil className="w-4 h-4 text-[#0F766E]" />
+              <span>Renomear Fluxo</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleSalvarRenomearFluxo} className="space-y-4 pt-2">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-[#1A1D21]">Nome do Fluxo *</label>
+              <Input
+                autoFocus
+                required
+                placeholder="Ex: Operação Comercial, Manutenção..."
+                value={novoNomeFluxo}
+                onChange={(e) => setNovoNomeFluxo(e.target.value)}
+                className="text-sm border-[#E5E1D8]"
+              />
+            </div>
+
+            <DialogFooter className="flex justify-end gap-2 pt-4 border-t border-[#E5E1D8]">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setModalRenomearFluxoOpen(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={salvandoRenomearFluxo}
+                className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs px-4"
+              >
+                {salvandoRenomearFluxo ? 'Salvando...' : 'Confirmar'}
               </Button>
             </DialogFooter>
           </form>
