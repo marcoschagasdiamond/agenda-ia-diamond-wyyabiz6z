@@ -9,7 +9,8 @@ import type {
   OrigemTipo,
   CardStatus,
   CardPrioridade,
-  ColunaFluxo,
+  FluxoKanban,
+  CategoriaFluxo,
   MarcoTimeline,
   ProjetoTipo,
 } from '@/types'
@@ -92,12 +93,22 @@ const criarItemAssuntoVazio = (): ItemRascunhoAssunto => ({
   dataHora: getAgoraLocalISO(),
   tipoOrigem: 'manual',
   origemRef: '',
-  fluxo: 'novo',
+  fluxo: 'none',
   projetoId: 'none',
   timeline: '',
   contatoId: 'none',
   negocioId: 'none',
 })
+
+const normalizarFluxoRascunho = (valor: any): string => {
+  if (typeof valor !== 'string' || !valor.trim()) return 'none'
+  const v = valor.trim()
+  // Trata registros legados onde os status padrão eram salvos como fase
+  if (['novo', 'em_andamento', 'bloqueado', 'concluido'].includes(v)) {
+    return 'none'
+  }
+  return v
+}
 
 const carregarRascunhoSalvo = (): ItemRascunhoAssunto[] => {
   if (typeof window === 'undefined') return [criarItemAssuntoVazio()]
@@ -118,7 +129,7 @@ const carregarRascunhoSalvo = (): ItemRascunhoAssunto[] => {
           ? item.tipoOrigem
           : 'manual',
         origemRef: typeof item?.origemRef === 'string' ? item.origemRef : '',
-        fluxo: typeof item?.fluxo === 'string' ? item.fluxo : 'novo',
+        fluxo: normalizarFluxoRascunho(item?.fluxo),
         projetoId: typeof item?.projetoId === 'string' ? item.projetoId : 'none',
         timeline: typeof item?.timeline === 'string' ? item.timeline : '',
         contatoId: typeof item?.contatoId === 'string' ? item.contatoId : 'none',
@@ -133,12 +144,18 @@ const carregarRascunhoSalvo = (): ItemRascunhoAssunto[] => {
 
 export default function Folha() {
   const { toast } = useToast()
-  const { colunas: colunasGlobal, recarregarDadosGlobais } = useNavegacao()
+  const {
+    fluxos: fluxosGlobal,
+    categorias: categoriasGlobal,
+    recarregarFluxo: recarregarFluxoGlobal,
+    recarregarDadosGlobais,
+  } = useNavegacao()
   const [folhaItems, setFolhaItems] = useState<FolhaDia[]>([])
   const [projetos, setProjetos] = useState<Projeto[]>([])
   const [contatos, setContatos] = useState<Contato[]>([])
   const [negocios, setNegocios] = useState<Negocio[]>([])
-  const [colunasFluxo, setColunasFluxo] = useState<ColunaFluxo[]>([])
+  const [fluxos, setFluxos] = useState<FluxoKanban[]>([])
+  const [categorias, setCategorias] = useState<CategoriaFluxo[]>([])
   const [marcosTimeline, setMarcosTimeline] = useState<MarcoTimeline[]>([])
 
   // Estado para saber qual assunto acionou o modal de criação rápida (por idTemp para manter estabilidade)
@@ -160,9 +177,10 @@ export default function Folha() {
   const [novoContatoCargo, setNovoContatoCargo] = useState('')
   const [criandoContato, setCriandoContato] = useState(false)
 
-  // 3. Modal Criar Coluna/Etapa de Fluxo
+  // 3. Modal Criar Fluxo Kanban
   const [modalCriarFluxoOpen, setModalCriarFluxoOpen] = useState(false)
-  const [novoFluxoTitulo, setNovoFluxoTitulo] = useState('')
+  const [novoFluxoNome, setNovoFluxoNome] = useState('')
+  const [novoFluxoCategoriaId, setNovoFluxoCategoriaId] = useState('')
   const [novoFluxoCor, setNovoFluxoCor] = useState('#0F766E')
   const [criandoFluxo, setCriandoFluxo] = useState(false)
 
@@ -239,20 +257,21 @@ export default function Folha() {
 
   const carregarDados = async () => {
     try {
-      const [f, p, c, n, colunas, marcos] = await Promise.all([
+      const [f, p, c, n, flxs, cats, marcos] = await Promise.all([
         diamondApi.listFolhaDia(),
         diamondApi.listProjetos(),
         diamondApi.listContatos(),
         diamondApi.listNegocios(),
-        diamondApi.listColunasFluxo(),
+        diamondApi.listFluxosKanban(),
+        diamondApi.listCategoriasFluxo(),
         diamondApi.listMarcosTimeline(),
       ])
-      // Ordenação: pendentes por ordem ou created
       setFolhaItems(f)
       setProjetos(p)
       setContatos(c)
       setNegocios(n)
-      setColunasFluxo(colunas)
+      setFluxos(flxs)
+      setCategorias(cats)
       setMarcosTimeline(marcos)
       recarregarDadosGlobais().catch(() => {})
     } catch (err) {
@@ -264,12 +283,18 @@ export default function Folha() {
     carregarDados()
   }, [])
 
-  // Sincroniza colunas locais com a lista global do NavegacaoContext quando atualizada
+  // Sincroniza fluxos e categorias locais com o NavegacaoContext
   useEffect(() => {
-    if (colunasGlobal && colunasGlobal.length > 0) {
-      setColunasFluxo(colunasGlobal)
+    if (fluxosGlobal && fluxosGlobal.length > 0) {
+      setFluxos(fluxosGlobal)
     }
-  }, [colunasGlobal])
+  }, [fluxosGlobal])
+
+  useEffect(() => {
+    if (categoriasGlobal && categoriasGlobal.length > 0) {
+      setCategorias(categoriasGlobal)
+    }
+  }, [categoriasGlobal])
 
   // Sincroniza rascunho com o localStorage sempre que os assuntos mudarem
   useEffect(() => {
@@ -290,7 +315,7 @@ export default function Folha() {
         dataHora: getAgoraLocalISO(),
         tipoOrigem: 'manual',
         origemRef: '',
-        fluxo: 'novo',
+        fluxo: 'none',
         projetoId: 'none',
         timeline: '',
         contatoId: 'none',
@@ -405,9 +430,9 @@ export default function Folha() {
       setProjetos((prev) => [criado, ...prev])
 
       // Auto-seleciona no assunto que disparou ou no modal de demanda
-      if (assuntoAlvoIdTemp !== null) {
+      if (assuntoAlvoIdTemp && assuntoAlvoIdTemp !== 'reuniao_temp') {
         handleAtualizarAssuntoPorId(assuntoAlvoIdTemp, 'projetoId', criado.id)
-      } else {
+      } else if (assuntoAlvoIdTemp === null) {
         setDemandaProjeto(criado.id)
       }
 
@@ -439,7 +464,9 @@ export default function Folha() {
     setCriandoContato(true)
     try {
       const currentAssunto =
-        assuntoAlvoIdTemp !== null ? assuntos.find((a) => a.idTemp === assuntoAlvoIdTemp) : null
+        assuntoAlvoIdTemp && assuntoAlvoIdTemp !== 'reuniao_temp'
+          ? assuntos.find((a) => a.idTemp === assuntoAlvoIdTemp)
+          : null
       const projId =
         currentAssunto && currentAssunto.projetoId !== 'none' ? currentAssunto.projetoId : undefined
 
@@ -460,9 +487,9 @@ export default function Folha() {
 
       setContatos((prev) => [criado, ...prev])
 
-      if (assuntoAlvoIdTemp !== null) {
+      if (assuntoAlvoIdTemp && assuntoAlvoIdTemp !== 'reuniao_temp') {
         handleAtualizarAssuntoPorId(assuntoAlvoIdTemp, 'contatoId', criado.id)
-      } else {
+      } else if (assuntoAlvoIdTemp === null) {
         setDemandaContato(criado.id)
       }
 
@@ -480,44 +507,84 @@ export default function Folha() {
 
   const handleAbrirCriarFluxo = (idTemp: string) => {
     setAssuntoAlvoIdTemp(idTemp)
-    setNovoFluxoTitulo('')
+    setNovoFluxoNome('')
     setNovoFluxoCor('#0F766E')
+    setNovoFluxoCategoriaId(categorias[0]?.id || '')
     setModalCriarFluxoOpen(true)
   }
 
   const handleSubmeterCriarFluxo = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!novoFluxoTitulo.trim()) return
+    if (!novoFluxoNome.trim()) return
     setCriandoFluxo(true)
     try {
-      const chaveSlug =
-        novoFluxoTitulo
-          .trim()
+      let categoriaIdFinal = novoFluxoCategoriaId
+      if (!categoriaIdFinal && categorias.length > 0) {
+        categoriaIdFinal = categorias[0].id
+      }
+      if (!categoriaIdFinal) {
+        const novaCat = await diamondApi.createCategoriaFluxo({
+          nome: 'Geral',
+          cor: '#0F766E',
+          ordem: 1,
+        })
+        setCategorias((prev) => [...prev, novaCat])
+        categoriaIdFinal = novaCat.id
+      }
+
+      const novoFluxo = await diamondApi.createFluxoKanban({
+        nome: novoFluxoNome.trim(),
+        titulo: novoFluxoNome.trim(),
+        categoria: categoriaIdFinal,
+        cor: novoFluxoCor,
+        ordem: fluxos.length + 1,
+        template_origem: 'diamond_padrao',
+      })
+
+      // Fases padrão do modelo DiamondGroup vinculadas ao novo fluxo
+      const fasesPadrao = [
+        { titulo: 'Backlog', cor: '#64748B', is_conclusao: false },
+        { titulo: 'A Fazer', cor: '#0EA5E9', is_conclusao: false },
+        { titulo: 'Fazendo', cor: '#F59E0B', is_conclusao: false },
+        { titulo: 'Conferir', cor: '#8B5CF6', is_conclusao: false },
+        { titulo: 'Finalizado', cor: '#10B981', is_conclusao: true },
+      ]
+
+      for (let i = 0; i < fasesPadrao.length; i++) {
+        const f = fasesPadrao[i]
+        const slug = f.titulo
           .toLowerCase()
           .normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '')
           .replace(/[^a-z0-9]+/g, '_')
-          .replace(/^_+|_+$/g, '') || `fluxo_${Date.now()}`
-
-      const novaColuna = await diamondApi.createColunaFluxo({
-        chave: chaveSlug,
-        titulo: novoFluxoTitulo.trim(),
-        cor: novoFluxoCor,
-        ordem: colunasFluxo.length + 1,
-      })
+        const chaveFase = `${slug}_${novoFluxo.id}_${Date.now()}_${i + 1}`
+        await diamondApi
+          .createColunaFluxo({
+            chave: chaveFase,
+            titulo: f.titulo,
+            cor: f.cor,
+            ordem: i + 1,
+            categoria: categoriaIdFinal,
+            fluxo_id: novoFluxo.id,
+            is_conclusao: f.is_conclusao,
+            template_origem: 'diamond_padrao',
+          })
+          .catch(() => {})
+      }
 
       toast({
-        title: 'Coluna de fluxo criada com sucesso!',
-        description: `Etapa "${novaColuna.titulo}" adicionada ao fluxo Kanban e selecionada.`,
+        title: 'Fluxo criado com sucesso!',
+        description: `Fluxo "${novoFluxo.nome}" adicionado com suas fases Kanban e selecionado.`,
       })
 
-      setColunasFluxo((prev) => [...prev, novaColuna])
+      setFluxos((prev) => [...prev, novoFluxo])
 
-      if (assuntoAlvoIdTemp !== null) {
-        handleAtualizarAssuntoPorId(assuntoAlvoIdTemp, 'fluxo', novaColuna.chave)
+      if (assuntoAlvoIdTemp && assuntoAlvoIdTemp !== 'reuniao_temp') {
+        handleAtualizarAssuntoPorId(assuntoAlvoIdTemp, 'fluxo', novoFluxo.id)
       }
 
       setModalCriarFluxoOpen(false)
+      recarregarFluxoGlobal().catch(() => {})
     } catch (err) {
       toast({
         title: 'Erro ao criar fluxo',
@@ -542,7 +609,9 @@ export default function Folha() {
     setCriandoTimeline(true)
     try {
       const currentAssunto =
-        assuntoAlvoIdTemp !== null ? assuntos.find((a) => a.idTemp === assuntoAlvoIdTemp) : null
+        assuntoAlvoIdTemp && assuntoAlvoIdTemp !== 'reuniao_temp'
+          ? assuntos.find((a) => a.idTemp === assuntoAlvoIdTemp)
+          : null
       const projId =
         currentAssunto && currentAssunto.projetoId !== 'none' ? currentAssunto.projetoId : undefined
 
@@ -559,9 +628,9 @@ export default function Folha() {
 
       setMarcosTimeline((prev) => [novoMarco, ...prev])
 
-      if (assuntoAlvoIdTemp !== null) {
+      if (assuntoAlvoIdTemp && assuntoAlvoIdTemp !== 'reuniao_temp') {
         handleAtualizarAssuntoPorId(assuntoAlvoIdTemp, 'timeline', novoMarco.nome)
-      } else {
+      } else if (assuntoAlvoIdTemp === null) {
         setDemandaTimeline(novoMarco.nome)
       }
 
@@ -964,20 +1033,29 @@ export default function Folha() {
     setModalReuniaoDetalhesOpen(true)
   }
 
-  const getFluxoBadge = (fluxoChave?: string) => {
-    if (!fluxoChave) return null
-    const colFound = colunasFluxo.find((c) => c.chave === fluxoChave)
-    if (colFound) {
+  const getFluxoBadge = (fluxoValor?: string) => {
+    if (!fluxoValor || fluxoValor === 'none') return null
+
+    // 1. Busca por id ou nome em fluxos_kanban
+    const fluxoFound = fluxos.find(
+      (f) => f.id === fluxoValor || f.nome === fluxoValor || f.titulo === fluxoValor,
+    )
+    if (fluxoFound) {
+      const cat = categorias.find((c) => c.id === fluxoFound.categoria)
+      const nomeFluxo = fluxoFound.nome || fluxoFound.titulo || 'Fluxo'
+      const label = cat ? `${cat.nome} › ${nomeFluxo}` : nomeFluxo
       return (
         <Badge
-          className="border-none text-[10px] font-medium text-white"
-          style={{ backgroundColor: colFound.cor || '#0F766E' }}
+          className="border-none text-[10px] font-medium text-white shadow-2xs"
+          style={{ backgroundColor: fluxoFound.cor || '#0F766E' }}
         >
-          {colFound.titulo}
+          {label}
         </Badge>
       )
     }
-    switch (fluxoChave) {
+
+    // 2. Fallback gracioso para registros legados que guardavam fases/status antigos
+    switch (fluxoValor) {
       case 'em_andamento':
         return (
           <Badge className="bg-[#0F766E]/15 text-[#0F766E] border-none text-[10px] font-medium">
@@ -997,10 +1075,11 @@ export default function Folha() {
           </Badge>
         )
       case 'novo':
+        return null
       default:
         return (
           <Badge className="bg-gray-100 text-gray-700 border-none text-[10px] font-medium">
-            {fluxoChave.replace('_', ' ')}
+            {fluxoValor.replace('_', ' ')}
           </Badge>
         )
     }
@@ -1085,7 +1164,8 @@ export default function Folha() {
         <GravadorReuniao
           projetos={projetos}
           contatos={contatos}
-          colunasFluxo={colunasFluxo}
+          fluxos={fluxos}
+          categorias={categorias}
           marcosTimeline={marcosTimeline}
           onReuniaoCriada={(novaFolha) => {
             setFolhaItems((prev) => [novaFolha, ...prev])
@@ -1309,7 +1389,7 @@ export default function Folha() {
                                 type="button"
                                 onClick={() => handleAbrirCriarFluxo(item.idTemp)}
                                 className="text-[10px] font-medium text-[#0F766E] hover:underline flex items-center gap-0.5"
-                                title="Adicionar nova etapa/coluna de fluxo"
+                                title="Cadastrar novo fluxo Kanban"
                               >
                                 <Plus className="w-3 h-3" />
                                 Criar
@@ -1333,33 +1413,25 @@ export default function Folha() {
                                   value="__create_new__"
                                   className="text-[#0F766E] font-semibold bg-[#0F766E]/5 hover:bg-[#0F766E]/15 focus:bg-[#0F766E]/15 cursor-pointer border-b border-[#E5E1D8] mb-1"
                                 >
-                                  + Criar nova coluna / fluxo...
+                                  + Criar novo fluxo...
                                 </SelectItem>
                                 <SelectItem value="none">Automático (Deixar para IA)</SelectItem>
-                                {colunasFluxo.map((col) => (
-                                  <SelectItem key={col.id || col.chave} value={col.chave}>
-                                    <span className="flex items-center gap-1.5">
-                                      <span
-                                        className="w-2 h-2 rounded-full shrink-0"
-                                        style={{ backgroundColor: col.cor || '#0F766E' }}
-                                      />
-                                      {col.titulo}
-                                    </span>
-                                  </SelectItem>
-                                ))}
-                                {/* Fallbacks padrão se não estiverem na lista */}
-                                {!colunasFluxo.some((c) => c.chave === 'novo') && (
-                                  <SelectItem value="novo">Novo / Triagem</SelectItem>
-                                )}
-                                {!colunasFluxo.some((c) => c.chave === 'em_andamento') && (
-                                  <SelectItem value="em_andamento">Em Andamento</SelectItem>
-                                )}
-                                {!colunasFluxo.some((c) => c.chave === 'bloqueado') && (
-                                  <SelectItem value="bloqueado">Bloqueado</SelectItem>
-                                )}
-                                {!colunasFluxo.some((c) => c.chave === 'concluido') && (
-                                  <SelectItem value="concluido">Concluído</SelectItem>
-                                )}
+                                {fluxos.map((flx) => {
+                                  const cat = categorias.find((c) => c.id === flx.categoria)
+                                  const nomeFluxo = flx.nome || flx.titulo || 'Fluxo'
+                                  const label = cat ? `${cat.nome} › ${nomeFluxo}` : nomeFluxo
+                                  return (
+                                    <SelectItem key={flx.id} value={flx.id}>
+                                      <span className="flex items-center gap-1.5">
+                                        <span
+                                          className="w-2 h-2 rounded-full shrink-0"
+                                          style={{ backgroundColor: flx.cor || '#0F766E' }}
+                                        />
+                                        {label}
+                                      </span>
+                                    </SelectItem>
+                                  )
+                                })}
                               </SelectContent>
                             </Select>
                           </div>
@@ -2246,34 +2318,53 @@ export default function Folha() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal 3: Criar Nova Etapa/Coluna de Fluxo */}
+      {/* Modal 3: Criar Novo Fluxo Kanban */}
       <Dialog open={modalCriarFluxoOpen} onOpenChange={setModalCriarFluxoOpen}>
         <DialogContent className="max-w-sm bg-white border border-[#E5E1D8]">
           <DialogHeader>
             <DialogTitle className="text-base font-bold text-[#1A1D21] flex items-center gap-2">
               <Layers className="w-4 h-4 text-[#0F766E]" />
-              Nova Etapa / Coluna de Fluxo
+              Novo Fluxo Kanban
             </DialogTitle>
             <DialogDescription className="text-xs text-[#5B6470]">
-              Adicione uma nova coluna ao fluxo Kanban e vincule a este assunto.
+              Cadastre um fluxo Kanban dentro de uma categoria e vincule a este assunto.
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSubmeterCriarFluxo} className="space-y-3.5 pt-2">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#1A1D21]">Nome da Etapa *</label>
+              <label className="text-xs font-semibold text-[#1A1D21]">Nome do Fluxo *</label>
               <Input
                 required
                 autoFocus
-                placeholder="Ex: Em Revisão, Validação Cliente, Aguardando Financeiro..."
-                value={novoFluxoTitulo}
-                onChange={(e) => setNovoFluxoTitulo(e.target.value)}
+                placeholder="Ex: Comercial, Operações, Jurídico..."
+                value={novoFluxoNome}
+                onChange={(e) => setNovoFluxoNome(e.target.value)}
                 className="text-xs border-[#E5E1D8]"
               />
             </div>
 
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-[#5B6470]">Categoria do Fluxo</label>
+              <Select
+                value={novoFluxoCategoriaId || categorias[0]?.id || ''}
+                onValueChange={setNovoFluxoCategoriaId}
+              >
+                <SelectTrigger className="text-xs border-[#E5E1D8]">
+                  <SelectValue placeholder="Selecione a categoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categorias.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-[#5B6470]">Cor do Identificador</label>
+              <label className="text-xs font-semibold text-[#5B6470]">Cor do Fluxo</label>
               <div className="flex items-center gap-2">
                 <input
                   type="color"
@@ -2320,13 +2411,13 @@ export default function Folha() {
               <Button
                 type="submit"
                 size="sm"
-                disabled={criandoFluxo || !novoFluxoTitulo.trim()}
+                disabled={criandoFluxo || !novoFluxoNome.trim()}
                 className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs px-4"
               >
                 {criandoFluxo ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
-                    Salvando...
+                    Criando...
                   </>
                 ) : (
                   <>

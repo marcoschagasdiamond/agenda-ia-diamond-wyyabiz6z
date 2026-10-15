@@ -33,12 +33,20 @@ import { Badge } from '@/components/ui/badge'
 import { useAudioRecorder } from '@/hooks/use-audio-recorder'
 import { useToast } from '@/hooks/use-toast'
 import { diamondApi } from '@/services/diamondApi'
-import type { Projeto, Contato, ColunaFluxo, MarcoTimeline, FolhaDia } from '@/types'
+import type {
+  Projeto,
+  Contato,
+  FluxoKanban,
+  CategoriaFluxo,
+  MarcoTimeline,
+  FolhaDia,
+} from '@/types'
 
 interface GravadorReuniaoProps {
   projetos: Projeto[]
   contatos: Contato[]
-  colunasFluxo: ColunaFluxo[]
+  fluxos: FluxoKanban[]
+  categorias: CategoriaFluxo[]
   marcosTimeline: MarcoTimeline[]
   onReuniaoCriada: (novaFolha: FolhaDia) => void
   onAbrirCriarProjeto: () => void
@@ -50,7 +58,8 @@ interface GravadorReuniaoProps {
 export function GravadorReuniao({
   projetos,
   contatos,
-  colunasFluxo,
+  fluxos,
+  categorias,
   marcosTimeline,
   onReuniaoCriada,
   onAbrirCriarProjeto,
@@ -80,7 +89,7 @@ export function GravadorReuniao({
   const [notasAdicionais, setNotasAdicionais] = useState('')
   const [projetoId, setProjetoId] = useState('none')
   const [contatoId, setContatoId] = useState('none')
-  const [fluxo, setFluxo] = useState('novo')
+  const [fluxo, setFluxo] = useState('none')
   const [timeline, setTimeline] = useState('')
   const [salvandoEOrganizando, setSalvandoEOrganizando] = useState(false)
   const [gravacaoFinalizada, setGravacaoFinalizada] = useState(false)
@@ -427,17 +436,22 @@ export function GravadorReuniao({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Automático (Deixar para IA)</SelectItem>
-                    {colunasFluxo.map((col) => (
-                      <SelectItem key={col.id || col.chave} value={col.chave}>
-                        {col.titulo}
-                      </SelectItem>
-                    ))}
-                    {!colunasFluxo.some((c) => c.chave === 'novo') && (
-                      <SelectItem value="novo">Novo / Triagem</SelectItem>
-                    )}
-                    {!colunasFluxo.some((c) => c.chave === 'em_andamento') && (
-                      <SelectItem value="em_andamento">Em Andamento</SelectItem>
-                    )}
+                    {fluxos.map((flx) => {
+                      const cat = categorias.find((c) => c.id === flx.categoria)
+                      const nomeFluxo = flx.nome || flx.titulo || 'Fluxo'
+                      const label = cat ? `${cat.nome} › ${nomeFluxo}` : nomeFluxo
+                      return (
+                        <SelectItem key={flx.id} value={flx.id}>
+                          <span className="flex items-center gap-1.5">
+                            <span
+                              className="w-2 h-2 rounded-full shrink-0"
+                              style={{ backgroundColor: flx.cor || '#0F766E' }}
+                            />
+                            {label}
+                          </span>
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
               </div>
