@@ -2,11 +2,27 @@ import React, { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { diamondApi } from '@/services/diamondApi'
 import type { Formulario, FormCampoConfig } from '@/types'
-import { FileText, CheckCircle2, Send, AlertCircle, Calendar, Clock, Sparkles } from 'lucide-react'
+import {
+  FileText,
+  CheckCircle2,
+  Send,
+  AlertCircle,
+  Calendar,
+  Clock,
+  Sparkles,
+  Star,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 export default function FormularioPublico() {
   const { slug } = useParams<{ slug: string }>()
@@ -68,9 +84,10 @@ export default function FormularioPublico() {
     e.preventDefault()
     if (!formulario) return
 
-    // Validação de obrigatórios
+    // Validação de obrigatórios (ignora titulo_secao)
     const camposList: FormCampoConfig[] = Array.isArray(formulario.campos) ? formulario.campos : []
     for (const c of camposList) {
+      if (c.tipo === 'titulo_secao') continue
       if (c.obrigatorio) {
         const val = respostas[c.id]
         if (
@@ -199,6 +216,25 @@ export default function FormularioPublico() {
         {/* Formulário Interativo */}
         <form onSubmit={handleEnviar} className="space-y-4">
           {camposList.map((campo) => {
+            // Título / Seção informativa (não coleta resposta)
+            if (campo.tipo === 'titulo_secao') {
+              return (
+                <div
+                  key={campo.id}
+                  className="bg-[#FAFAF9] rounded-xl border-l-4 border-l-[#0F766E] border border-[#E5E1D8] p-5 shadow-2xs space-y-1.5"
+                >
+                  <h3 className="text-sm sm:text-base font-bold text-[#1A1D21] tracking-tight">
+                    {campo.label}
+                  </h3>
+                  {campo.placeholder && (
+                    <p className="text-xs text-[#5B6470] leading-relaxed whitespace-pre-line">
+                      {campo.placeholder}
+                    </p>
+                  )}
+                </div>
+              )
+            }
+
             const valorAtual = respostas[campo.id] ?? ''
 
             return (
@@ -269,6 +305,112 @@ export default function FormularioPublico() {
                     placeholder={campo.placeholder || 'Digite sua resposta detalhada aqui...'}
                     className="text-xs sm:text-sm border-[#E5E1D8] bg-white"
                   />
+                )}
+
+                {/* Dropdown / Lista suspensa de escolha única */}
+                {campo.tipo === 'dropdown' && (
+                  <div className="pt-1">
+                    <Select
+                      value={valorAtual ? String(valorAtual) : undefined}
+                      onValueChange={(val) => handleValorChange(campo.id, val)}
+                    >
+                      <SelectTrigger className="text-xs sm:text-sm border-[#E5E1D8] bg-white h-10 w-full">
+                        <SelectValue placeholder={campo.placeholder || 'Selecione uma opção...'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(campo.opcoes || []).map((op, opIdx) => (
+                          <SelectItem key={opIdx} value={op} className="text-xs sm:text-sm">
+                            {op}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {/* Sim / Não (Booleano) */}
+                {campo.tipo === 'sim_nao' && (
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleValorChange(campo.id, 'Sim')}
+                      className={`h-11 rounded-lg border text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
+                        valorAtual === 'Sim'
+                          ? 'border-[#0F766E] bg-[#0F766E]/10 text-[#0F766E] shadow-2xs'
+                          : 'border-[#E5E1D8] bg-white hover:bg-[#FAFAF9] text-[#1A1D21]'
+                      }`}
+                    >
+                      <span>Sim</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleValorChange(campo.id, 'Não')}
+                      className={`h-11 rounded-lg border text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
+                        valorAtual === 'Não'
+                          ? 'border-red-500 bg-red-50 text-red-700 shadow-2xs'
+                          : 'border-[#E5E1D8] bg-white hover:bg-[#FAFAF9] text-[#1A1D21]'
+                      }`}
+                    >
+                      <span>Não</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Número ou Moeda */}
+                {campo.tipo === 'numero' && (
+                  <div className="relative pt-1 max-w-sm">
+                    {campo.moeda && (
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs sm:text-sm font-bold text-[#5B6470]">
+                        {campo.prefixoMoeda || 'R$'}
+                      </span>
+                    )}
+                    <Input
+                      type="number"
+                      step={campo.moeda ? '0.01' : 'any'}
+                      required={campo.obrigatorio}
+                      value={valorAtual}
+                      onChange={(e) => handleValorChange(campo.id, e.target.value)}
+                      placeholder={campo.placeholder || (campo.moeda ? '0,00' : '0')}
+                      className={`text-xs sm:text-sm border-[#E5E1D8] bg-white h-10 ${
+                        campo.moeda ? 'pl-11' : ''
+                      }`}
+                    />
+                  </div>
+                )}
+
+                {/* Avaliação (1 a 5 estrelas) */}
+                {campo.tipo === 'avaliacao' && (
+                  <div className="pt-2 flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      {[1, 2, 3, 4, 5].map((nota) => {
+                        const selecionada = Number(valorAtual) >= nota
+                        return (
+                          <button
+                            key={nota}
+                            type="button"
+                            onClick={() => handleValorChange(campo.id, nota)}
+                            className="p-1 hover:scale-110 transition-transform focus:outline-none"
+                            title={`${nota} de 5 estrelas`}
+                          >
+                            <Star
+                              className={`w-7 h-7 sm:w-8 sm:h-8 transition-colors ${
+                                selecionada
+                                  ? 'text-amber-400 fill-amber-400 drop-shadow-xs'
+                                  : 'text-gray-300 hover:text-amber-200'
+                              }`}
+                            />
+                          </button>
+                        )
+                      })}
+                      {valorAtual ? (
+                        <span className="text-xs sm:text-sm font-bold text-[#1A1D21] ml-2">
+                          {valorAtual} / 5 estrelas
+                        </span>
+                      ) : (
+                        <span className="text-xs text-[#5B6470] ml-2">Selecione de 1 a 5</span>
+                      )}
+                    </div>
+                  </div>
                 )}
 
                 {campo.tipo === 'escolha_unica' && (

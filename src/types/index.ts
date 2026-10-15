@@ -574,6 +574,11 @@ export type FormCampoTipo =
   | 'data'
   | 'escolha_unica'
   | 'escolha_multipla'
+  | 'dropdown'
+  | 'sim_nao'
+  | 'numero'
+  | 'avaliacao'
+  | 'titulo_secao'
 
 export interface FormCampoConfig {
   id: string
@@ -582,6 +587,11 @@ export interface FormCampoConfig {
   obrigatorio?: boolean
   placeholder?: string
   opcoes?: string[]
+  ajuda?: string
+  moeda?: boolean
+  prefixoMoeda?: string
+  valorMin?: number
+  valorMax?: number
 }
 
 export interface Formulario {

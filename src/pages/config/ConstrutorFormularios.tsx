@@ -27,6 +27,14 @@ import {
   HelpCircle,
   FolderOpen,
   ArrowRight,
+  ArrowUp,
+  ArrowDown,
+  ListPlus,
+  Star,
+  CheckSquare,
+  Hash,
+  ChevronDown,
+  Heading,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -158,6 +166,11 @@ export default function ConstrutorFormularios({ onRecarregarGlobal }: Construtor
     setModalBuilderOpen(true)
   }
 
+  // Estado para Edição Detalhada de um Campo específico
+  const [modalEditarCampoOpen, setModalEditarCampoOpen] = useState(false)
+  const [campoEmEdicao, setCampoEmEdicao] = useState<FormCampoConfig | null>(null)
+  const [novaOpcaoTexto, setNovaOpcaoTexto] = useState('')
+
   // Gerenciador de campos do formulário
   const adicionarCampo = (tipo: FormCampoTipo = 'texto') => {
     const labelsPorTipo: Record<FormCampoTipo, string> = {
@@ -168,28 +181,79 @@ export default function ConstrutorFormularios({ onRecarregarGlobal }: Construtor
       data: 'Selecione a Data',
       escolha_unica: 'Selecione uma opção',
       escolha_multipla: 'Marque uma ou mais opções',
+      dropdown: 'Estado Conjugal / Selecione uma opção',
+      sim_nao: 'Você concorda com os termos?',
+      numero: 'Informe a Quantidade ou Valor',
+      avaliacao: 'Qual o seu nível de satisfação?',
+      titulo_secao: 'Seção: Informações Importantes',
     }
 
     const novoCampo: FormCampoConfig = {
       id: `c_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       label: labelsPorTipo[tipo],
       tipo,
-      obrigatorio: false,
-      placeholder: '',
+      obrigatorio: tipo === 'titulo_secao' ? false : false,
+      placeholder:
+        tipo === 'dropdown'
+          ? 'Selecione...'
+          : tipo === 'numero'
+            ? '0'
+            : tipo === 'titulo_secao'
+              ? 'Texto explicativo para esta seção...'
+              : '',
       opcoes:
-        tipo === 'escolha_unica' || tipo === 'escolha_multipla'
-          ? ['Opção 1', 'Opção 2', 'Opção 3']
-          : undefined,
+        tipo === 'dropdown'
+          ? ['Solteiro(a)', 'Casado(a)', 'União Estável', 'Divorciado(a)', 'Viúvo(a)']
+          : tipo === 'escolha_unica' || tipo === 'escolha_multipla'
+            ? ['Opção 1', 'Opção 2', 'Opção 3']
+            : undefined,
+      moeda: false,
+      prefixoMoeda: 'R$',
     }
     setCampos([...campos, novoCampo])
   }
 
   const atualizarCampo = (id: string, updates: Partial<FormCampoConfig>) => {
     setCampos(campos.map((c) => (c.id === id ? { ...c, ...updates } : c)))
+    if (campoEmEdicao && campoEmEdicao.id === id) {
+      setCampoEmEdicao((prev) => (prev ? { ...prev, ...updates } : prev))
+    }
   }
 
   const removerCampo = (id: string) => {
     setCampos(campos.filter((c) => c.id !== id))
+    if (campoEmEdicao?.id === id) {
+      setModalEditarCampoOpen(false)
+      setCampoEmEdicao(null)
+    }
+  }
+
+  const moverCampo = (index: number, direcao: 'cima' | 'baixo') => {
+    const novoIndex = direcao === 'cima' ? index - 1 : index + 1
+    if (novoIndex < 0 || novoIndex >= campos.length) return
+    const lista = [...campos]
+    const item = lista[index]
+    lista[index] = lista[novoIndex]
+    lista[novoIndex] = item
+    setCampos(lista)
+  }
+
+  const abrirEditorDeCampo = (campo: FormCampoConfig) => {
+    setCampoEmEdicao({ ...campo, opcoes: campo.opcoes ? [...campo.opcoes] : [] })
+    setNovaOpcaoTexto('')
+    setModalEditarCampoOpen(true)
+  }
+
+  const salvarCampoEdicao = () => {
+    if (!campoEmEdicao) return
+    if (!campoEmEdicao.label.trim()) {
+      toast({ title: 'A pergunta / título não pode ficar em branco', variant: 'destructive' })
+      return
+    }
+    atualizarCampo(campoEmEdicao.id, campoEmEdicao)
+    setModalEditarCampoOpen(false)
+    setCampoEmEdicao(null)
+    toast({ title: 'Pergunta atualizada com sucesso!' })
   }
 
   // Salvar formulário
@@ -724,163 +788,358 @@ export default function ConstrutorFormularios({ onRecarregarGlobal }: Construtor
 
             {/* Bloco 2: Lista de Campos Configuráveis */}
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-[#1A1D21] uppercase tracking-wider">
-                  Campos do Formulário ({campos.length})
-                </span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
+                <div>
+                  <span className="text-xs font-bold text-[#1A1D21] uppercase tracking-wider block">
+                    Perguntas e Campos do Formulário ({campos.length})
+                  </span>
+                  <span className="text-[11px] text-[#5B6470]">
+                    Clique em "Editar" em qualquer pergunta para alterar tipo, opções e
+                    configurações
+                  </span>
+                </div>
+              </div>
 
-                {/* Adicionar campo rápido por tipo */}
+              {/* Botões rápidos de inserção de perguntas */}
+              <div className="p-2.5 bg-[#FAFAF9] border border-[#E5E1D8] rounded-xl mb-3 space-y-2">
+                <div className="text-[10px] font-bold text-[#5B6470] uppercase tracking-wider">
+                  + Adicionar Nova Pergunta por Tipo:
+                </div>
                 <div className="flex flex-wrap items-center gap-1.5">
                   <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => adicionarCampo('dropdown')}
+                    className="text-[11px] h-7 px-2 bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 font-semibold gap-1"
+                    title="Lista suspensa (ex: Estado Conjugal, Categoria, etc.)"
+                  >
+                    <ChevronDown className="w-3 h-3 text-emerald-600" />
+                    <span>+ Dropdown (Opções)</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => adicionarCampo('sim_nao')}
+                    className="text-[11px] h-7 px-2 bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100 font-semibold gap-1"
+                    title="Pergunta Booleana Sim / Não"
+                  >
+                    <CheckSquare className="w-3 h-3 text-blue-600" />
+                    <span>+ Sim / Não</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => adicionarCampo('numero')}
+                    className="text-[11px] h-7 px-2 bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100 font-semibold gap-1"
+                    title="Pergunta numérica ou moeda (R$)"
+                  >
+                    <Hash className="w-3 h-3 text-amber-600" />
+                    <span>+ Número / Moeda</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => adicionarCampo('avaliacao')}
+                    className="text-[11px] h-7 px-2 bg-purple-50 text-purple-900 border-purple-200 hover:bg-purple-100 font-semibold gap-1"
+                    title="Avaliação de 1 a 5 estrelas"
+                  >
+                    <Star className="w-3 h-3 text-purple-600" />
+                    <span>+ Avaliação (★ 1 a 5)</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => adicionarCampo('titulo_secao')}
+                    className="text-[11px] h-7 px-2 bg-stone-100 text-[#1A1D21] border-[#E5E1D8] hover:bg-stone-200 font-semibold gap-1"
+                    title="Título ou divisor de seção informativo (sem resposta)"
+                  >
+                    <Heading className="w-3 h-3 text-[#0F766E]" />
+                    <span>+ Título / Seção</span>
+                  </Button>
+                  <Button
+                    type="button"
                     size="sm"
                     variant="outline"
                     onClick={() => adicionarCampo('texto')}
-                    className="text-[11px] h-7 px-2 border-[#E5E1D8]"
+                    className="text-[11px] h-7 px-2 border-[#E5E1D8] bg-white"
                   >
-                    + Texto
+                    + Texto Curto
                   </Button>
                   <Button
+                    type="button"
                     size="sm"
                     variant="outline"
                     onClick={() => adicionarCampo('texto_longo')}
-                    className="text-[11px] h-7 px-2 border-[#E5E1D8]"
+                    className="text-[11px] h-7 px-2 border-[#E5E1D8] bg-white"
                   >
                     + Texto Longo
                   </Button>
                   <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => adicionarCampo('escolha_unica')}
+                    className="text-[11px] h-7 px-2 border-[#E5E1D8] bg-white"
+                  >
+                    + Escolha Única (Radio)
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => adicionarCampo('escolha_multipla')}
+                    className="text-[11px] h-7 px-2 border-[#E5E1D8] bg-white"
+                  >
+                    + Checkboxes Múltiplos
+                  </Button>
+                  <Button
+                    type="button"
                     size="sm"
                     variant="outline"
                     onClick={() => adicionarCampo('email')}
-                    className="text-[11px] h-7 px-2 border-[#E5E1D8]"
+                    className="text-[11px] h-7 px-2 border-[#E5E1D8] bg-white"
                   >
                     + E-mail
                   </Button>
                   <Button
+                    type="button"
                     size="sm"
                     variant="outline"
                     onClick={() => adicionarCampo('telefone')}
-                    className="text-[11px] h-7 px-2 border-[#E5E1D8]"
+                    className="text-[11px] h-7 px-2 border-[#E5E1D8] bg-white"
                   >
                     + Telefone
                   </Button>
                   <Button
+                    type="button"
                     size="sm"
                     variant="outline"
                     onClick={() => adicionarCampo('data')}
-                    className="text-[11px] h-7 px-2 border-[#E5E1D8]"
+                    className="text-[11px] h-7 px-2 border-[#E5E1D8] bg-white"
                   >
                     + Data
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => adicionarCampo('escolha_unica')}
-                    className="text-[11px] h-7 px-2 border-[#E5E1D8]"
-                  >
-                    + Escolha Única
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => adicionarCampo('escolha_multipla')}
-                    className="text-[11px] h-7 px-2 border-[#E5E1D8]"
-                  >
-                    + Múltipla Escolha
                   </Button>
                 </div>
               </div>
 
               {/* Lista de campos reordenáveis / configuráveis */}
               <div className="space-y-2.5">
-                {campos.map((campo, index) => (
-                  <div
-                    key={campo.id}
-                    className="p-3 bg-white border border-[#E5E1D8] rounded-xl space-y-2 relative shadow-2xs hover:border-[#0F766E]/40"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold text-[#5B6470] uppercase">
-                        #{index + 1} · {campo.tipo.replace('_', ' ')}
-                      </span>
+                {campos.map((campo, index) => {
+                  const precisaOpcoes =
+                    campo.tipo === 'escolha_unica' ||
+                    campo.tipo === 'escolha_multipla' ||
+                    campo.tipo === 'dropdown'
+                  const isSecao = campo.tipo === 'titulo_secao'
 
-                      <div className="flex items-center gap-3">
-                        <label className="flex items-center gap-1.5 text-xs text-[#1A1D21] cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={campo.obrigatorio || false}
-                            onChange={(e) =>
-                              atualizarCampo(campo.id, { obrigatorio: e.target.checked })
-                            }
-                            className="rounded border-[#E5E1D8] text-[#0F766E] focus:ring-[#0F766E]"
+                  const tipoEtiqueta: Record<FormCampoTipo, string> = {
+                    texto: 'Texto Curto',
+                    texto_longo: 'Texto Longo',
+                    email: 'E-mail',
+                    telefone: 'Telefone',
+                    data: 'Data',
+                    escolha_unica: 'Escolha Única',
+                    escolha_multipla: 'Múltipla Escolha',
+                    dropdown: 'Dropdown (Suspenso)',
+                    sim_nao: 'Sim / Não',
+                    numero: campo.moeda ? 'Número (Moeda R$)' : 'Número',
+                    avaliacao: 'Avaliação (1-5 ★)',
+                    titulo_secao: 'Título / Seção Informativa',
+                  }
+
+                  return (
+                    <div
+                      key={campo.id}
+                      className={`p-3 bg-white border rounded-xl space-y-2 relative shadow-2xs hover:border-[#0F766E]/50 transition-colors ${
+                        isSecao
+                          ? 'border-l-4 border-l-[#0F766E] bg-stone-50/50'
+                          : 'border-[#E5E1D8]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold text-[#5B6470] uppercase">
+                            #{index + 1}
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] font-semibold bg-[#FAFAF9] text-[#1A1D21] border-[#E5E1D8]"
+                          >
+                            {tipoEtiqueta[campo.tipo] || campo.tipo}
+                          </Badge>
+                          {precisaOpcoes && (
+                            <span className="text-[10px] text-[#5B6470]">
+                              ({(campo.opcoes || []).length} opções)
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Ações de Reordenação, Edição Completa e Exclusão */}
+                        <div className="flex items-center gap-1.5">
+                          {/* Botões Mover Cima / Baixo */}
+                          <div className="flex items-center border border-[#E5E1D8] rounded-md overflow-hidden bg-white">
+                            <button
+                              type="button"
+                              disabled={index === 0}
+                              onClick={() => moverCampo(index, 'cima')}
+                              title="Mover pergunta para cima"
+                              className="p-1 hover:bg-[#FAFAF9] disabled:opacity-30 disabled:hover:bg-transparent text-[#5B6470]"
+                            >
+                              <ArrowUp className="w-3 h-3" />
+                            </button>
+                            <div className="w-[1px] h-3 bg-[#E5E1D8]" />
+                            <button
+                              type="button"
+                              disabled={index === campos.length - 1}
+                              onClick={() => moverCampo(index, 'baixo')}
+                              title="Mover pergunta para baixo"
+                              className="p-1 hover:bg-[#FAFAF9] disabled:opacity-30 disabled:hover:bg-transparent text-[#5B6470]"
+                            >
+                              <ArrowDown className="w-3 h-3" />
+                            </button>
+                          </div>
+
+                          {!isSecao && (
+                            <label className="flex items-center gap-1 text-xs text-[#1A1D21] cursor-pointer ml-1">
+                              <input
+                                type="checkbox"
+                                checked={campo.obrigatorio || false}
+                                onChange={(e) =>
+                                  atualizarCampo(campo.id, { obrigatorio: e.target.checked })
+                                }
+                                className="rounded border-[#E5E1D8] text-[#0F766E] focus:ring-[#0F766E]"
+                              />
+                              <span className="text-[11px] font-medium">Obrigatório</span>
+                            </label>
+                          )}
+
+                          {/* Botão de Edição Completa da Pergunta */}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => abrirEditorDeCampo(campo)}
+                            className="text-xs h-7 px-2 text-[#0F766E] border-[#0F766E]/40 hover:bg-[#0F766E]/10 gap-1 font-semibold"
+                            title="Editar pergunta completa (tipo, opções, rótulo, regras)"
+                          >
+                            <Pencil className="w-3 h-3" />
+                            <span>Editar Pergunta</span>
+                          </Button>
+
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => removerCampo(campo.id)}
+                            className="w-7 h-7 text-red-600 hover:bg-red-50"
+                            title="Remover pergunta"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] text-[#5B6470] block">
+                            {isSecao ? 'Título da Seção' : 'Pergunta / Rótulo'}
+                          </label>
+                          <Input
+                            value={campo.label}
+                            onChange={(e) => atualizarCampo(campo.id, { label: e.target.value })}
+                            className="text-xs border-[#E5E1D8] h-8 font-medium"
+                            placeholder={isSecao ? 'Título informativo...' : 'Digite a pergunta...'}
                           />
-                          <span className="text-[11px] font-medium">Obrigatório</span>
-                        </label>
+                        </div>
 
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => removerCampo(campo.id)}
-                          className="w-6 h-6 text-red-600 hover:bg-red-50"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
+                        <div>
+                          <label className="text-[10px] text-[#5B6470] block">
+                            {isSecao ? 'Texto Explicativo' : 'Placeholder / Dica de resposta'}
+                          </label>
+                          <Input
+                            value={campo.placeholder || ''}
+                            onChange={(e) =>
+                              atualizarCampo(campo.id, { placeholder: e.target.value })
+                            }
+                            className="text-xs border-[#E5E1D8] h-8"
+                            placeholder={
+                              isSecao
+                                ? 'Instruções para o respondente...'
+                                : 'Texto exibido no campo...'
+                            }
+                          />
+                        </div>
                       </div>
+
+                      {/* Pré-visualização ou edição rápida de opções caso Dropdown ou Escolha */}
+                      {precisaOpcoes && (
+                        <div className="pt-1 border-t border-[#E5E1D8]/60 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-semibold text-[#5B6470]">
+                              Opções cadastradas (separadas por ponto e vírgula):
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => abrirEditorDeCampo(campo)}
+                              className="text-[10px] text-[#0F766E] hover:underline font-semibold"
+                            >
+                              Gerenciar lista completa ({campo.opcoes?.length || 0}) →
+                            </button>
+                          </div>
+                          <Input
+                            value={(campo.opcoes || []).join('; ')}
+                            onChange={(e) =>
+                              atualizarCampo(campo.id, {
+                                opcoes: e.target.value
+                                  .split(';')
+                                  .map((s) => s.trim())
+                                  .filter(Boolean),
+                              })
+                            }
+                            className="text-xs border-[#E5E1D8] h-8"
+                            placeholder="Solteiro(a); Casado(a); União Estável; Divorciado(a); Viúvo(a)"
+                          />
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {(campo.opcoes || []).map((op, opIdx) => (
+                              <span
+                                key={opIdx}
+                                className="inline-flex items-center text-[10px] bg-[#FAFAF9] border border-[#E5E1D8] px-2 py-0.5 rounded text-[#1A1D21]"
+                              >
+                                {op}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Caso Número: opção rápida de moeda */}
+                      {campo.tipo === 'numero' && (
+                        <div className="pt-1 border-t border-[#E5E1D8]/60 flex items-center gap-3">
+                          <label className="flex items-center gap-1.5 text-xs text-[#1A1D21] cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={campo.moeda || false}
+                              onChange={(e) =>
+                                atualizarCampo(campo.id, { moeda: e.target.checked })
+                              }
+                              className="rounded border-[#E5E1D8] text-[#0F766E] focus:ring-[#0F766E]"
+                            />
+                            <span className="text-[11px] font-medium">Formato Moeda (R$)</span>
+                          </label>
+                        </div>
+                      )}
                     </div>
+                  )
+                })}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] text-[#5B6470] block">
-                          Pergunta / Rótulo
-                        </label>
-                        <Input
-                          value={campo.label}
-                          onChange={(e) => atualizarCampo(campo.id, { label: e.target.value })}
-                          className="text-xs border-[#E5E1D8] h-8"
-                          placeholder="Digite o título do campo..."
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-[10px] text-[#5B6470] block">
-                          Placeholder / Dica
-                        </label>
-                        <Input
-                          value={campo.placeholder || ''}
-                          onChange={(e) =>
-                            atualizarCampo(campo.id, { placeholder: e.target.value })
-                          }
-                          className="text-xs border-[#E5E1D8] h-8"
-                          placeholder="Texto de exemplo no campo..."
-                        />
-                      </div>
-                    </div>
-
-                    {/* Configuração de opções caso escolha única ou múltipla */}
-                    {(campo.tipo === 'escolha_unica' || campo.tipo === 'escolha_multipla') && (
-                      <div className="pt-1 border-t border-[#E5E1D8]/60">
-                        <label className="text-[10px] font-medium text-[#5B6470] block mb-1">
-                          Opções de resposta (separadas por ponto e vírgula):
-                        </label>
-                        <Input
-                          value={(campo.opcoes || []).join('; ')}
-                          onChange={(e) =>
-                            atualizarCampo(campo.id, {
-                              opcoes: e.target.value
-                                .split(';')
-                                .map((s) => s.trim())
-                                .filter(Boolean),
-                            })
-                          }
-                          className="text-xs border-[#E5E1D8] h-8"
-                          placeholder="Opção 1; Opção 2; Opção 3"
-                        />
-                      </div>
-                    )}
-                  </div>
-                ))}
                 {campos.length === 0 && (
-                  <div className="p-6 text-center text-xs text-[#5B6470] bg-[#FAFAF9] border border-dashed border-[#E5E1D8] rounded-xl">
-                    Nenhum campo adicionado. Use os botões acima para incluir perguntas ao
-                    formulário.
+                  <div className="p-8 text-center text-xs text-[#5B6470] bg-[#FAFAF9] border border-dashed border-[#E5E1D8] rounded-xl">
+                    Nenhuma pergunta cadastrada. Use os botões coloridos acima para adicionar
+                    Dropdown (como Estado Conjugal), Sim/Não, Número, Avaliação, Texto ou Seções.
                   </div>
                 )}
               </div>
@@ -904,6 +1163,318 @@ export default function ConstrutorFormularios({ onRecarregarGlobal }: Construtor
             >
               <Check className="w-3.5 h-3.5" />
               <span>{salvando ? 'Salvando...' : 'Salvar e Publicar'}</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Edição Completa da Pergunta / Campo */}
+      <Dialog open={modalEditarCampoOpen} onOpenChange={setModalEditarCampoOpen}>
+        <DialogContent className="max-w-xl max-h-[88vh] overflow-y-auto bg-white border-[#E5E1D8]">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold text-[#1A1D21] flex items-center justify-between pr-4">
+              <span className="flex items-center gap-2">
+                <Pencil className="w-4 h-4 text-[#0F766E]" />
+                Editar Pergunta / Campo
+              </span>
+              {campoEmEdicao && (
+                <span className="text-[10px] font-mono text-[#5B6470] bg-[#FAFAF9] px-2 py-0.5 rounded border border-[#E5E1D8]">
+                  id: {campoEmEdicao.id}
+                </span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+
+          {campoEmEdicao && (
+            <div className="space-y-4 py-2">
+              <div className="p-3 bg-[#FAFAF9] rounded-xl border border-[#E5E1D8] space-y-3">
+                {/* Tipo de Campo */}
+                <div>
+                  <label className="text-xs font-semibold text-[#1A1D21] block mb-1">
+                    Tipo de Pergunta / Campo
+                  </label>
+                  <Select
+                    value={campoEmEdicao.tipo}
+                    onValueChange={(val: FormCampoTipo) => {
+                      const novosValores: Partial<FormCampoConfig> = { tipo: val }
+                      if (
+                        (val === 'dropdown' ||
+                          val === 'escolha_unica' ||
+                          val === 'escolha_multipla') &&
+                        (!campoEmEdicao.opcoes || campoEmEdicao.opcoes.length === 0)
+                      ) {
+                        novosValores.opcoes =
+                          val === 'dropdown'
+                            ? [
+                                'Solteiro(a)',
+                                'Casado(a)',
+                                'União Estável',
+                                'Divorciado(a)',
+                                'Viúvo(a)',
+                              ]
+                            : ['Opção 1', 'Opção 2', 'Opção 3']
+                      }
+                      setCampoEmEdicao({ ...campoEmEdicao, ...novosValores })
+                    }}
+                  >
+                    <SelectTrigger className="text-xs border-[#E5E1D8] bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="dropdown">
+                        Dropdown (Lista Suspensa de Escolha Única)
+                      </SelectItem>
+                      <SelectItem value="escolha_unica">Escolha Única (Radio Buttons)</SelectItem>
+                      <SelectItem value="escolha_multipla">
+                        Escolha Múltipla (Checkboxes)
+                      </SelectItem>
+                      <SelectItem value="sim_nao">Sim / Não (Booleano)</SelectItem>
+                      <SelectItem value="numero">Número (com opção de Moeda R$)</SelectItem>
+                      <SelectItem value="avaliacao">Avaliação (1 a 5 estrelas)</SelectItem>
+                      <SelectItem value="texto">Texto Curto</SelectItem>
+                      <SelectItem value="texto_longo">Texto Longo (Parágrafo)</SelectItem>
+                      <SelectItem value="email">E-mail</SelectItem>
+                      <SelectItem value="telefone">Telefone / WhatsApp</SelectItem>
+                      <SelectItem value="data">Data</SelectItem>
+                      <SelectItem value="titulo_secao">
+                        Título / Seção Informativa (sem resposta)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Pergunta / Rótulo */}
+                <div>
+                  <label className="text-xs font-semibold text-[#1A1D21] block mb-1">
+                    {campoEmEdicao.tipo === 'titulo_secao'
+                      ? 'Título da Seção'
+                      : 'Texto da Pergunta'}
+                  </label>
+                  <Input
+                    value={campoEmEdicao.label}
+                    onChange={(e) => setCampoEmEdicao({ ...campoEmEdicao, label: e.target.value })}
+                    placeholder="Ex: Estado Conjugal, Renda Familiar, Cargo Atual..."
+                    className="text-xs border-[#E5E1D8] bg-white font-medium"
+                  />
+                </div>
+
+                {/* Placeholder / Texto de Apoio */}
+                <div>
+                  <label className="text-xs font-semibold text-[#1A1D21] block mb-1">
+                    {campoEmEdicao.tipo === 'titulo_secao'
+                      ? 'Descrição / Instruções da Seção'
+                      : 'Placeholder ou Dica de Preenchimento'}
+                  </label>
+                  <Input
+                    value={campoEmEdicao.placeholder || ''}
+                    onChange={(e) =>
+                      setCampoEmEdicao({ ...campoEmEdicao, placeholder: e.target.value })
+                    }
+                    placeholder="Ex: Selecione seu estado civil de acordo com os documentos..."
+                    className="text-xs border-[#E5E1D8] bg-white"
+                  />
+                </div>
+
+                {/* Regra de Obrigatório */}
+                {campoEmEdicao.tipo !== 'titulo_secao' && (
+                  <div className="flex items-center justify-between pt-2 border-t border-[#E5E1D8]">
+                    <div>
+                      <span className="text-xs font-semibold text-[#1A1D21] block">
+                        Resposta Obrigatória
+                      </span>
+                      <span className="text-[11px] text-[#5B6470]">
+                        O usuário só poderá submeter se preencher este campo
+                      </span>
+                    </div>
+                    <Switch
+                      checked={campoEmEdicao.obrigatorio || false}
+                      onCheckedChange={(checked) =>
+                        setCampoEmEdicao({ ...campoEmEdicao, obrigatorio: checked })
+                      }
+                    />
+                  </div>
+                )}
+
+                {/* Opção Moeda se campo Número */}
+                {campoEmEdicao.tipo === 'numero' && (
+                  <div className="flex items-center justify-between pt-2 border-t border-[#E5E1D8]">
+                    <div>
+                      <span className="text-xs font-semibold text-[#1A1D21] block">
+                        Formato de Moeda Financeira (R$)
+                      </span>
+                      <span className="text-[11px] text-[#5B6470]">
+                        Exibe o prefixo R$ e formatação monetária de valores
+                      </span>
+                    </div>
+                    <Switch
+                      checked={campoEmEdicao.moeda || false}
+                      onCheckedChange={(checked) =>
+                        setCampoEmEdicao({
+                          ...campoEmEdicao,
+                          moeda: checked,
+                          prefixoMoeda: checked ? 'R$' : undefined,
+                        })
+                      }
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Gerenciamento Completo de Opções (Dropdown, Escolha Única, Múltipla) */}
+              {(campoEmEdicao.tipo === 'dropdown' ||
+                campoEmEdicao.tipo === 'escolha_unica' ||
+                campoEmEdicao.tipo === 'escolha_multipla') && (
+                <div className="p-3 bg-white border border-[#E5E1D8] rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-[#1A1D21] block">
+                        Opções da Lista ({campoEmEdicao.opcoes?.length || 0})
+                      </span>
+                      <span className="text-[11px] text-[#5B6470]">
+                        Adicione, renomeie, reordene ou remova opções livremente sem limites.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Formulário de Adicionar Opção Nova */}
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={novaOpcaoTexto}
+                      onChange={(e) => setNovaOpcaoTexto(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          if (!novaOpcaoTexto.trim()) return
+                          const opts = campoEmEdicao.opcoes ? [...campoEmEdicao.opcoes] : []
+                          setCampoEmEdicao({
+                            ...campoEmEdicao,
+                            opcoes: [...opts, novaOpcaoTexto.trim()],
+                          })
+                          setNovaOpcaoTexto('')
+                        }
+                      }}
+                      placeholder="Digitar nova opção (ex: Casado(a)) e pressionar Enter ou Adicionar"
+                      className="text-xs border-[#E5E1D8]"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => {
+                        if (!novaOpcaoTexto.trim()) return
+                        const opts = campoEmEdicao.opcoes ? [...campoEmEdicao.opcoes] : []
+                        setCampoEmEdicao({
+                          ...campoEmEdicao,
+                          opcoes: [...opts, novaOpcaoTexto.trim()],
+                        })
+                        setNovaOpcaoTexto('')
+                      }}
+                      className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-9 shrink-0 gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Adicionar</span>
+                    </Button>
+                  </div>
+
+                  {/* Lista de Opções Existentes com Reordenação e Edição */}
+                  <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                    {(campoEmEdicao.opcoes || []).map((opcao, opIdx) => (
+                      <div
+                        key={opIdx}
+                        className="flex items-center gap-2 bg-[#FAFAF9] border border-[#E5E1D8] p-1.5 rounded-lg text-xs"
+                      >
+                        <span className="w-5 text-[10px] font-bold text-[#5B6470] text-center">
+                          {opIdx + 1}
+                        </span>
+                        <Input
+                          value={opcao}
+                          onChange={(e) => {
+                            const novaLista = [...(campoEmEdicao.opcoes || [])]
+                            novaLista[opIdx] = e.target.value
+                            setCampoEmEdicao({ ...campoEmEdicao, opcoes: novaLista })
+                          }}
+                          className="text-xs h-7 border-[#E5E1D8] bg-white flex-1"
+                        />
+                        <div className="flex items-center border border-[#E5E1D8] rounded overflow-hidden bg-white shrink-0">
+                          <button
+                            type="button"
+                            disabled={opIdx === 0}
+                            onClick={() => {
+                              const lista = [...(campoEmEdicao.opcoes || [])]
+                              const item = lista[opIdx]
+                              lista[opIdx] = lista[opIdx - 1]
+                              lista[opIdx - 1] = item
+                              setCampoEmEdicao({ ...campoEmEdicao, opcoes: lista })
+                            }}
+                            className="p-1 hover:bg-[#FAFAF9] disabled:opacity-30 text-[#5B6470]"
+                            title="Mover para cima"
+                          >
+                            <ArrowUp className="w-3 h-3" />
+                          </button>
+                          <div className="w-[1px] h-3 bg-[#E5E1D8]" />
+                          <button
+                            type="button"
+                            disabled={opIdx === (campoEmEdicao.opcoes || []).length - 1}
+                            onClick={() => {
+                              const lista = [...(campoEmEdicao.opcoes || [])]
+                              const item = lista[opIdx]
+                              lista[opIdx] = lista[opIdx + 1]
+                              lista[opIdx + 1] = item
+                              setCampoEmEdicao({ ...campoEmEdicao, opcoes: lista })
+                            }}
+                            className="p-1 hover:bg-[#FAFAF9] disabled:opacity-30 text-[#5B6470]"
+                            title="Mover para baixo"
+                          >
+                            <ArrowDown className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            const lista = (campoEmEdicao.opcoes || []).filter((_, i) => i !== opIdx)
+                            setCampoEmEdicao({ ...campoEmEdicao, opcoes: lista })
+                          }}
+                          className="w-7 h-7 text-red-600 hover:bg-red-50 shrink-0"
+                          title="Remover opção"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+
+                    {(!campoEmEdicao.opcoes || campoEmEdicao.opcoes.length === 0) && (
+                      <div className="text-center p-3 text-xs text-[#5B6470] border border-dashed border-[#E5E1D8] rounded-lg">
+                        Nenhuma opção inserida ainda. Digite acima e clique em Adicionar.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setModalEditarCampoOpen(false)
+                setCampoEmEdicao(null)
+              }}
+              className="text-xs border-[#E5E1D8]"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={salvarCampoEdicao}
+              className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs gap-1.5"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Salvar Alterações na Pergunta</span>
             </Button>
           </DialogFooter>
         </DialogContent>
