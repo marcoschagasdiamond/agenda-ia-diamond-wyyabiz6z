@@ -811,15 +811,10 @@ export default function Folha() {
     timeline?: string
   }) => {
     setDemandaAssuntoOrigem(dados)
-    // Título inteligente: primeira linha ou primeiras palavras
-    const primeiraLinha = dados.texto.split('\n')[0].trim()
-    const tituloSugerido =
-      primeiraLinha.length > 60
-        ? primeiraLinha.slice(0, 57) + '...'
-        : primeiraLinha || `Demanda do Assunto ${dados.numero}`
-
-    setDemandaTitulo(tituloSugerido)
-    setDemandaDescricao(dados.texto)
+    // Título e Descrição/Contexto em branco conforme decisão do usuário
+    // para preenchimento livre a partir do zero mantendo os vínculos herdados
+    setDemandaTitulo('')
+    setDemandaDescricao('')
     setDemandaPrioridade('media')
     setDemandaPrazo('')
     setDemandaProjeto(dados.projetoId && dados.projetoId !== 'none' ? dados.projetoId : 'none')
