@@ -45,9 +45,10 @@ import GestaoEquipes from '@/pages/config/GestaoEquipes'
 import GestaoTags from '@/pages/config/GestaoTags'
 import GestaoGruposTarefas from '@/pages/config/GestaoGruposTarefas'
 import GestaoCards from '@/pages/config/GestaoCards'
+import GestaoFolha from '@/pages/config/GestaoFolha'
 import ConstrutorFormularios from '@/pages/config/ConstrutorFormularios'
 import GestaoLembretes from '@/pages/config/GestaoLembretes'
-import { Bell } from 'lucide-react'
+import { Bell, FileEdit } from 'lucide-react'
 
 export default function Config() {
   const { user, profile, refreshProfile } = useAuth()
@@ -202,6 +203,20 @@ export default function Config() {
             <div className="flex flex-wrap items-center gap-1.5">
               <Button
                 size="sm"
+                variant={abaGestao === 'folha' ? 'default' : 'ghost'}
+                onClick={() => mudarAbaGestao('folha')}
+                className={`text-xs h-8 px-2.5 rounded-lg gap-1.5 ${
+                  abaGestao === 'folha'
+                    ? 'bg-[#1A1D21] text-white hover:bg-[#2A2E33]'
+                    : 'text-[#5B6470] hover:text-[#1A1D21] hover:bg-white'
+                }`}
+              >
+                <FileEdit className="w-3.5 h-3.5 text-[#0F766E]" />
+                <span className="font-semibold">Folha do Dia</span>
+              </Button>
+
+              <Button
+                size="sm"
                 variant={abaGestao === 'categorias_fluxos' ? 'default' : 'ghost'}
                 onClick={() => mudarAbaGestao('categorias_fluxos')}
                 className={`text-xs h-8 px-2.5 rounded-lg gap-1.5 ${
@@ -316,6 +331,7 @@ export default function Config() {
 
           {/* Renderização condicional do módulo selecionado */}
           <div>
+            {abaGestao === 'folha' && <GestaoFolha onRecarregarGlobal={recarregarGlobal} />}
             {abaGestao === 'categorias_fluxos' && (
               <GestaoCategoriasFluxos onRecarregarGlobal={recarregarGlobal} />
             )}

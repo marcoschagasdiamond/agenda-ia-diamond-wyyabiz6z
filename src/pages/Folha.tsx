@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { diamondApi } from '@/services/diamondApi'
 import { useNavegacao } from '@/contexts/NavegacaoContext'
 import type {
@@ -13,6 +13,7 @@ import type {
   CategoriaFluxo,
   MarcoTimeline,
   ProjetoTipo,
+  Demanda,
 } from '@/types'
 import {
   FileEdit,
@@ -42,6 +43,11 @@ import {
   Volume2,
   CalendarCheck,
   CheckCircle,
+  Pin,
+  PinOff,
+  Archive,
+  ArchiveRestore,
+  Search,
 } from 'lucide-react'
 import { GravadorReuniao } from '@/components/folha/GravadorReuniao'
 import { Button } from '@/components/ui/button'
@@ -65,6 +71,11 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
+import {
+  PainelBuscaFolha,
+  FILTROS_PADRAO,
+  type FolhaFiltrosState,
+} from '@/components/folha/PainelBuscaFolha'
 
 export interface ItemRascunhoAssunto {
   idTemp: string
@@ -151,6 +162,7 @@ export default function Folha() {
     recarregarDadosGlobais,
   } = useNavegacao()
   const [folhaItems, setFolhaItems] = useState<FolhaDia[]>([])
+  const [demandasCadastradas, setDemandasCadastradas] = useState<Demanda[]>([])
   const [projetos, setProjetos] = useState<Projeto[]>([])
   const [contatos, setContatos] = useState<Contato[]>([])
   const [negocios, setNegocios] = useState<Negocio[]>([])
@@ -224,6 +236,51 @@ export default function Folha() {
   const [modalReuniaoDetalhesOpen, setModalReuniaoDetalhesOpen] = useState(false)
   const [reuniaoSelecionada, setReuniaoSelecionada] = useState<FolhaDia | null>(null)
 
+  // Estado dos Filtros Avançados e Busca em Tempo Real (Fase 1)
+  const [filtrosFolha, setFiltrosFolha] = useState<FolhaFiltrosState>(FILTROS_PADRAO)
+
+  // Ações de Fixar e Arquivar
+  const handleToggleFixar = async (item: FolhaDia) => {
+    const novoStatus = !item.fixado
+    try {
+      await diamondApi.fixarFolhaDia(item.id, novoStatus)
+      setFolhaItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, fixado: novoStatus } : i)),
+      )
+      toast({
+        title: novoStatus ? 'Assunto fixado no topo' : 'Fixação removida',
+      })
+    } catch (err) {
+      toast({
+        title: 'Erro ao alterar fixação',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleToggleArquivar = async (item: FolhaDia) => {
+    const novoStatus = !item.arquivado
+    try {
+      await diamondApi.arquivarFolhaDia(item.id, novoStatus)
+      setFolhaItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, arquivado: novoStatus } : i)),
+      )
+      toast({
+        title: novoStatus ? 'Assunto arquivado' : 'Assunto desarquivado',
+        description: novoStatus
+          ? 'O assunto foi movido para os arquivados e continua pesquisável.'
+          : 'O assunto voltou à lista ativa principal.',
+      })
+    } catch (err) {
+      toast({
+        title: 'Erro ao alterar status de arquivo',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    }
+  }
+
   // Modal de Organizar com IA
   const [organizando, setOrganizando] = useState(false)
   const [modalRevisaoOpen, setModalRevisaoOpen] = useState(false)
@@ -257,7 +314,7 @@ export default function Folha() {
 
   const carregarDados = async () => {
     try {
-      const [f, p, c, n, flxs, cats, marcos] = await Promise.all([
+      const [f, p, c, n, flxs, cats, marcos, dem] = await Promise.all([
         diamondApi.listFolhaDia(),
         diamondApi.listProjetos(),
         diamondApi.listContatos(),
@@ -265,8 +322,10 @@ export default function Folha() {
         diamondApi.listFluxosKanban(),
         diamondApi.listCategoriasFluxo(),
         diamondApi.listMarcosTimeline(),
+        diamondApi.listDemandas().catch(() => []),
       ])
       setFolhaItems(f)
+      setDemandasCadastradas(dem)
       setProjetos(p)
       setContatos(c)
       setNegocios(n)
@@ -1000,6 +1059,161 @@ export default function Folha() {
   const pendentes = folhaItems.filter((item) => item.status === 'pendente')
   const processados = folhaItems.filter((item) => item.status === 'processado')
 
+  // Conjunto de IDs ou textos de assuntos que possuem demandas cadastradas
+  const assuntosComDemandaSet = useMemo(() => {
+    const set = new Set<string>()
+    demandasCadastradas.forEach((d) => {
+      if (d.titulo) set.add(d.titulo.toLowerCase().trim())
+      if (d.descricao) set.add(d.descricao.toLowerCase().trim())
+    })
+    return set
+  }, [demandasCadastradas])
+
+  const verificarTemDemanda = (item: FolhaDia) => {
+    const txt = (item.registro || '').toLowerCase().trim()
+    if (!txt) return false
+    for (const d of demandasCadastradas) {
+      if (
+        d.titulo &&
+        (txt.includes(d.titulo.toLowerCase()) || d.titulo.toLowerCase().includes(txt.slice(0, 30)))
+      ) {
+        return true
+      }
+      if (d.descricao && d.descricao.toLowerCase().includes(txt.slice(0, 30))) {
+        return true
+      }
+      if (
+        d.projeto &&
+        item.projeto &&
+        d.projeto === item.projeto &&
+        d.created?.slice(0, 10) === item.created?.slice(0, 10)
+      ) {
+        return true
+      }
+    }
+    return false
+  }
+
+  // Filtragem combinada da lista de assuntos (Fase 1)
+  const itensFiltrados = useMemo(() => {
+    return folhaItems
+      .filter((item) => {
+        // 1. Filtro de Arquivamento
+        const isArquivado = Boolean(item.arquivado)
+        if (filtrosFolha.estadoArquivo === 'ativos' && isArquivado) return false
+        if (filtrosFolha.estadoArquivo === 'arquivados' && !isArquivado) return false
+
+        // 2. Busca por texto em tempo real (título, notas, transcrição da reunião, ata)
+        if (filtrosFolha.busca.trim()) {
+          const termo = filtrosFolha.busca.toLowerCase().trim()
+          const noRegistro = (item.registro || '').toLowerCase().includes(termo)
+          const naOrigemRef = (item.origem_ref || '').toLowerCase().includes(termo)
+          const naTimeline = (item.timeline || '').toLowerCase().includes(termo)
+          let naAta = false
+          if (item.ata_organizada) {
+            if (typeof item.ata_organizada === 'string') {
+              naAta = item.ata_organizada.toLowerCase().includes(termo)
+            } else {
+              naAta = JSON.stringify(item.ata_organizada).toLowerCase().includes(termo)
+            }
+          }
+          if (!noRegistro && !naOrigemRef && !naTimeline && !naAta) {
+            return false
+          }
+        }
+
+        // 3. Período
+        const dataItem =
+          (item.data_hora
+            ? item.data_hora.slice(0, 10)
+            : item.data || item.created?.slice(0, 10)) || ''
+        if (filtrosFolha.periodo !== 'todos' && dataItem) {
+          const hojeStr = new Date().toISOString().slice(0, 10)
+          if (filtrosFolha.periodo === 'hoje') {
+            if (dataItem !== hojeStr) return false
+          } else if (filtrosFolha.periodo === 'esta_semana') {
+            const agora = new Date()
+            const primeiroDiaSemana = new Date(agora)
+            primeiroDiaSemana.setDate(agora.getDate() - agora.getDay())
+            const primeiroDiaStr = primeiroDiaSemana.toISOString().slice(0, 10)
+            if (dataItem < primeiroDiaStr || dataItem > hojeStr) return false
+          } else if (filtrosFolha.periodo === 'este_mes') {
+            const mesAtual = hojeStr.slice(0, 7)
+            if (!dataItem.startsWith(mesAtual)) return false
+          } else if (filtrosFolha.periodo === 'personalizado') {
+            if (filtrosFolha.dataInicio && dataItem < filtrosFolha.dataInicio) return false
+            if (filtrosFolha.dataFim && dataItem > filtrosFolha.dataFim) return false
+          }
+        }
+
+        // 4. Tipo (comum / reunião)
+        if (filtrosFolha.tipo === 'reuniao' && !item.is_reuniao) return false
+        if (filtrosFolha.tipo === 'comum' && item.is_reuniao) return false
+
+        // 5. Vínculo: Categoria › Fluxo
+        if (filtrosFolha.fluxoId !== 'todos') {
+          if (item.fluxo !== filtrosFolha.fluxoId) return false
+        }
+
+        // 6. Vínculo: Projeto
+        if (filtrosFolha.projetoId !== 'todos') {
+          if (item.projeto !== filtrosFolha.projetoId) return false
+        }
+
+        // 7. Vínculo: Contato
+        if (filtrosFolha.contatoId !== 'todos') {
+          if (item.contato !== filtrosFolha.contatoId) return false
+        }
+
+        // 8. Vínculo: Timeline
+        if (filtrosFolha.timeline !== 'todos') {
+          if (item.timeline !== filtrosFolha.timeline) return false
+        }
+
+        // 9. Estado: Demanda criada
+        if (filtrosFolha.estadoDemanda !== 'todos') {
+          const temDemanda = verificarTemDemanda(item)
+          if (filtrosFolha.estadoDemanda === 'com_demanda' && !temDemanda) return false
+          if (filtrosFolha.estadoDemanda === 'sem_demanda' && temDemanda) return false
+        }
+
+        // 10. Estado: Vínculo de Fluxo
+        if (filtrosFolha.estadoFluxo !== 'todos') {
+          const temFluxo = Boolean(item.fluxo && item.fluxo !== 'none')
+          if (filtrosFolha.estadoFluxo === 'com_fluxo' && !temFluxo) return false
+          if (filtrosFolha.estadoFluxo === 'sem_fluxo' && temFluxo) return false
+        }
+
+        return true
+      })
+      .sort((a, b) => {
+        // Fixados sempre no topo da lista
+        const aFix = a.fixado ? 1 : 0
+        const bFix = b.fixado ? 1 : 0
+        if (aFix !== bFix) return bFix - aFix
+
+        // Ordenação secundária
+        if (filtrosFolha.ordenacao === 'antigos') {
+          const dA = a.data_hora || a.data || a.created || ''
+          const dB = b.data_hora || b.data || b.created || ''
+          return dA.localeCompare(dB)
+        } else {
+          const dA = a.data_hora || a.data || a.created || ''
+          const dB = b.data_hora || b.data || b.created || ''
+          return dB.localeCompare(dA)
+        }
+      })
+  }, [folhaItems, filtrosFolha, demandasCadastradas])
+
+  const totalArquivados = useMemo(
+    () => folhaItems.filter((i) => Boolean(i.arquivado)).length,
+    [folhaItems],
+  )
+  const totalFixados = useMemo(
+    () => folhaItems.filter((i) => Boolean(i.fixado) && !i.arquivado).length,
+    [folhaItems],
+  )
+
   const getOrigemIcon = (tipo?: OrigemTipo, isReuniao?: boolean) => {
     if (isReuniao) {
       return <Mic className="w-3.5 h-3.5 text-red-600" />
@@ -1649,46 +1863,104 @@ export default function Folha() {
         </Card>
       )}
 
-      {/* Listagem de Assuntos Pendentes na Folha */}
+      {/* Fase 1: Painel de Busca Avançada + Filtros Combináveis */}
+      <PainelBuscaFolha
+        filtros={filtrosFolha}
+        onFiltrosChange={setFiltrosFolha}
+        totalFiltrados={itensFiltrados.length}
+        totalGeral={folhaItems.length}
+        totalFixados={totalFixados}
+        totalArquivados={totalArquivados}
+        projetos={projetos}
+        contatos={contatos}
+        fluxos={fluxos}
+        categorias={categorias}
+        marcosTimeline={marcosTimeline}
+      />
+
+      {/* Listagem de Assuntos na Folha */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold text-[#1A1D21] flex items-center gap-2">
               <Clock className="w-4 h-4 text-[#D97706]" />
-              Assuntos Pendentes de Organização ({pendentes.length})
+              {filtrosFolha.estadoArquivo === 'arquivados'
+                ? `Assuntos Arquivados (${itensFiltrados.length})`
+                : filtrosFolha.estadoArquivo === 'todos'
+                  ? `Todos os Assuntos (${itensFiltrados.length})`
+                  : `Assuntos da Folha (${itensFiltrados.length})`}
             </h2>
           </div>
           <span className="text-xs text-[#5B6470]">
-            Numerados por ordem de captura • Prontos para IA ou criação de demandas
+            {totalFixados > 0 && `${totalFixados} fixado(s) no topo • `}
+            Pesquisa em tempo real • Fixar, arquivar e criar demandas
           </span>
         </div>
 
-        {pendentes.length === 0 ? (
-          <div className="bg-white border border-[#E5E1D8] rounded-xl p-8 text-center text-xs text-[#5B6470] space-y-2">
-            <p className="font-medium text-[#1A1D21]">Folha em branco limpa.</p>
-            <p className="text-[#0D5C56] max-w-md mx-auto">
-              Escreva como vier: ligações, conversas, prazos. A agenda separa por negócio, pessoa e
-              tarefa, e você confirma.
+        {itensFiltrados.length === 0 ? (
+          <div className="bg-white border border-[#E5E1D8] rounded-xl p-10 text-center text-xs text-[#5B6470] space-y-3">
+            <div className="w-12 h-12 rounded-full bg-[#0F766E]/10 text-[#0F766E] flex items-center justify-center mx-auto">
+              <Search className="w-6 h-6" />
+            </div>
+            <p className="font-semibold text-sm text-[#1A1D21]">
+              Nenhum assunto encontrado para os filtros atuais.
             </p>
+            <p className="text-[#5B6470] max-w-md mx-auto">
+              {filtrosFolha.busca ||
+              filtrosFolha.periodo !== 'todos' ||
+              filtrosFolha.tipo !== 'todos' ||
+              filtrosFolha.estadoArquivo !== 'ativos'
+                ? 'Tente ajustar os filtros ou limpar a pesquisa para exibir outros assuntos.'
+                : 'Escreva como vier: ligações, conversas, prazos. A agenda separa por negócio, pessoa e tarefa, e você confirma.'}
+            </p>
+            {(filtrosFolha.busca ||
+              filtrosFolha.periodo !== 'todos' ||
+              filtrosFolha.tipo !== 'todos' ||
+              filtrosFolha.estadoDemanda !== 'todos' ||
+              filtrosFolha.estadoFluxo !== 'todos' ||
+              filtrosFolha.projetoId !== 'todos' ||
+              filtrosFolha.fluxoId !== 'todos') && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setFiltrosFolha(FILTROS_PADRAO)}
+                className="text-xs text-[#0F766E] border-[#0F766E]/30"
+              >
+                Limpar todos os filtros
+              </Button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {pendentes.map((item, idx) => {
+            {itensFiltrados.map((item, idx) => {
               const numeroDisplay = item.ordem || idx + 1
+              const temDemanda = verificarTemDemanda(item)
+              const isFixado = Boolean(item.fixado)
+              const isArquivado = Boolean(item.arquivado)
+
               return (
                 <div
                   key={item.id}
-                  className="p-4 rounded-xl border border-[#E5E1D8] bg-white hover:border-[#0F766E]/40 transition-all shadow-2xs flex flex-col justify-between space-y-3"
+                  className={`p-4 rounded-xl border transition-all shadow-2xs flex flex-col justify-between space-y-3 ${
+                    isFixado
+                      ? 'bg-amber-50/40 border-amber-300 ring-1 ring-amber-300/60'
+                      : isArquivado
+                        ? 'bg-[#FAFAF9] border-[#E5E1D8] opacity-75'
+                        : 'bg-white border-[#E5E1D8] hover:border-[#0F766E]/40'
+                  }`}
                 >
                   <div>
-                    {/* Header do card com numeração, data e controles */}
+                    {/* Header do card com numeração, fixação, arquivamento e controles */}
                     <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-[#E5E1D8]/60">
                       <div className="flex items-center gap-2">
                         <span
                           className={`flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-bold ${
-                            item.is_reuniao
-                              ? 'bg-red-100 text-red-700'
-                              : 'bg-[#0F766E]/15 text-[#0F766E]'
+                            isFixado
+                              ? 'bg-amber-500 text-white'
+                              : item.is_reuniao
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-[#0F766E]/15 text-[#0F766E]'
                           }`}
                         >
                           {numeroDisplay}
@@ -1707,6 +1979,62 @@ export default function Folha() {
                       </div>
 
                       <div className="flex items-center gap-1">
+                        {/* Botão Fixar / Desafixar */}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleToggleFixar(item)}
+                          className={`h-7 px-1.5 text-[11px] gap-1 ${
+                            isFixado
+                              ? 'text-amber-700 bg-amber-100/70 hover:bg-amber-200/70 font-semibold'
+                              : 'text-[#5B6470] hover:text-amber-700'
+                          }`}
+                          title={isFixado ? 'Desafixar do topo' : 'Fixar no topo'}
+                        >
+                          {isFixado ? (
+                            <>
+                              <PinOff className="w-3.5 h-3.5 fill-amber-600" />
+                              <span className="hidden sm:inline">Fixado</span>
+                            </>
+                          ) : (
+                            <>
+                              <Pin className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Fixar</span>
+                            </>
+                          )}
+                        </Button>
+
+                        {/* Botão Arquivar / Desarquivar */}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleToggleArquivar(item)}
+                          className={`h-7 px-1.5 text-[11px] gap-1 ${
+                            isArquivado
+                              ? 'text-blue-700 bg-blue-50 hover:bg-blue-100 font-semibold'
+                              : 'text-[#5B6470] hover:text-[#1A1D21]'
+                          }`}
+                          title={
+                            isArquivado
+                              ? 'Desarquivar (voltar para a lista principal)'
+                              : 'Arquivar assunto'
+                          }
+                        >
+                          {isArquivado ? (
+                            <>
+                              <ArchiveRestore className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Desarquivar</span>
+                            </>
+                          ) : (
+                            <>
+                              <Archive className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Arquivar</span>
+                            </>
+                          )}
+                        </Button>
+
                         <Button
                           type="button"
                           variant="ghost"
@@ -1722,7 +2050,7 @@ export default function Folha() {
                           type="button"
                           variant="ghost"
                           size="sm"
-                          disabled={idx === pendentes.length - 1}
+                          disabled={idx === itensFiltrados.length - 1}
                           onClick={() => handleReordenarPersistido(idx, 'baixo')}
                           className="h-6 w-6 p-0 text-[#5B6470] hover:text-[#1A1D21]"
                           title="Descer ordem"
@@ -1742,15 +2070,35 @@ export default function Folha() {
                       </div>
                     </div>
 
-                    {/* Data e Hora do Assunto */}
-                    <div className="flex items-center gap-1.5 text-[11px] text-[#0F766E] font-medium mb-1.5">
-                      <Clock className="w-3 h-3" />
-                      <span>
-                        Data e hora:{' '}
-                        {item.data_hora
-                          ? item.data_hora.replace('T', ' ')
-                          : item.data || item.created?.slice(0, 16).replace('T', ' ')}
-                      </span>
+                    {/* Data e Hora do Assunto + Badges de Status */}
+                    <div className="flex flex-wrap items-center justify-between gap-1 mb-1.5">
+                      <div className="flex items-center gap-1.5 text-[11px] text-[#0F766E] font-medium">
+                        <Clock className="w-3 h-3" />
+                        <span>
+                          Data e hora:{' '}
+                          {item.data_hora
+                            ? item.data_hora.replace('T', ' ')
+                            : item.data || item.created?.slice(0, 16).replace('T', ' ')}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        {temDemanda ? (
+                          <Badge className="bg-emerald-100 text-emerald-800 border-none text-[9px] font-semibold gap-1">
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                            Demanda criada
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-gray-100 text-gray-600 border-none text-[9px]">
+                            Sem demanda
+                          </Badge>
+                        )}
+                        {item.status === 'processado' && (
+                          <Badge className="bg-blue-100 text-blue-800 border-none text-[9px] font-semibold">
+                            Processado
+                          </Badge>
+                        )}
+                      </div>
                     </div>
 
                     {/* Player de áudio e indicadores de reunião gravada */}
@@ -1860,7 +2208,7 @@ export default function Folha() {
         )}
 
         {/* Histórico Recente de Processados */}
-        {processados.length > 0 && (
+        {processados.length > 0 && filtrosFolha.estadoArquivo !== 'arquivados' && (
           <div className="pt-6">
             <h3 className="text-xs font-semibold text-[#5B6470] uppercase tracking-wider mb-2">
               Assuntos Processados Recentemente ({processados.length})

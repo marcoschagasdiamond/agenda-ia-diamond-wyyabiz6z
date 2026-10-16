@@ -266,6 +266,8 @@ export interface FolhaDia {
   duracao_gravacao?: number
   status_transcricao?: StatusTranscricao
   ata_organizada?: AtaOrganizadaReuniao | string
+  arquivado?: boolean
+  fixado?: boolean
   created: string
   updated: string
   expand?: {

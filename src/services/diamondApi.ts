@@ -259,16 +259,81 @@ export const diamondApi = {
   },
 
   // Folha do Dia
-  async listFolhaDia(data?: string): Promise<FolhaDia[]> {
-    let filter = ''
+  async listFolhaDia(data?: string, filtroExtra?: string): Promise<FolhaDia[]> {
+    const filters: string[] = []
     if (data) {
-      filter = `data = "${data}"`
+      filters.push(`data = "${data}"`)
+    }
+    if (filtroExtra) {
+      filters.push(filtroExtra)
     }
     return await pb.collection('folha_dia').getFullList<FolhaDia>({
-      filter,
-      sort: 'ordem,created',
+      filter: filters.join(' && '),
+      sort: '-fixado,ordem,created',
       expand: 'projeto,negocio,contato',
     })
+  },
+
+  async listFolhaDiaPaginado(params: {
+    page?: number
+    perPage?: number
+    filter?: string
+    sort?: string
+  }) {
+    const page = params.page || 1
+    const perPage = params.perPage || 30
+    return await pb.collection('folha_dia').getList<FolhaDia>(page, perPage, {
+      filter: params.filter || '',
+      sort: params.sort || '-fixado,-created',
+      expand: 'projeto,negocio,contato',
+    })
+  },
+
+  async arquivarFolhaDia(id: string, arquivado = true): Promise<FolhaDia> {
+    return await pb.collection('folha_dia').update<FolhaDia>(id, { arquivado })
+  },
+
+  async fixarFolhaDia(id: string, fixado = true): Promise<FolhaDia> {
+    return await pb.collection('folha_dia').update<FolhaDia>(id, { fixado })
+  },
+
+  async loteArquivarFolhaDia(ids: string[], arquivado = true): Promise<number> {
+    let alterados = 0
+    for (const id of ids) {
+      try {
+        await pb.collection('folha_dia').update(id, { arquivado })
+        alterados++
+      } catch (err) {
+        console.error(`Erro ao alterar arquivado folha ${id}:`, err)
+      }
+    }
+    return alterados
+  },
+
+  async loteExcluirFolhaDia(ids: string[]): Promise<number> {
+    let excluidos = 0
+    for (const id of ids) {
+      try {
+        await pb.collection('folha_dia').delete(id)
+        excluidos++
+      } catch (err) {
+        console.error(`Erro ao excluir folha ${id}:`, err)
+      }
+    }
+    return excluidos
+  },
+
+  async loteReligarFluxoFolhaDia(ids: string[], novoFluxo: string): Promise<number> {
+    let alterados = 0
+    for (const id of ids) {
+      try {
+        await pb.collection('folha_dia').update(id, { fluxo: novoFluxo })
+        alterados++
+      } catch (err) {
+        console.error(`Erro ao religar fluxo folha ${id}:`, err)
+      }
+    }
+    return alterados
   },
 
   async createFolhaDia(data: Partial<FolhaDia> | FormData): Promise<FolhaDia> {

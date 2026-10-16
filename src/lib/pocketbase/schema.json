@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-16T21:28:52.116Z",
+  "generatedAt": "2026-10-16T22:32:13.730Z",
   "collections": [
     {
       "name": "users",
@@ -551,11 +551,25 @@
           "type": "json",
           "required": false,
           "system": false
+        },
+        {
+          "name": "arquivado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fixado",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
         "CREATE INDEX idx_folha_dia_data ON folha_dia (data)",
-        "CREATE INDEX idx_folha_dia_status ON folha_dia (status)"
+        "CREATE INDEX idx_folha_dia_status ON folha_dia (status)",
+        "CREATE INDEX `idx_folha_dia_arquivado` ON `folha_dia` (arquivado)",
+        "CREATE INDEX `idx_folha_dia_fixado` ON `folha_dia` (fixado)"
       ]
     },
     {

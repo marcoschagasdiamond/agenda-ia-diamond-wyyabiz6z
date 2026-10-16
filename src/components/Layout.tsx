@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
 import { useNavegacao } from '@/contexts/NavegacaoContext'
@@ -31,6 +31,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import ModalConvidarEquipe from '@/components/ModalConvidarEquipe'
 import SinoNotificacoes from '@/components/SinoNotificacoes'
+import CommandPaletteGlobal from '@/components/CommandPaletteGlobal'
 
 interface LayoutProps {
   children?: React.ReactNode
@@ -50,8 +51,19 @@ export default function Layout({ children }: LayoutProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
   const [searchModalOpen, setSearchModalOpen] = useState(false)
+
+  // Suporte global a atalho de teclado Ctrl+K ou ⌘K
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSearchModalOpen((prev) => !prev)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   interface NavRailItem {
     name: string
@@ -95,13 +107,6 @@ export default function Layout({ children }: LayoutProps) {
   ]
 
   const currentNavItems = isClientPortal ? navItemsClient : navItemsInternal
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!searchQuery.trim()) return
-    setSearchModalOpen(false)
-    navigate(`/fluxo?busca=${encodeURIComponent(searchQuery)}`)
-  }
 
   const isAuthRoute =
     [
@@ -370,46 +375,8 @@ export default function Layout({ children }: LayoutProps) {
         </div>
       )}
 
-      {/* Modal de Busca Global */}
-      <Dialog open={searchModalOpen} onOpenChange={setSearchModalOpen}>
-        <DialogContent className="sm:max-w-md p-4 bg-white border border-[#E5E1D8]">
-          <DialogHeader>
-            <DialogTitle className="text-sm font-semibold text-[#1A1D21]">
-              Buscar na Base de Conhecimento
-            </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSearchSubmit} className="space-y-4 pt-2">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-3 text-[#5B6470]" />
-              <Input
-                placeholder="Ex: checkout, Loja Y, Helena, contrato..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 text-sm border-[#E5E1D8]"
-                autoFocus
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setSearchModalOpen(false)}
-                className="text-xs"
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                size="sm"
-                className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs"
-              >
-                Buscar
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* Fase 3: Command Palette Global (Ctrl+K / ⌘K) */}
+      <CommandPaletteGlobal open={searchModalOpen} onOpenChange={setSearchModalOpen} />
 
       {/* Modal Reutilizável de Convite de Equipe */}
       <ModalConvidarEquipe
