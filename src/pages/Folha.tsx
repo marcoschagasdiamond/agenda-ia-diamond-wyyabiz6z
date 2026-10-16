@@ -1411,22 +1411,29 @@ export default function Folha() {
                                   + Criar novo fluxo...
                                 </SelectItem>
                                 <SelectItem value="none">Automático (Deixar para IA)</SelectItem>
-                                {fluxos.map((flx) => {
-                                  const cat = categorias.find((c) => c.id === flx.categoria)
-                                  const nomeFluxo = flx.nome || flx.titulo || 'Fluxo'
-                                  const label = cat ? `${cat.nome} › ${nomeFluxo}` : nomeFluxo
-                                  return (
-                                    <SelectItem key={flx.id} value={flx.id}>
-                                      <span className="flex items-center gap-1.5">
-                                        <span
-                                          className="w-2 h-2 rounded-full shrink-0"
-                                          style={{ backgroundColor: flx.cor || '#0F766E' }}
-                                        />
-                                        {label}
-                                      </span>
-                                    </SelectItem>
-                                  )
-                                })}
+                                {fluxos
+                                  .filter((flx) => flx.ativo !== false || flx.id === item.fluxo)
+                                  .map((flx) => {
+                                    const cat = categorias.find((c) => c.id === flx.categoria)
+                                    const nomeFluxo = flx.nome || flx.titulo || 'Fluxo'
+                                    const label = cat ? `${cat.nome} › ${nomeFluxo}` : nomeFluxo
+                                    return (
+                                      <SelectItem key={flx.id} value={flx.id}>
+                                        <span className="flex items-center gap-1.5">
+                                          <span
+                                            className="w-2 h-2 rounded-full shrink-0"
+                                            style={{ backgroundColor: flx.cor || '#0F766E' }}
+                                          />
+                                          {label}
+                                          {flx.ativo === false && (
+                                            <span className="text-[9px] text-[#DC2626] italic ml-1">
+                                              (Inativo)
+                                            </span>
+                                          )}
+                                        </span>
+                                      </SelectItem>
+                                    )
+                                  })}
                               </SelectContent>
                             </Select>
                           </div>

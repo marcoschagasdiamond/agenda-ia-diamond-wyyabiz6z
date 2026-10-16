@@ -19,6 +19,7 @@ import Dashboard from '@/pages/Dashboard'
 import Folha from '@/pages/Folha'
 import Calendario from '@/pages/Calendario'
 import Fluxo from '@/pages/Fluxo'
+import CardDetalhes from '@/pages/CardDetalhes'
 import Projetos from '@/pages/Projetos'
 import ProjetoDetalhes from '@/pages/ProjetoDetalhes'
 import Contatos from '@/pages/Contatos'
@@ -105,6 +106,14 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <Fluxo />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/card/:id"
+                element={
+                  <ProtectedRoute>
+                    <CardDetalhes />
                   </ProtectedRoute>
                 }
               />

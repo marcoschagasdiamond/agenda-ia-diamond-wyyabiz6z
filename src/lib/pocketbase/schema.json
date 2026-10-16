@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-16T20:25:02.076Z",
+  "generatedAt": "2026-10-16T21:09:20.610Z",
   "collections": [
     {
       "name": "users",
@@ -686,6 +686,13 @@
           "type": "json",
           "required": false,
           "system": false
+        },
+        {
+          "name": "card_pai",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "cards"
         }
       ],
       "indexes": [
@@ -1479,6 +1486,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE INDEX idx_fluxos_kanban_ordem ON fluxos_kanban (ordem)"]
@@ -2681,6 +2694,75 @@
       ],
       "indexes": [
         "CREATE UNIQUE INDEX idx_hist_lembrete_chave ON historico_lembretes_disparados (chave_disparo)"
+      ]
+    },
+    {
+      "name": "card_arquivos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "card",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "cards"
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "arquivo",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tamanho",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "criado_por",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_card_arquivos_card ON card_arquivos (card)",
+        "CREATE INDEX idx_card_arquivos_created ON card_arquivos (created DESC)"
       ]
     }
   ]

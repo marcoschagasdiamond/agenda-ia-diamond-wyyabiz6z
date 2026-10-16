@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { diamondApi } from '@/services/diamondApi'
 import { useNavegacao } from '@/contexts/NavegacaoContext'
 import type {
@@ -55,6 +55,9 @@ import { FluxoTabelaView } from './fluxo/FluxoTabelaView'
 import { FluxoGanttView } from './fluxo/FluxoGanttView'
 import { FluxoIndicadoresView } from './fluxo/FluxoIndicadoresView'
 import { ModalEditarFases } from './fluxo/ModalEditarFases'
+import { ModalCardFluxo } from './fluxo/ModalCardFluxo'
+import { ModalCardArquivos } from './fluxo/ModalCardArquivos'
+import { ModalCardFamilia } from './fluxo/ModalCardFamilia'
 import { MODELOS_FLUXO_TEMPLATES, TEMPLATE_PADRAO_ID, gerarSlugChave } from './fluxo/fluxoTemplates'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -85,6 +88,7 @@ import { useToast } from '@/hooks/use-toast'
 import SinoNotificacoes from '@/components/SinoNotificacoes'
 
 export default function Fluxo() {
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const buscaParam = searchParams.get('busca') || ''
   const { toast } = useToast()
@@ -229,6 +233,12 @@ export default function Fluxo() {
 
   // Modal Centralizado de Edição das Fases
   const [modalEditarFasesOpen, setModalEditarFasesOpen] = useState(false)
+
+  // Modais de Ações do Card solicitados (Fluxos, Arquivos, Família)
+  const [modalCardFluxoOpen, setModalCardFluxoOpen] = useState(false)
+  const [modalCardArquivosOpen, setModalCardArquivosOpen] = useState(false)
+  const [modalCardFamiliaOpen, setModalCardFamiliaOpen] = useState(false)
+  const [cardAcoesEmFoco, setCardAcoesEmFoco] = useState<CardType | null>(null)
 
   // Renomeação inline do título da coluna direto no board
   const [colunaEditandoId, setColunaEditandoId] = useState<string | null>(null)
@@ -845,6 +855,51 @@ export default function Fluxo() {
     setModalFluxoOpen(true)
   }
 
+  const handleAlternarStatusFluxo = async (f: FluxoKanban) => {
+    const novoAtivo = f.ativo === false ? true : false
+    const acaoTexto = novoAtivo ? 'reativar' : 'inativar'
+    if (
+      !confirm(
+        `Deseja realmente ${acaoTexto} o fluxo "${f.nome || f.titulo}"? ${
+          !novoAtivo
+            ? 'Ele deixará de aparecer para novas vinculações, mantendo cards e fases intactos.'
+            : 'Ele voltará a aparecer normalmente.'
+        }`,
+      )
+    ) {
+      return
+    }
+
+    try {
+      await diamondApi.updateFluxoKanban(f.id, { ativo: novoAtivo })
+      toast({
+        title: novoAtivo ? 'Fluxo reativado com sucesso!' : 'Fluxo inativado com sucesso!',
+      })
+      await Promise.all([recarregarFluxoGlobal().catch(() => {}), carregarDados().catch(() => {})])
+    } catch (err) {
+      toast({
+        title: 'Erro ao alterar status do fluxo',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleAbrirCardFluxo = (c: CardType) => {
+    setCardAcoesEmFoco(c)
+    setModalCardFluxoOpen(true)
+  }
+
+  const handleAbrirCardArquivos = (c: CardType) => {
+    setCardAcoesEmFoco(c)
+    setModalCardArquivosOpen(true)
+  }
+
+  const handleAbrirCardFamilia = (c: CardType) => {
+    setCardAcoesEmFoco(c)
+    setModalCardFamiliaOpen(true)
+  }
+
   const handleSalvarFluxo = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!fluxoTitulo.trim()) return
@@ -1409,13 +1464,41 @@ export default function Fluxo() {
             )}
           </div>
 
-          {/* Ações do Canto Superior Direito: Botão azul de abrir (seta) + Menu "..." */}
+          {/* Ações do Canto Superior Direito: Botão azul de abrir na página própria + Menu "..." */}
           <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-            {/* Botão de abrir/compartilhar (quadrado azul com seta branca como na imagem) */}
+            {/* 3 Ícones de Ação Rápida solicitados pelo usuário */}
             <button
               type="button"
-              onClick={onEdit}
-              title="Abrir detalhes do card"
+              onClick={() => handleAbrirCardFluxo(card)}
+              title="Fluxos: Ver fluxo vinculado, revincular ou inativar"
+              className="w-6 h-6 rounded flex items-center justify-center text-[#5B6470] hover:text-[#0F766E] hover:bg-[#0F766E]/10 transition-colors"
+            >
+              <GitBranch className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleAbrirCardArquivos(card)}
+              title="Arquivos: Ver anexos vinculados e enviar arquivos"
+              className="w-6 h-6 rounded flex items-center justify-center text-[#5B6470] hover:text-[#0F766E] hover:bg-[#0F766E]/10 transition-colors"
+            >
+              <Download className="w-3.5 h-3.5 rotate-180" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleAbrirCardFamilia(card)}
+              title="Família: Duplicar com destino, criar filho, vincular pai, copiar url"
+              className="w-6 h-6 rounded flex items-center justify-center text-[#5B6470] hover:text-[#0F766E] hover:bg-[#0F766E]/10 transition-colors"
+            >
+              <Users className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Botão de abrir/página do card (quadrado azul com seta) */}
+            <button
+              type="button"
+              onClick={() => navigate(`/card/${card.id}`)}
+              title="Abrir página completa do card"
               className="w-6 h-6 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white flex items-center justify-center shadow-2xs transition-all"
             >
               <ExternalLink className="w-3 h-3" />
@@ -1433,13 +1516,26 @@ export default function Fluxo() {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="text-xs">
+                <DropdownMenuItem onClick={() => navigate(`/card/${card.id}`)}>
+                  <ExternalLink className="w-3.5 h-3.5 mr-2 text-[#2563EB]" />
+                  Abrir Página do Card
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={onEdit}>
                   <Edit2 className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
-                  Abrir / Editar Card
+                  Editar Modal Rápido
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleDuplicarCard(card)}>
-                  <Copy className="w-3.5 h-3.5 mr-2 text-blue-600" />
-                  Duplicar Card
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => handleAbrirCardFluxo(card)}>
+                  <GitBranch className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
+                  Fluxos (Revincular / Status)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleAbrirCardArquivos(card)}>
+                  <Download className="w-3.5 h-3.5 mr-2 rotate-180 text-blue-600" />
+                  Arquivos Anexados
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleAbrirCardFamilia(card)}>
+                  <Users className="w-3.5 h-3.5 mr-2 text-purple-600" />
+                  Família & Relações...
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 {/* Mover de coluna */}
@@ -1749,10 +1845,21 @@ export default function Fluxo() {
                 Editar Fases do Fluxo
               </DropdownMenuItem>
               {fluxoAtivo && (
-                <DropdownMenuItem onClick={() => abrirModalEditarFluxo(fluxoAtivo)}>
-                  <Edit2 className="w-3.5 h-3.5 mr-2 text-blue-600" />
-                  Editar Fluxo: {fluxoAtivo.titulo}
-                </DropdownMenuItem>
+                <>
+                  <DropdownMenuItem onClick={() => abrirModalEditarFluxo(fluxoAtivo)}>
+                    <Edit2 className="w-3.5 h-3.5 mr-2 text-blue-600" />
+                    Editar Fluxo: {fluxoAtivo.titulo}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => handleAlternarStatusFluxo(fluxoAtivo)}
+                    className={
+                      fluxoAtivo.ativo === false ? 'text-emerald-700 font-medium' : 'text-amber-700'
+                    }
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-2" />
+                    {fluxoAtivo.ativo === false ? 'Reativar este Fluxo' : 'Inativar este Fluxo'}
+                  </DropdownMenuItem>
+                </>
               )}
               {categoriaAtiva && (
                 <DropdownMenuItem onClick={() => abrirModalEditarCategoria(categoriaAtiva)}>
@@ -2171,6 +2278,17 @@ export default function Fluxo() {
                                     <DropdownMenuItem onClick={() => abrirModalEditarFluxo(fluxo)}>
                                       <Edit2 className="w-3.5 h-3.5 mr-2" />
                                       Editar Fluxo
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => handleAlternarStatusFluxo(fluxo)}
+                                      className={
+                                        fluxo.ativo === false
+                                          ? 'text-emerald-700 font-medium'
+                                          : 'text-amber-700'
+                                      }
+                                    >
+                                      <CheckCircle2 className="w-3.5 h-3.5 mr-2" />
+                                      {fluxo.ativo === false ? 'Reativar Fluxo' : 'Inativar Fluxo'}
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
                                       onClick={() => handleExcluirFluxoKanban(fluxo)}
@@ -2840,11 +2958,41 @@ export default function Fluxo() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => abrirModalEditarCard(card)}
-                          className="text-xs h-8 px-2 text-[#5B6470] hover:text-[#1A1D21]"
-                          title="Editar Card"
+                          onClick={() => handleAbrirCardFluxo(card)}
+                          className="text-xs h-8 w-8 p-0 text-[#5B6470] hover:text-[#0F766E]"
+                          title="Fluxos: Ver e revincular fluxo"
                         >
-                          <Edit2 className="w-3.5 h-3.5" />
+                          <GitBranch className="w-3.5 h-3.5" />
+                        </Button>
+
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleAbrirCardArquivos(card)}
+                          className="text-xs h-8 w-8 p-0 text-[#5B6470] hover:text-[#0F766E]"
+                          title="Arquivos vinculados"
+                        >
+                          <Download className="w-3.5 h-3.5 rotate-180" />
+                        </Button>
+
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleAbrirCardFamilia(card)}
+                          className="text-xs h-8 w-8 p-0 text-[#5B6470] hover:text-[#0F766E]"
+                          title="Família e relações"
+                        >
+                          <Users className="w-3.5 h-3.5" />
+                        </Button>
+
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate(`/card/${card.id}`)}
+                          className="text-xs h-8 px-2 text-[#2563EB] hover:text-[#1D4ED8]"
+                          title="Abrir página completa do card"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
                         </Button>
 
                         <DropdownMenu>
@@ -2858,14 +3006,28 @@ export default function Fluxo() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="text-xs">
+                            <DropdownMenuItem onClick={() => navigate(`/card/${card.id}`)}>
+                              <ExternalLink className="w-3.5 h-3.5 mr-2 text-[#2563EB]" />
+                              Abrir Página do Card
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => abrirModalEditarCard(card)}>
-                              <Edit2 className="w-3.5 h-3.5 mr-2" />
-                              Ver / Editar Card
+                              <Edit2 className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
+                              Editar Modal Rápido
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDuplicarCard(card)}>
-                              <Copy className="w-3.5 h-3.5 mr-2 text-blue-600" />
-                              Duplicar Card
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => handleAbrirCardFluxo(card)}>
+                              <GitBranch className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
+                              Fluxos (Revincular / Status)
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleAbrirCardArquivos(card)}>
+                              <Download className="w-3.5 h-3.5 mr-2 rotate-180 text-blue-600" />
+                              Arquivos Anexados
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleAbrirCardFamilia(card)}>
+                              <Users className="w-3.5 h-3.5 mr-2 text-purple-600" />
+                              Família & Relações...
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={() => handleExcluirCard(card.id)}
                               className="text-red-600"
@@ -3702,6 +3864,58 @@ export default function Fluxo() {
           toast({
             title: 'Fases do fluxo atualizadas com sucesso!',
           })
+        }}
+      />
+
+      {/* ======================================================== */}
+      {/* MODAL 6: FLUXOS DO CARD (REVINCULAR & STATUS INATIVAR)   */}
+      {/* ======================================================== */}
+      <ModalCardFluxo
+        open={modalCardFluxoOpen}
+        onOpenChange={setModalCardFluxoOpen}
+        card={cardAcoesEmFoco}
+        categorias={categorias}
+        fluxos={fluxos}
+        colunas={colunas}
+        onAtualizado={async () => {
+          await Promise.all([
+            recarregarFluxoGlobal().catch(() => {}),
+            carregarDados().catch(() => {}),
+          ])
+        }}
+      />
+
+      {/* ======================================================== */}
+      {/* MODAL 7: ARQUIVOS VINCULADOS AO CARD                     */}
+      {/* ======================================================== */}
+      <ModalCardArquivos
+        open={modalCardArquivosOpen}
+        onOpenChange={setModalCardArquivosOpen}
+        card={cardAcoesEmFoco}
+        onAtualizado={async () => {
+          await carregarDados()
+        }}
+      />
+
+      {/* ======================================================== */}
+      {/* MODAL 8: FAMÍLIA E RELAÇÕES DO CARD (PAI, FILHO, DUP...) */}
+      {/* ======================================================== */}
+      <ModalCardFamilia
+        open={modalCardFamiliaOpen}
+        onOpenChange={setModalCardFamiliaOpen}
+        card={cardAcoesEmFoco}
+        todosCards={cards}
+        categorias={categorias}
+        fluxos={fluxos}
+        colunas={colunas}
+        onAtualizado={async () => {
+          await Promise.all([
+            recarregarFluxoGlobal().catch(() => {}),
+            carregarDados().catch(() => {}),
+          ])
+        }}
+        onExcluirCard={async (c) => {
+          await handleExcluirCard(c.id)
         }}
       />
     </div>

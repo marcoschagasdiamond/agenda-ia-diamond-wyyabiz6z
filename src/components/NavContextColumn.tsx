@@ -750,9 +750,11 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
                         <div
                           key={fluxo.id}
                           className={`group flex items-center justify-between px-2 py-1 rounded text-xs transition-colors ${
-                            isFluxoAtivo
-                              ? 'bg-[#0F766E]/15 text-[#0F766E] font-semibold'
-                              : 'text-[#5B6470] hover:bg-[#F4F2EE] hover:text-[#1A1D21]'
+                            fluxo.ativo === false
+                              ? 'opacity-70 bg-zinc-100/60'
+                              : isFluxoAtivo
+                                ? 'bg-[#0F766E]/15 text-[#0F766E] font-semibold'
+                                : 'text-[#5B6470] hover:bg-[#F4F2EE] hover:text-[#1A1D21]'
                           }`}
                         >
                           <button
@@ -767,9 +769,21 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
                           >
                             <span
                               className="w-1.5 h-1.5 rounded-full shrink-0"
-                              style={{ backgroundColor: fluxo.cor || '#0F766E' }}
+                              style={{
+                                backgroundColor:
+                                  fluxo.ativo === false ? '#94A3B8' : fluxo.cor || '#0F766E',
+                              }}
                             />
-                            <span className="truncate">{fluxo.nome}</span>
+                            <span
+                              className={`truncate ${fluxo.ativo === false ? 'line-through text-[#64748B]' : ''}`}
+                            >
+                              {fluxo.nome}
+                            </span>
+                            {fluxo.ativo === false && (
+                              <span className="text-[9px] uppercase tracking-wider font-semibold px-1 py-0.2 rounded bg-zinc-200 text-zinc-600">
+                                Inativo
+                              </span>
+                            )}
                           </button>
 
                           <span className="text-[10px] text-[#5B6470] bg-[#E5E1D8]/60 px-1.5 py-0.2 rounded shrink-0">

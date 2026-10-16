@@ -310,6 +310,7 @@ export interface FluxoKanban {
   categoria?: string
   titulo_fases?: string
   template_origem?: string
+  ativo?: boolean
   created?: string
   updated?: string
 }
@@ -347,6 +348,7 @@ export interface Card {
   data_prazo?: string
   lembrete_modo?: LembreteModo
   lembrete_antecedencias?: LembreteAntecedenciaCodigo[] | string
+  card_pai?: string
   created: string
   updated: string
   expand?: {
@@ -355,6 +357,24 @@ export interface Card {
     contato?: Contato
     responsavel?: User
     grupo_familia?: GrupoFamilia
+    fluxo_id?: FluxoKanban
+    card_pai?: Card
+  }
+}
+
+export interface CardArquivo {
+  id: string
+  card: string
+  nome: string
+  arquivo: string
+  tamanho?: number
+  tipo?: string
+  criado_por?: string
+  created: string
+  updated: string
+  expand?: {
+    card?: Card
+    criado_por?: User
   }
 }
 

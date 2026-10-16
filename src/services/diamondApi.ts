@@ -7,6 +7,7 @@ import type {
   AtaOrganizadaReuniao,
   StatusTranscricao,
   Card,
+  CardArquivo,
   Demanda,
   Lista,
   Pasta,
@@ -315,7 +316,13 @@ export const diamondApi = {
     return await pb.collection('cards').getFullList<Card>({
       filter: filtroExtra || '',
       sort: '-updated',
-      expand: 'projeto,negocio,contato,responsavel,grupo_familia',
+      expand: 'projeto,negocio,contato,responsavel,grupo_familia,fluxo_id,card_pai',
+    })
+  },
+
+  async getCard(id: string): Promise<Card> {
+    return await pb.collection('cards').getOne<Card>(id, {
+      expand: 'projeto,negocio,contato,responsavel,grupo_familia,fluxo_id,card_pai',
     })
   },
 
@@ -329,6 +336,44 @@ export const diamondApi = {
 
   async deleteCard(id: string): Promise<boolean> {
     return await pb.collection('cards').delete(id)
+  },
+
+  // Cards - Arquivos Vinculados
+  async listCardArquivos(cardId: string): Promise<CardArquivo[]> {
+    try {
+      return await pb.collection('card_arquivos').getFullList<CardArquivo>({
+        filter: `card = "${cardId}"`,
+        sort: '-created',
+        expand: 'criado_por',
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async uploadCardArquivo(formData: FormData): Promise<CardArquivo> {
+    return await pb.collection('card_arquivos').create<CardArquivo>(formData)
+  },
+
+  async deleteCardArquivo(id: string): Promise<boolean> {
+    return await pb.collection('card_arquivos').delete(id)
+  },
+
+  getCardArquivoUrl(record: { id: string; arquivo: string }): string {
+    return pb.files.getURL(record as any, record.arquivo)
+  },
+
+  // Cards - Hierarquia Pais e Filhos
+  async listCardsFilhos(cardPaiId: string): Promise<Card[]> {
+    try {
+      return await pb.collection('cards').getFullList<Card>({
+        filter: `card_pai = "${cardPaiId}"`,
+        sort: 'created',
+        expand: 'responsavel,fluxo_id',
+      })
+    } catch {
+      return []
+    }
   },
 
   // Demandas
@@ -545,14 +590,17 @@ export const diamondApi = {
   },
 
   // Fluxos Kanban (Entidade Fluxo em Categorias)
-  async listFluxosKanban(categoriaId?: string): Promise<FluxoKanban[]> {
+  async listFluxosKanban(categoriaId?: string, apenasAtivos = false): Promise<FluxoKanban[]> {
     try {
-      let filter = ''
+      const filters: string[] = []
       if (categoriaId && categoriaId !== 'all') {
-        filter = `categoria = "${categoriaId}"`
+        filters.push(`categoria = "${categoriaId}"`)
+      }
+      if (apenasAtivos) {
+        filters.push('(ativo = true || ativo = null)')
       }
       return await pb.collection('fluxos_kanban').getFullList<FluxoKanban>({
-        filter,
+        filter: filters.join(' && '),
         sort: 'ordem,created',
       })
     } catch {
