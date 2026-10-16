@@ -355,6 +355,11 @@ export default function Fluxo() {
   }, [colunas])
 
   // Fluxo ativo focado (pelo ID do fluxo em fluxos_kanban)
+  const fluxosValidos = useMemo(() => {
+    return fluxos.filter((f) => f.ativo !== false)
+  }, [fluxos])
+
+  // Fluxo ativo focado (pelo ID do fluxo em fluxos_kanban)
   const fluxoAtivo = useMemo(() => {
     if (fluxoAtivoId === 'all') return null
     return fluxos.find((f) => f.id === fluxoAtivoId) || null
@@ -373,7 +378,7 @@ export default function Fluxo() {
 
   // Colunas a exibir no Kanban com base no fluxo ativo ou categoria ativa
   // Regra clara: ao focar num fluxo, o board mostra as fases daquele fluxo.
-  // Se o usuário selecionou uma categoria inteira sem especificar fluxo, mostra as fases do primeiro fluxo dela ou as fases daquela categoria.
+  // Se o usuário selecionou uma categoria inteira sem especificar fluxo, mostra as fases do primeiro fluxo ativo dela ou as fases daquela categoria.
   const colunasFiltradas = useMemo(() => {
     // 1. Se houver um fluxo específico ativo
     if (fluxoAtivoId !== 'all') {
@@ -383,8 +388,10 @@ export default function Fluxo() {
 
     // 2. Se houver uma categoria ativa
     if (categoriaAtivaId !== 'all') {
-      // Prioriza fases do primeiro fluxo da categoria se houver
-      const primeiroFluxoDaCat = fluxos.find((f) => f.categoria === categoriaAtivaId)
+      // Prioriza fases do primeiro fluxo ativo da categoria se houver (fallback para qualquer fluxo)
+      const primeiroFluxoDaCat =
+        fluxosValidos.find((f) => f.categoria === categoriaAtivaId) ||
+        fluxos.find((f) => f.categoria === categoriaAtivaId)
       if (primeiroFluxoDaCat) {
         const fasesDoFluxo = colunasOrdenadas.filter(
           (col) => col.fluxo_id === primeiroFluxoDaCat.id,
@@ -395,14 +402,17 @@ export default function Fluxo() {
       if (fasesDaCat.length > 0) return fasesDaCat
     }
 
-    // 3. Fallback 'all': se houver fluxos, mostra as fases do primeiro fluxo existente
-    if (fluxos.length > 0) {
-      const fasesPrimeiro = colunasOrdenadas.filter((col) => col.fluxo_id === fluxos[0].id)
+    // 3. Fallback 'all': se houver fluxos ativos (ou qualquer fluxo), mostra as fases do primeiro existente
+    const primeiroFluxoGlobal = fluxosValidos[0] || fluxos[0]
+    if (primeiroFluxoGlobal) {
+      const fasesPrimeiro = colunasOrdenadas.filter(
+        (col) => col.fluxo_id === primeiroFluxoGlobal.id,
+      )
       if (fasesPrimeiro.length > 0) return fasesPrimeiro
     }
 
     return colunasOrdenadas
-  }, [colunasOrdenadas, fluxoAtivoId, categoriaAtivaId, fluxos])
+  }, [colunasOrdenadas, fluxoAtivoId, categoriaAtivaId, fluxos, fluxosValidos])
 
   // Categorias com contagens e lista dos seus fluxos reais (NUNCA as fases)
   const categoriasComFluxos = useMemo(() => {
@@ -1466,12 +1476,12 @@ export default function Fluxo() {
 
           {/* Ações do Canto Superior Direito: Botão azul de abrir na página própria + Menu "..." */}
           <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-            {/* 3 Ícones de Ação Rápida solicitados pelo usuário */}
+            {/* 3 Ícones de Ação Rápida com styling nítido e botões destacados */}
             <button
               type="button"
               onClick={() => handleAbrirCardFluxo(card)}
               title="Fluxos: Ver fluxo vinculado, revincular ou inativar"
-              className="w-6 h-6 rounded flex items-center justify-center text-[#5B6470] hover:text-[#0F766E] hover:bg-[#0F766E]/10 transition-colors"
+              className="w-7 h-7 rounded-lg bg-[#F4F2EE] hover:bg-[#0F766E]/15 border border-[#E5E1D8] flex items-center justify-center text-[#0F766E] hover:text-[#0D5C56] transition-colors shadow-2xs"
             >
               <GitBranch className="w-3.5 h-3.5" />
             </button>
@@ -1480,7 +1490,7 @@ export default function Fluxo() {
               type="button"
               onClick={() => handleAbrirCardArquivos(card)}
               title="Arquivos: Ver anexos vinculados e enviar arquivos"
-              className="w-6 h-6 rounded flex items-center justify-center text-[#5B6470] hover:text-[#0F766E] hover:bg-[#0F766E]/10 transition-colors"
+              className="w-7 h-7 rounded-lg bg-[#F4F2EE] hover:bg-blue-100 border border-[#E5E1D8] flex items-center justify-center text-blue-700 hover:text-blue-800 transition-colors shadow-2xs"
             >
               <Download className="w-3.5 h-3.5 rotate-180" />
             </button>
@@ -1489,7 +1499,7 @@ export default function Fluxo() {
               type="button"
               onClick={() => handleAbrirCardFamilia(card)}
               title="Família: Duplicar com destino, criar filho, vincular pai, copiar url"
-              className="w-6 h-6 rounded flex items-center justify-center text-[#5B6470] hover:text-[#0F766E] hover:bg-[#0F766E]/10 transition-colors"
+              className="w-7 h-7 rounded-lg bg-[#F4F2EE] hover:bg-purple-100 border border-[#E5E1D8] flex items-center justify-center text-purple-700 hover:text-purple-800 transition-colors shadow-2xs"
             >
               <Users className="w-3.5 h-3.5" />
             </button>
@@ -1498,10 +1508,10 @@ export default function Fluxo() {
             <button
               type="button"
               onClick={() => navigate(`/card/${card.id}`)}
-              title="Abrir página completa do card"
-              className="w-6 h-6 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white flex items-center justify-center shadow-2xs transition-all"
+              title="Abrir página completa do card (/card/:id)"
+              className="w-7 h-7 rounded-lg bg-[#2563EB] hover:bg-[#1D4ED8] text-white flex items-center justify-center shadow-xs transition-all"
             >
-              <ExternalLink className="w-3 h-3" />
+              <ExternalLink className="w-3.5 h-3.5" />
             </button>
 
             {/* Menu 3 pontinhos com ações completas */}
@@ -2213,9 +2223,11 @@ export default function Fluxo() {
                             <div
                               key={fluxo.id}
                               className={`group flex items-center justify-between px-2 py-1 rounded text-xs transition-colors ${
-                                isFluxoAtivo
-                                  ? 'bg-[#0F766E]/15 text-[#0F766E] font-semibold'
-                                  : 'text-[#5B6470] hover:bg-[#F4F2EE] hover:text-[#1A1D21]'
+                                fluxo.ativo === false
+                                  ? 'opacity-70 bg-zinc-100/60'
+                                  : isFluxoAtivo
+                                    ? 'bg-[#0F766E]/15 text-[#0F766E] font-semibold'
+                                    : 'text-[#5B6470] hover:bg-[#F4F2EE] hover:text-[#1A1D21]'
                               }`}
                             >
                               <button
@@ -2229,9 +2241,23 @@ export default function Fluxo() {
                               >
                                 <span
                                   className="w-1.5 h-1.5 rounded-full shrink-0"
-                                  style={{ backgroundColor: fluxo.cor || '#0F766E' }}
+                                  style={{
+                                    backgroundColor:
+                                      fluxo.ativo === false ? '#94A3B8' : fluxo.cor || '#0F766E',
+                                  }}
                                 />
-                                <span className="truncate">{fluxo.nome || fluxo.titulo}</span>
+                                <span
+                                  className={`truncate ${
+                                    fluxo.ativo === false ? 'line-through text-[#64748B]' : ''
+                                  }`}
+                                >
+                                  {fluxo.nome || fluxo.titulo}
+                                </span>
+                                {fluxo.ativo === false && (
+                                  <span className="text-[9px] uppercase tracking-wider font-semibold px-1 py-0.2 rounded bg-zinc-200 text-zinc-600">
+                                    Inativo
+                                  </span>
+                                )}
                               </button>
 
                               <div className="flex items-center gap-1 shrink-0">
