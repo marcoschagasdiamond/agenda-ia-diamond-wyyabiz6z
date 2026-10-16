@@ -16,6 +16,7 @@ import type {
   MarcoTimeline,
   Projeto,
   Contato,
+  LembreteAntecedenciaCodigo,
 } from '@/types'
 import {
   Calendar as CalendarIcon,
@@ -24,6 +25,7 @@ import {
   Plus,
   Filter,
   CheckCircle2,
+  Bell,
   Clock,
   AlertCircle,
   FileEdit,
@@ -163,6 +165,8 @@ export default function Calendario() {
     cor: string
     projetoId: string
     contatoId: string
+    lembreteModo?: 'padrao' | 'personalizado' | 'desativado'
+    lembreteAntecedencias?: LembreteAntecedenciaCodigo[]
   }>({
     titulo: '',
     descricao: '',
@@ -177,6 +181,8 @@ export default function Calendario() {
     cor: '#0F766E',
     projetoId: '',
     contatoId: '',
+    lembreteModo: 'padrao',
+    lembreteAntecedencias: ['15m', '1h', '1d'],
   })
   const [salvandoEvento, setSalvandoEvento] = useState(false)
 
@@ -714,6 +720,8 @@ export default function Calendario() {
       cor: '#0F766E',
       projetoId: '',
       contatoId: '',
+      lembreteModo: 'padrao',
+      lembreteAntecedencias: ['15m', '1h', '1d'],
     })
     setModalNovoEventoOpen(true)
   }
@@ -754,6 +762,11 @@ export default function Calendario() {
         cor: formEvento.cor,
         projeto: formEvento.projetoId || undefined,
         contato: formEvento.contatoId || undefined,
+        lembrete_modo: formEvento.lembreteModo || 'padrao',
+        lembrete_antecedencias:
+          formEvento.lembreteModo === 'personalizado'
+            ? formEvento.lembreteAntecedencias
+            : undefined,
         criado_por: user?.id,
       }
 
@@ -1667,6 +1680,12 @@ export default function Calendario() {
                           cor: ev.cor || '#0F766E',
                           projetoId: ev.projeto || '',
                           contatoId: ev.contato || '',
+                          lembreteModo: ev.lembrete_modo || 'padrao',
+                          lembreteAntecedencias: Array.isArray(ev.lembrete_antecedencias)
+                            ? (ev.lembrete_antecedencias as any)
+                            : typeof ev.lembrete_antecedencias === 'string'
+                              ? JSON.parse(ev.lembrete_antecedencias || '[]')
+                              : ['15m', '1h', '1d'],
                         })
                         setModalDetalheOpen(false)
                         setModalNovoEventoOpen(true)
@@ -2083,6 +2102,85 @@ export default function Calendario() {
                   ))}
                 </div>
               </div>
+            </div>
+
+            {/* Bloco de Lembretes & Avisos Automáticos */}
+            <div className="p-2.5 rounded-lg border border-[#0F766E]/30 bg-[#0F766E]/5 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-[#0F766E] flex items-center gap-1.5">
+                  <Bell className="w-3.5 h-3.5" />
+                  Lembrete Automático deste Evento
+                </label>
+                <div className="flex items-center gap-1">
+                  {(['padrao', 'personalizado', 'desativado'] as const).map((modo) => (
+                    <button
+                      key={modo}
+                      type="button"
+                      onClick={() => setFormEvento({ ...formEvento, lembreteModo: modo })}
+                      className={`text-[10px] px-2 py-0.5 rounded font-semibold transition-colors ${
+                        (formEvento.lembreteModo || 'padrao') === modo
+                          ? 'bg-[#0F766E] text-white shadow-2xs'
+                          : 'bg-white text-[#5B6470] border border-[#E5E1D8]'
+                      }`}
+                    >
+                      {modo === 'padrao'
+                        ? 'Padrão Geral'
+                        : modo === 'personalizado'
+                          ? 'Personalizar'
+                          : 'Desativar'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {formEvento.lembreteModo === 'personalizado' && (
+                <div className="pt-1.5 border-t border-[#0F766E]/20 space-y-1">
+                  <span className="text-[11px] text-[#5B6470] block">
+                    Escolha quando disparar aviso no sino e por e-mail:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { c: '15m', l: '15 min' },
+                      { c: '30m', l: '30 min' },
+                      { c: '1h', l: '1 hora' },
+                      { c: '2h', l: '2 horas' },
+                      { c: '1d', l: '1 dia' },
+                      { c: '1w', l: '1 sem' },
+                    ].map((opt) => {
+                      const optCode = opt.c as import('@/types').LembreteAntecedenciaCodigo
+                      const ativo = (formEvento.lembreteAntecedencias || []).includes(optCode)
+                      return (
+                        <button
+                          key={opt.c}
+                          type="button"
+                          onClick={() => {
+                            const cur = formEvento.lembreteAntecedencias || []
+                            const novo = ativo
+                              ? cur.filter((x) => x !== optCode)
+                              : [...cur, optCode]
+                            setFormEvento({ ...formEvento, lembreteAntecedencias: novo })
+                          }}
+                          className={`text-[10px] px-2 py-1 rounded-md border font-medium transition-colors ${
+                            ativo
+                              ? 'bg-[#0F766E] border-[#0F766E] text-white font-bold'
+                              : 'bg-white border-[#E5E1D8] text-[#5B6470] hover:bg-[#FAFAF9]'
+                          }`}
+                        >
+                          {opt.l}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {formEvento.lembreteModo !== 'personalizado' && (
+                <p className="text-[10px] text-[#5B6470]">
+                  {formEvento.lembreteModo === 'desativado'
+                    ? 'Nenhum lembrete será disparado para este evento.'
+                    : 'Usa a antecedência configurada em Configurações > Lembretes (ex: 15m, 1h, 1d).'}
+                </p>
+              )}
             </div>
 
             {/* Vínculos Opcionais: Projeto e Contato */}

@@ -51,6 +51,12 @@ export default function Listas() {
   const [tituloDemanda, setTituloDemanda] = useState('')
   const [descDemanda, setDescDemanda] = useState('')
   const [prazoDemanda, setPrazoDemanda] = useState('')
+  const [lembreteModo, setLembreteModo] = useState<'padrao' | 'personalizado' | 'desativado'>(
+    'padrao',
+  )
+  const [lembreteAntecedencias, setLembreteAntecedencias] = useState<
+    import('@/types').LembreteAntecedenciaCodigo[]
+  >(['1h', '1d'])
 
   const carregar = async () => {
     try {
@@ -100,12 +106,17 @@ export default function Listas() {
         descricao: descDemanda.trim() || undefined,
         status: 'pendente',
         prazo: prazoDemanda || undefined,
+        lembrete_modo: lembreteModo,
+        lembrete_antecedencias:
+          lembreteModo === 'personalizado' ? lembreteAntecedencias : undefined,
       })
       toast({ title: 'Demanda criada e disponível para delegação!' })
       setModalDemandaOpen(false)
       setTituloDemanda('')
       setDescDemanda('')
       setPrazoDemanda('')
+      setLembreteModo('padrao')
+      setLembreteAntecedencias(['1h', '1d'])
       await carregar()
     } catch (err) {
       toast({ title: 'Erro ao criar demanda', variant: 'destructive' })
@@ -395,6 +406,72 @@ export default function Listas() {
                 className="text-xs border-[#E5E1D8]"
               />
             </div>
+
+            {/* Configuração de Lembrete da Demanda */}
+            <div className="p-2.5 rounded-lg border border-[#0F766E]/30 bg-[#0F766E]/5 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[#0F766E]">Lembrete de Vencimento</span>
+                <div className="flex items-center gap-1">
+                  {(['padrao', 'personalizado', 'desativado'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setLembreteModo(m)}
+                      className={`text-[10px] px-2 py-0.5 rounded font-semibold transition-colors ${
+                        lembreteModo === m
+                          ? 'bg-[#0F766E] text-white shadow-2xs'
+                          : 'bg-white text-[#5B6470] border border-[#E5E1D8]'
+                      }`}
+                    >
+                      {m === 'padrao'
+                        ? 'Padrão'
+                        : m === 'personalizado'
+                          ? 'Personalizar'
+                          : 'Desativar'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {lembreteModo === 'personalizado' && (
+                <div className="pt-1.5 border-t border-[#0F766E]/20 space-y-1">
+                  <span className="text-[10px] text-[#5B6470] block">
+                    Antecedências para avisar no sino e por e-mail:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { c: '1h', l: '1 hora' },
+                      { c: '2h', l: '2 horas' },
+                      { c: '1d', l: '1 dia' },
+                      { c: '2d', l: '2 dias' },
+                      { c: '1w', l: '1 sem' },
+                    ].map((opt) => {
+                      const optCode = opt.c as import('@/types').LembreteAntecedenciaCodigo
+                      const ativo = lembreteAntecedencias.includes(optCode)
+                      return (
+                        <button
+                          key={opt.c}
+                          type="button"
+                          onClick={() => {
+                            setLembreteAntecedencias((prev) =>
+                              ativo ? prev.filter((x) => x !== optCode) : [...prev, optCode],
+                            )
+                          }}
+                          className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                            ativo
+                              ? 'bg-[#0F766E] border-[#0F766E] text-white font-bold'
+                              : 'bg-white border-[#E5E1D8] text-[#5B6470]'
+                          }`}
+                        >
+                          {opt.l}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <DialogFooter className="pt-2">
               <Button
                 type="submit"

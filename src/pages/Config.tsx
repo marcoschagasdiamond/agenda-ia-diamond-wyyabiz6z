@@ -46,6 +46,8 @@ import GestaoTags from '@/pages/config/GestaoTags'
 import GestaoGruposTarefas from '@/pages/config/GestaoGruposTarefas'
 import GestaoCards from '@/pages/config/GestaoCards'
 import ConstrutorFormularios from '@/pages/config/ConstrutorFormularios'
+import GestaoLembretes from '@/pages/config/GestaoLembretes'
+import { Bell } from 'lucide-react'
 
 export default function Config() {
   const { user, profile, refreshProfile } = useAuth()
@@ -57,11 +59,13 @@ export default function Config() {
   const subAbaUrl = searchParams.get('gestao') || 'categorias_fluxos'
 
   const [abaPrincipal, setAbaPrincipal] = useState<string>(
-    abaUrl === 'formularios'
-      ? 'formularios'
-      : abaUrl === 'preferencias'
-        ? 'preferencias'
-        : 'central',
+    abaUrl === 'lembretes'
+      ? 'lembretes'
+      : abaUrl === 'formularios'
+        ? 'formularios'
+        : abaUrl === 'preferencias'
+          ? 'preferencias'
+          : 'central',
   )
   const [abaGestao, setAbaGestao] = useState<string>(subAbaUrl)
 
@@ -163,6 +167,14 @@ export default function Config() {
           >
             <Settings className="w-3.5 h-3.5" />
             <span>Central de Gestão</span>
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="lembretes"
+            className="data-[state=active]:bg-[#0F766E] data-[state=active]:text-white text-xs px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 font-medium"
+          >
+            <Bell className="w-3.5 h-3.5" />
+            <span>Lembretes & Avisos</span>
           </TabsTrigger>
 
           <TabsTrigger
@@ -320,7 +332,14 @@ export default function Config() {
         </TabsContent>
 
         {/* ============================================================== */}
-        {/* 2. ABA: CONSTRUTOR DE FORMULÁRIOS */}
+        {/* 2. ABA: LEMBRETES & AVISOS AUTOMÁTICOS                         */}
+        {/* ============================================================== */}
+        <TabsContent value="lembretes" className="space-y-4 m-0">
+          <GestaoLembretes onRecarregarGlobal={recarregarGlobal} />
+        </TabsContent>
+
+        {/* ============================================================== */}
+        {/* 3. ABA: CONSTRUTOR DE FORMULÁRIOS */}
         {/* ============================================================== */}
         <TabsContent value="formularios" className="space-y-4 m-0">
           <ConstrutorFormularios onRecarregarGlobal={recarregarGlobal} />

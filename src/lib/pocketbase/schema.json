@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-16T01:33:21.044Z",
+  "generatedAt": "2026-10-16T20:25:02.076Z",
   "collections": [
     {
       "name": "users",
@@ -673,6 +673,19 @@
           "type": "date",
           "required": false,
           "system": false
+        },
+        {
+          "name": "lembrete_modo",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["padrao", "personalizado", "desativado"]
+        },
+        {
+          "name": "lembrete_antecedencias",
+          "type": "json",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -769,6 +782,19 @@
         {
           "name": "timeline",
           "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lembrete_modo",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["padrao", "personalizado", "desativado"]
+        },
+        {
+          "name": "lembrete_antecedencias",
+          "type": "json",
           "required": false,
           "system": false
         }
@@ -1559,6 +1585,19 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "lembrete_modo",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["padrao", "personalizado", "desativado"]
+        },
+        {
+          "name": "lembrete_antecedencias",
+          "type": "json",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -2400,6 +2439,249 @@
         }
       ],
       "indexes": ["CREATE INDEX idx_form_resp_form ON formulario_respostas (formulario)"]
+    },
+    {
+      "name": "configuracoes_lembretes",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (usuario = @request.auth.id || usuario = '')",
+        "view": "@request.auth.id != '' && (usuario = @request.auth.id || usuario = '')",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && (usuario = @request.auth.id || usuario = '')",
+        "delete": "@request.auth.id != '' && (usuario = @request.auth.id || usuario = '')"
+      },
+      "fields": [
+        {
+          "name": "usuario",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "antecedencias_reunioes",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "antecedencias_tarefas",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "email_reunioes_ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sino_reunioes_ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "email_tarefas_ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sino_tarefas_ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "avisar_atrasos_tarefas",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_cfg_lembretes_user ON configuracoes_lembretes (usuario)"]
+    },
+    {
+      "name": "notificacoes_sistema",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (usuario = @request.auth.id || usuario = '')",
+        "view": "@request.auth.id != '' && (usuario = @request.auth.id || usuario = '')",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && (usuario = @request.auth.id || usuario = '')",
+        "delete": "@request.auth.id != '' && (usuario = @request.auth.id || usuario = '')"
+      },
+      "fields": [
+        {
+          "name": "usuario",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["reuniao", "tarefa", "atraso", "sistema"]
+        },
+        {
+          "name": "titulo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "mensagem",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "link",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "item_tipo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "item_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lida",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lida_em",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_notif_user ON notificacoes_sistema (usuario)",
+        "CREATE INDEX idx_notif_lida ON notificacoes_sistema (lida)",
+        "CREATE INDEX idx_notif_created ON notificacoes_sistema (created DESC)"
+      ]
+    },
+    {
+      "name": "historico_lembretes_disparados",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "chave_disparo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "item_tipo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "item_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_lembrete",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "antecedencia",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "disparado_em",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "email_enviado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sino_criado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_hist_lembrete_chave ON historico_lembretes_disparados (chave_disparo)"
+      ]
     }
   ]
 }

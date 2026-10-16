@@ -33,6 +33,8 @@ import type {
   FormCampoConfig,
   Formulario,
   FormularioResposta,
+  ConfiguracaoLembretes,
+  NotificacaoSistema,
 } from '@/types'
 
 export const diamondApi = {
@@ -1072,5 +1074,173 @@ export const diamondApi = {
 
   async deleteRespostaFormulario(id: string): Promise<boolean> {
     return await pb.collection('formulario_respostas').delete(id)
+  },
+
+  // =========================================================================
+  // SISTEMA DE LEMBRETES & NOTIFICAÇÕES (SINO & E-MAIL)
+  // =========================================================================
+  async getConfiguracaoLembretes(usuarioId?: string): Promise<ConfiguracaoLembretes | null> {
+    try {
+      const uId = usuarioId || pb.authStore.record?.id
+      let filter = ''
+      if (uId) {
+        filter = `usuario = "${uId}"`
+      }
+      const records = await pb
+        .collection('configuracoes_lembretes')
+        .getList<ConfiguracaoLembretes>(1, 1, {
+          filter,
+          sort: '-created',
+        })
+      if (records.items.length > 0) {
+        const item = records.items[0]
+        let parsedReunioes = ['15m', '1h', '1d']
+        let parsedTarefas = ['1h', '1d']
+        if (typeof item.antecedencias_reunioes === 'string') {
+          try {
+            parsedReunioes = JSON.parse(item.antecedencias_reunioes)
+          } catch {
+            /* intentionally ignored */
+          }
+        } else if (Array.isArray(item.antecedencias_reunioes)) {
+          parsedReunioes = item.antecedencias_reunioes as any
+        }
+
+        if (typeof item.antecedencias_tarefas === 'string') {
+          try {
+            parsedTarefas = JSON.parse(item.antecedencias_tarefas)
+          } catch {
+            /* intentionally ignored */
+          }
+        } else if (Array.isArray(item.antecedencias_tarefas)) {
+          parsedTarefas = item.antecedencias_tarefas as any
+        }
+
+        return {
+          ...item,
+          antecedencias_reunioes: parsedReunioes as any,
+          antecedencias_tarefas: parsedTarefas as any,
+        }
+      }
+      return null
+    } catch {
+      return null
+    }
+  },
+
+  async salvarConfiguracaoLembretes(
+    dados: Partial<ConfiguracaoLembretes>,
+  ): Promise<ConfiguracaoLembretes> {
+    const uId = dados.usuario || pb.authStore.record?.id
+    const payload = {
+      usuario: uId,
+      antecedencias_reunioes:
+        typeof dados.antecedencias_reunioes === 'object'
+          ? JSON.stringify(dados.antecedencias_reunioes)
+          : dados.antecedencias_reunioes,
+      antecedencias_tarefas:
+        typeof dados.antecedencias_tarefas === 'object'
+          ? JSON.stringify(dados.antecedencias_tarefas)
+          : dados.antecedencias_tarefas,
+      email_reunioes_ativo: !!dados.email_reunioes_ativo,
+      sino_reunioes_ativo: !!dados.sino_reunioes_ativo,
+      email_tarefas_ativo: !!dados.email_tarefas_ativo,
+      sino_tarefas_ativo: !!dados.sino_tarefas_ativo,
+      avisar_atrasos_tarefas: dados.avisar_atrasos_tarefas !== false,
+    }
+
+    if (dados.id) {
+      const res = await pb
+        .collection('configuracoes_lembretes')
+        .update<ConfiguracaoLembretes>(dados.id, payload)
+      return res
+    }
+
+    // Checar se já existe antes de criar
+    const existing = await this.getConfiguracaoLembretes(uId)
+    if (existing?.id) {
+      const res = await pb
+        .collection('configuracoes_lembretes')
+        .update<ConfiguracaoLembretes>(existing.id, payload)
+      return res
+    }
+
+    const res = await pb
+      .collection('configuracoes_lembretes')
+      .create<ConfiguracaoLembretes>(payload)
+    return res
+  },
+
+  // Notificações do Sino
+  async listNotificacoesSistema(apenasNaoLidas = false): Promise<NotificacaoSistema[]> {
+    try {
+      const uId = pb.authStore.record?.id
+      const filters: string[] = []
+      if (uId) {
+        filters.push(`(usuario = "${uId}" || usuario = "")`)
+      }
+      if (apenasNaoLidas) {
+        filters.push('lida = false')
+      }
+
+      return await pb.collection('notificacoes_sistema').getFullList<NotificacaoSistema>({
+        filter: filters.join(' && '),
+        sort: '-created',
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async marcarNotificacaoLida(id: string): Promise<NotificacaoSistema> {
+    return await pb.collection('notificacoes_sistema').update<NotificacaoSistema>(id, {
+      lida: true,
+      lida_em: new Date().toISOString(),
+    })
+  },
+
+  async marcarTodasNotificacoesLidas(): Promise<boolean> {
+    try {
+      const pendentes = await this.listNotificacoesSistema(true)
+      const agora = new Date().toISOString()
+      await Promise.all(
+        pendentes.map((n) =>
+          pb.collection('notificacoes_sistema').update(n.id, {
+            lida: true,
+            lida_em: agora,
+          }),
+        ),
+      )
+      return true
+    } catch {
+      return false
+    }
+  },
+
+  async excluirNotificacao(id: string): Promise<boolean> {
+    try {
+      return await pb.collection('notificacoes_sistema').delete(id)
+    } catch {
+      return false
+    }
+  },
+
+  // Disparo manual para checar e disparar avisos imediatamente
+  async verificarLembretesAgora(): Promise<{ sucesso: boolean; mensagem: string }> {
+    const res = await fetch(
+      `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/lembretes/verificar-agora`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(pb.authStore.token ? { Authorization: pb.authStore.token } : {}),
+        },
+      },
+    )
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Falha ao verificar lembretes')
+    }
+    return await res.json()
   },
 }

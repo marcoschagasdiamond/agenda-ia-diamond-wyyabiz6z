@@ -30,6 +30,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import ModalConvidarEquipe from '@/components/ModalConvidarEquipe'
+import SinoNotificacoes from '@/components/SinoNotificacoes'
 
 interface LayoutProps {
   children?: React.ReactNode
@@ -266,6 +267,9 @@ export default function Layout({ children }: LayoutProps) {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Sino de Notificações & Lembretes Automáticos */}
+            <SinoNotificacoes />
+
             {/* Botão de Busca Global */}
             <div className="relative">
               <button

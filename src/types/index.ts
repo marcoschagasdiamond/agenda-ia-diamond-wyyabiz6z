@@ -345,6 +345,8 @@ export interface Card {
   responsavel?: string
   criado_por_ia?: boolean
   data_prazo?: string
+  lembrete_modo?: LembreteModo
+  lembrete_antecedencias?: LembreteAntecedenciaCodigo[] | string
   created: string
   updated: string
   expand?: {
@@ -368,6 +370,8 @@ export interface Demanda {
   contato?: string
   prioridade?: CardPrioridade
   timeline?: string
+  lembrete_modo?: LembreteModo
+  lembrete_antecedencias?: LembreteAntecedenciaCodigo[] | string
   created: string
   updated: string
   expand?: {
@@ -488,6 +492,43 @@ export interface MarcoTimeline {
   }
 }
 
+export type LembreteModo = 'padrao' | 'personalizado' | 'desativado'
+export type LembreteAntecedenciaCodigo = '15m' | '30m' | '1h' | '2h' | '1d' | '2d' | '1w'
+
+export interface ConfiguracaoLembretes {
+  id: string
+  usuario?: string
+  antecedencias_reunioes: LembreteAntecedenciaCodigo[] | string
+  antecedencias_tarefas: LembreteAntecedenciaCodigo[] | string
+  email_reunioes_ativo: boolean
+  sino_reunioes_ativo: boolean
+  email_tarefas_ativo: boolean
+  sino_tarefas_ativo: boolean
+  avisar_atrasos_tarefas: boolean
+  created?: string
+  updated?: string
+}
+
+export type NotificacaoTipo = 'reuniao' | 'tarefa' | 'atraso' | 'sistema'
+
+export interface NotificacaoSistema {
+  id: string
+  usuario?: string
+  tipo: NotificacaoTipo
+  titulo: string
+  mensagem: string
+  link?: string
+  item_tipo?: 'evento' | 'demanda' | 'card' | string
+  item_id?: string
+  lida: boolean
+  lida_em?: string
+  created: string
+  updated: string
+  expand?: {
+    usuario?: User
+  }
+}
+
 export interface EventoCalendario {
   id: string
   titulo: string
@@ -502,6 +543,8 @@ export interface EventoCalendario {
   projeto?: string
   contato?: string
   criado_por?: string
+  lembrete_modo?: LembreteModo
+  lembrete_antecedencias?: LembreteAntecedenciaCodigo[] | string
   created: string
   updated: string
   expand?: {

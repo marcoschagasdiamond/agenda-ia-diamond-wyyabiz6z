@@ -82,6 +82,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/hooks/use-toast'
+import SinoNotificacoes from '@/components/SinoNotificacoes'
 
 export default function Fluxo() {
   const [searchParams] = useSearchParams()
@@ -178,6 +179,13 @@ export default function Fluxo() {
   const [formStatus, setFormStatus] = useState<string>('backlog')
   const [formProximoPasso, setFormProximoPasso] = useState('')
   const [formTags, setFormTags] = useState('')
+  const [formDataPrazo, setFormDataPrazo] = useState('')
+  const [formLembreteModo, setFormLembreteModo] = useState<
+    'padrao' | 'personalizado' | 'desativado'
+  >('padrao')
+  const [formLembreteAntecedencias, setFormLembreteAntecedencias] = useState<
+    import('@/types').LembreteAntecedenciaCodigo[]
+  >(['1h', '1d'])
   const [salvandoCard, setSalvandoCard] = useState(false)
 
   // 2. Modal Categoria
@@ -493,6 +501,9 @@ export default function Fluxo() {
     setFormStatus(defaultStatus || (colunasFiltradas[0]?.chave ?? 'backlog'))
     setFormProximoPasso('')
     setFormTags('')
+    setFormDataPrazo('')
+    setFormLembreteModo('padrao')
+    setFormLembreteAntecedencias(['1h', '1d'])
     setModalCardOpen(true)
   }
 
@@ -507,6 +518,15 @@ export default function Fluxo() {
     setFormPrioridade(card.prioridade || 'media')
     setFormStatus(card.status)
     setFormProximoPasso(card.proximo_passo || '')
+    setFormDataPrazo(card.data_prazo || '')
+    setFormLembreteModo(card.lembrete_modo || 'padrao')
+    setFormLembreteAntecedencias(
+      Array.isArray(card.lembrete_antecedencias)
+        ? (card.lembrete_antecedencias as any)
+        : typeof card.lembrete_antecedencias === 'string'
+          ? JSON.parse(card.lembrete_antecedencias || '[]')
+          : ['1h', '1d'],
+    )
     setFormTags(Array.isArray(card.tags) ? card.tags.join(', ') : '')
     setModalCardOpen(true)
   }
@@ -531,6 +551,10 @@ export default function Fluxo() {
       prioridade: formPrioridade,
       status: formStatus,
       proximo_passo: formProximoPasso.trim() || undefined,
+      data_prazo: formDataPrazo || undefined,
+      lembrete_modo: formLembreteModo,
+      lembrete_antecedencias:
+        formLembreteModo === 'personalizado' ? formLembreteAntecedencias : undefined,
       tags: tagsArray,
       fluxo_id: fluxoAtivo?.id || undefined,
     }
@@ -1770,21 +1794,8 @@ export default function Fluxo() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {/* Sino de Notificação com badge vermelho no canto */}
-          <button
-            type="button"
-            title="Notificações e alertas do fluxo"
-            onClick={() =>
-              toast({
-                title: 'Notificações do Fluxo',
-                description: `${cardsFiltrados.filter((c) => c.prioridade === 'urgente').length} demandas urgentes em aberto.`,
-              })
-            }
-            className="relative w-8 h-8 rounded-lg flex items-center justify-center text-[#5B6470] hover:text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors"
-          >
-            <Bell className="w-4 h-4" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-600 ring-2 ring-white" />
-          </button>
+          {/* Sino de Notificações interativo com popover e alertas */}
+          <SinoNotificacoes className="w-8 h-8 flex items-center justify-center" />
         </div>
       </div>
 
@@ -3077,16 +3088,93 @@ export default function Fluxo() {
               </div>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#5B6470]">
-                Tags (separadas por vírgula)
-              </label>
-              <Input
-                placeholder="Ex: feedback, revisao, pagamento, urgente"
-                value={formTags}
-                onChange={(e) => setFormTags(e.target.value)}
-                className="text-xs border-[#E5E1D8]"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-[#5B6470]">Prazo Limite do Card</label>
+                <Input
+                  type="date"
+                  value={formDataPrazo}
+                  onChange={(e) => setFormDataPrazo(e.target.value)}
+                  className="text-xs border-[#E5E1D8]"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-[#5B6470]">
+                  Tags (separadas por vírgula)
+                </label>
+                <Input
+                  placeholder="Ex: feedback, revisao, urgente"
+                  value={formTags}
+                  onChange={(e) => setFormTags(e.target.value)}
+                  className="text-xs border-[#E5E1D8]"
+                />
+              </div>
+            </div>
+
+            {/* Configuração de Lembrete do Card Kanban */}
+            <div className="p-2.5 rounded-lg border border-[#0F766E]/30 bg-[#0F766E]/5 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[#0F766E]">Lembrete de Vencimento</span>
+                <div className="flex items-center gap-1">
+                  {(['padrao', 'personalizado', 'desativado'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setFormLembreteModo(m)}
+                      className={`text-[10px] px-2 py-0.5 rounded font-semibold transition-colors ${
+                        formLembreteModo === m
+                          ? 'bg-[#0F766E] text-white shadow-2xs'
+                          : 'bg-white text-[#5B6470] border border-[#E5E1D8]'
+                      }`}
+                    >
+                      {m === 'padrao'
+                        ? 'Padrão'
+                        : m === 'personalizado'
+                          ? 'Personalizar'
+                          : 'Desativar'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {formLembreteModo === 'personalizado' && (
+                <div className="pt-1.5 border-t border-[#0F766E]/20 space-y-1">
+                  <span className="text-[10px] text-[#5B6470] block">
+                    Antecedências para avisar no sino e por e-mail:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { c: '1h', l: '1 hora' },
+                      { c: '2h', l: '2 horas' },
+                      { c: '1d', l: '1 dia' },
+                      { c: '2d', l: '2 dias' },
+                      { c: '1w', l: '1 sem' },
+                    ].map((opt) => {
+                      const optCode = opt.c as import('@/types').LembreteAntecedenciaCodigo
+                      const ativo = formLembreteAntecedencias.includes(optCode)
+                      return (
+                        <button
+                          key={opt.c}
+                          type="button"
+                          onClick={() => {
+                            setFormLembreteAntecedencias((prev) =>
+                              ativo ? prev.filter((x) => x !== optCode) : [...prev, optCode],
+                            )
+                          }}
+                          className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                            ativo
+                              ? 'bg-[#0F766E] border-[#0F766E] text-white font-bold'
+                              : 'bg-white border-[#E5E1D8] text-[#5B6470]'
+                          }`}
+                        >
+                          {opt.l}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <DialogFooter className="flex justify-between items-center pt-4 border-t border-[#E5E1D8]">
