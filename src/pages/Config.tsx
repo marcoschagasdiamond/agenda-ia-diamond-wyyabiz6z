@@ -154,7 +154,7 @@ export default function Config() {
           </div>
           <p className="text-xs text-[#5B6470] mt-1">
             Gestão unificada de categorias, fluxos, projetos, contatos, clientes, equipe, tags,
-            grupos de tarefas, cards e construtor de formulários.
+            grupos de tarefas, cards, folha do dia e construtor de formulários.
           </p>
         </div>
       </div>
@@ -196,25 +196,11 @@ export default function Config() {
         </TabsList>
 
         {/* ============================================================== */}
-        {/* 1. ABA: CENTRAL DE GESTÃO (8 Sub-Abas Exatas Pedidas) */}
+        {/* 1. ABA: CENTRAL DE GESTÃO (9 Sub-Abas) */}
         {/* ============================================================== */}
         <TabsContent value="central" className="space-y-4 m-0">
           <div className="bg-[#FAFAF9] p-2 rounded-xl border border-[#E5E1D8]">
             <div className="flex flex-wrap items-center gap-1.5">
-              <Button
-                size="sm"
-                variant={abaGestao === 'folha' ? 'default' : 'ghost'}
-                onClick={() => mudarAbaGestao('folha')}
-                className={`text-xs h-8 px-2.5 rounded-lg gap-1.5 ${
-                  abaGestao === 'folha'
-                    ? 'bg-[#1A1D21] text-white hover:bg-[#2A2E33]'
-                    : 'text-[#5B6470] hover:text-[#1A1D21] hover:bg-white'
-                }`}
-              >
-                <FileEdit className="w-3.5 h-3.5 text-[#0F766E]" />
-                <span className="font-semibold">Folha do Dia</span>
-              </Button>
-
               <Button
                 size="sm"
                 variant={abaGestao === 'categorias_fluxos' ? 'default' : 'ghost'}
@@ -326,12 +312,25 @@ export default function Config() {
                 <CreditCard className="w-3.5 h-3.5" />
                 <span>8. Cards Globais</span>
               </Button>
+
+              <Button
+                size="sm"
+                variant={abaGestao === 'folha' ? 'default' : 'ghost'}
+                onClick={() => mudarAbaGestao('folha')}
+                className={`text-xs h-8 px-2.5 rounded-lg gap-1.5 ${
+                  abaGestao === 'folha'
+                    ? 'bg-[#1A1D21] text-white hover:bg-[#2A2E33]'
+                    : 'text-[#5B6470] hover:text-[#1A1D21] hover:bg-white'
+                }`}
+              >
+                <FileEdit className="w-3.5 h-3.5" />
+                <span>9. Gestão da Folha</span>
+              </Button>
             </div>
           </div>
 
           {/* Renderização condicional do módulo selecionado */}
           <div>
-            {abaGestao === 'folha' && <GestaoFolha onRecarregarGlobal={recarregarGlobal} />}
             {abaGestao === 'categorias_fluxos' && (
               <GestaoCategoriasFluxos onRecarregarGlobal={recarregarGlobal} />
             )}
@@ -344,6 +343,7 @@ export default function Config() {
               <GestaoGruposTarefas onRecarregarGlobal={recarregarGlobal} />
             )}
             {abaGestao === 'cards' && <GestaoCards onRecarregarGlobal={recarregarGlobal} />}
+            {abaGestao === 'folha' && <GestaoFolha onRecarregarGlobal={recarregarGlobal} />}
           </div>
         </TabsContent>
 

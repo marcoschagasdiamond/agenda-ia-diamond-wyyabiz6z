@@ -1429,6 +1429,14 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
             <span>8. Cards Globais</span>
           </button>
 
+          <button
+            onClick={() => irPara('/config?aba=central&gestao=folha')}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
+          >
+            <FileEdit className="w-3.5 h-3.5 text-[#0F766E]" />
+            <span>9. Gestão da Folha</span>
+          </button>
+
           <div className="pt-2 border-t border-[#E5E1D8]/70">
             <div className="text-[10px] font-bold uppercase tracking-wider text-[#5B6470] px-2 mb-1">
               Formulários & Diretrizes
