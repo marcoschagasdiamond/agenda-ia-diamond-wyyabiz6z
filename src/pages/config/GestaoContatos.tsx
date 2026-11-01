@@ -17,15 +17,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog'
 import {
   Select,
   SelectContent,
@@ -35,6 +27,7 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { ModalImportarContatos } from '@/components/contatos/ModalImportarContatos'
+import { ModalEditarContato } from '@/components/contatos/ModalEditarContato'
 
 interface GestaoContatosProps {
   onRecarregarGlobal?: () => void
@@ -51,17 +44,6 @@ export default function GestaoContatos({ onRecarregarGlobal }: GestaoContatosPro
   const [modalOpen, setModalOpen] = useState(false)
   const [modo, setModo] = useState<'criar' | 'editar' | 'ver'>('criar')
   const [contatoSelecionado, setContatoSelecionado] = useState<Contato | null>(null)
-
-  // Formulário
-  const [nome, setNome] = useState('')
-  const [empresa, setEmpresa] = useState('')
-  const [email, setEmail] = useState('')
-  const [telefone, setTelefone] = useState('')
-  const [cargo, setCargo] = useState('')
-  const [origem, setOrigem] = useState<string>('manual')
-  const [tagsStr, setTagsStr] = useState('')
-  const [contexto, setContexto] = useState('')
-  const [salvando, setSalvando] = useState(false)
 
   // Modal Importar Contatos (.vcf / .csv)
   const [modalImportarOpen, setModalImportarOpen] = useState(false)
@@ -85,69 +67,13 @@ export default function GestaoContatos({ onRecarregarGlobal }: GestaoContatosPro
   const abrirNovo = () => {
     setModo('criar')
     setContatoSelecionado(null)
-    setNome('')
-    setEmpresa('')
-    setEmail('')
-    setTelefone('')
-    setCargo('')
-    setOrigem('manual')
-    setTagsStr('')
-    setContexto('')
     setModalOpen(true)
   }
 
   const abrirEditar = (c: Contato, apenasVer = false) => {
     setModo(apenasVer ? 'ver' : 'editar')
     setContatoSelecionado(c)
-    setNome(c.nome)
-    setEmpresa(c.empresa || '')
-    setEmail(c.email || '')
-    setTelefone(c.telefone || '')
-    setCargo(c.cargo || '')
-    setOrigem(c.origem || 'manual')
-    setTagsStr(Array.isArray(c.tags) ? c.tags.join(', ') : '')
-    setContexto(c.contexto_resumido || '')
     setModalOpen(true)
-  }
-
-  const handleSalvar = async () => {
-    if (!nome.trim()) {
-      toast({ title: 'Informe o nome do contato', variant: 'destructive' })
-      return
-    }
-    setSalvando(true)
-    try {
-      const tagsArray = tagsStr
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean)
-
-      const payload: Partial<Contato> = {
-        nome: nome.trim(),
-        empresa: empresa.trim(),
-        email: email.trim(),
-        telefone: telefone.trim(),
-        cargo: cargo.trim(),
-        origem: origem as any,
-        tags: tagsArray,
-        contexto_resumido: contexto.trim(),
-      }
-
-      if (modo === 'criar') {
-        await diamondApi.createContato(payload)
-        toast({ title: 'Contato criado com sucesso!' })
-      } else if (modo === 'editar' && contatoSelecionado) {
-        await diamondApi.updateContato(contatoSelecionado.id, payload)
-        toast({ title: 'Contato atualizado!' })
-      }
-      setModalOpen(false)
-      await carregarDados()
-      onRecarregarGlobal?.()
-    } catch {
-      toast({ title: 'Erro ao salvar contato', variant: 'destructive' })
-    } finally {
-      setSalvando(false)
-    }
   }
 
   const handleExcluir = async (id: string, nomeContato: string) => {
@@ -315,149 +241,17 @@ export default function GestaoContatos({ onRecarregarGlobal }: GestaoContatosPro
         )}
       </div>
 
-      {/* Modal Criar / Editar / Ver */}
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-md bg-white border-[#E5E1D8]">
-          <DialogHeader>
-            <DialogTitle className="text-sm font-bold text-[#1A1D21] flex items-center gap-2">
-              <Users className="w-4 h-4 text-[#0F766E]" />
-              {modo === 'criar'
-                ? 'Novo Contato'
-                : modo === 'editar'
-                  ? 'Editar Contato'
-                  : 'Visualizar Contato'}
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-3 py-2">
-            <div>
-              <label className="text-xs font-semibold text-[#1A1D21] block mb-1">
-                Nome Completo
-              </label>
-              <Input
-                disabled={modo === 'ver'}
-                value={nome}
-                onChange={(e) => setNome(e.target.value)}
-                placeholder="Ex: Carlos Eduardo Silveira"
-                className="text-xs border-[#E5E1D8]"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-[#1A1D21] block mb-1">Empresa</label>
-                <Input
-                  disabled={modo === 'ver'}
-                  value={empresa}
-                  onChange={(e) => setEmpresa(e.target.value)}
-                  placeholder="Ex: Diamond Tech"
-                  className="text-xs border-[#E5E1D8]"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-[#1A1D21] block mb-1">Cargo</label>
-                <Input
-                  disabled={modo === 'ver'}
-                  value={cargo}
-                  onChange={(e) => setCargo(e.target.value)}
-                  placeholder="Ex: Diretor Financeiro"
-                  className="text-xs border-[#E5E1D8]"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-[#1A1D21] block mb-1">E-mail</label>
-                <Input
-                  disabled={modo === 'ver'}
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="carlos@empresa.com"
-                  className="text-xs border-[#E5E1D8]"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-[#1A1D21] block mb-1">Telefone</label>
-                <Input
-                  disabled={modo === 'ver'}
-                  value={telefone}
-                  onChange={(e) => setTelefone(e.target.value)}
-                  placeholder="(11) 99999-0000"
-                  className="text-xs border-[#E5E1D8]"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-[#1A1D21] block mb-1">Origem</label>
-                <Select disabled={modo === 'ver'} value={origem} onValueChange={setOrigem}>
-                  <SelectTrigger className="text-xs border-[#E5E1D8]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="manual">Manual</SelectItem>
-                    <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                    <SelectItem value="email">E-mail</SelectItem>
-                    <SelectItem value="importado">Importado</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-[#1A1D21] block mb-1">
-                  Tags (separadas por vírgula)
-                </label>
-                <Input
-                  disabled={modo === 'ver'}
-                  value={tagsStr}
-                  onChange={(e) => setTagsStr(e.target.value)}
-                  placeholder="VIP, Estratégia, Follow-up"
-                  className="text-xs border-[#E5E1D8]"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-[#1A1D21] block mb-1">
-                Contexto / Observações
-              </label>
-              <Textarea
-                disabled={modo === 'ver'}
-                rows={2}
-                value={contexto}
-                onChange={(e) => setContexto(e.target.value)}
-                placeholder="Histórico resumido do relacionamento..."
-                className="text-xs border-[#E5E1D8]"
-              />
-            </div>
-          </div>
-
-          <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setModalOpen(false)}
-              className="text-xs border-[#E5E1D8]"
-            >
-              {modo === 'ver' ? 'Fechar' : 'Cancelar'}
-            </Button>
-            {modo !== 'ver' && (
-              <Button
-                size="sm"
-                disabled={salvando}
-                onClick={handleSalvar}
-                className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs gap-1"
-              >
-                <Check className="w-3.5 h-3.5" />
-                <span>{salvando ? 'Salvando...' : 'Salvar Contato'}</span>
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Modal Criar / Editar / Ver Contato */}
+      <ModalEditarContato
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        contato={contatoSelecionado}
+        modo={modo}
+        onSalvo={async () => {
+          await carregarDados()
+          onRecarregarGlobal?.()
+        }}
+      />
 
       {/* Modal Importar Contatos */}
       <ModalImportarContatos

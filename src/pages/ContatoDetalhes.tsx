@@ -13,12 +13,14 @@ import {
   Layers,
   CheckCircle2,
   Trash2,
+  Pencil,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
+import { ModalEditarContato } from '@/components/contatos/ModalEditarContato'
 
 export default function ContatoDetalhes() {
   const { id } = useParams<{ id: string }>()
@@ -27,6 +29,7 @@ export default function ContatoDetalhes() {
 
   const [contato, setContato] = useState<Contato | null>(null)
   const [cards, setCards] = useState<CardType[]>([])
+  const [modalEditarOpen, setModalEditarOpen] = useState(false)
   const [novoContexto, setNovoContexto] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -111,13 +114,21 @@ export default function ContatoDetalhes() {
 
         <div className="flex items-center gap-2">
           <Button
+            size="sm"
+            onClick={() => setModalEditarOpen(true)}
+            className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-8 px-3 font-medium shadow-xs gap-1.5"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            Editar contato
+          </Button>
+          <Button
             variant="outline"
             size="sm"
             onClick={handleExcluirContato}
-            className="text-xs h-8 text-red-600 border-red-200 hover:bg-red-50"
+            className="text-xs h-8 text-red-600 border-red-200 hover:bg-red-50 gap-1"
           >
-            <Trash2 className="w-3.5 h-3.5 mr-1" />
-            Excluir Contato
+            <Trash2 className="w-3.5 h-3.5" />
+            Excluir
           </Button>
         </div>
       </div>
@@ -233,6 +244,18 @@ export default function ContatoDetalhes() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Modal Editar Contato */}
+      <ModalEditarContato
+        open={modalEditarOpen}
+        onOpenChange={setModalEditarOpen}
+        contato={contato}
+        modo="editar"
+        onSalvo={(ctAtualizado) => {
+          setContato(ctAtualizado)
+          setNovoContexto(ctAtualizado.contexto_resumido || '')
+        }}
+      />
     </div>
   )
 }

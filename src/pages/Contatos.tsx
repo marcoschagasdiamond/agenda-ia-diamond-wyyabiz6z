@@ -12,26 +12,14 @@ import {
   Building,
   ArrowRight,
   Sparkles,
+  Pencil,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { ModalImportarContatos } from '@/components/contatos/ModalImportarContatos'
+import { ModalEditarContato } from '@/components/contatos/ModalEditarContato'
 
 export default function Contatos() {
   const navigate = useNavigate()
@@ -42,17 +30,10 @@ export default function Contatos() {
   const [negocios, setNegocios] = useState<Negocio[]>([])
   const [busca, setBusca] = useState('')
 
-  // Modal Novo Contato
+  // Modal Criar / Editar Contato
   const [modalOpen, setModalOpen] = useState(false)
-  const [nome, setNome] = useState('')
-  const [empresa, setEmpresa] = useState('')
-  const [email, setEmail] = useState('')
-  const [telefone, setTelefone] = useState('')
-  const [cargo, setCargo] = useState('')
-  const [origem, setOrigem] = useState<OrigemTipo>('manual')
-  const [tags, setTags] = useState('')
-  const [projetoId, setProjetoId] = useState('none')
-  const [salvando, setSalvando] = useState(false)
+  const [modalModo, setModalModo] = useState<'criar' | 'editar'>('criar')
+  const [contatoEditando, setContatoEditando] = useState<Contato | null>(null)
 
   // Modal Importar Contatos (.vcf e .csv)
   const [modalImportarOpen, setModalImportarOpen] = useState(false)
@@ -76,47 +57,17 @@ export default function Contatos() {
     carregar()
   }, [])
 
-  const handleSalvarContato = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!nome.trim()) return
-    setSalvando(true)
+  const abrirCriarContato = () => {
+    setContatoEditando(null)
+    setModalModo('criar')
+    setModalOpen(true)
+  }
 
-    const tagsArr = tags
-      .split(',')
-      .map((t) => t.trim().toLowerCase())
-      .filter(Boolean)
-
-    try {
-      await diamondApi.createContato({
-        nome: nome.trim(),
-        empresa: empresa.trim() || undefined,
-        email: email.trim() || undefined,
-        telefone: telefone.trim() || undefined,
-        cargo: cargo.trim() || undefined,
-        origem,
-        tags: tagsArr,
-        projetos: projetoId !== 'none' ? [projetoId] : [],
-      })
-
-      toast({ title: 'Contato criado com sucesso!' })
-      setModalOpen(false)
-      setNome('')
-      setEmpresa('')
-      setEmail('')
-      setTelefone('')
-      setCargo('')
-      setTags('')
-      setProjetoId('none')
-      await carregar()
-    } catch (err) {
-      toast({
-        title: 'Erro ao criar contato',
-        description: (err as Error)?.message,
-        variant: 'destructive',
-      })
-    } finally {
-      setSalvando(false)
-    }
+  const abrirEditarContato = (c: Contato, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    setContatoEditando(c)
+    setModalModo('editar')
+    setModalOpen(true)
   }
 
   const contatosFiltrados = contatos.filter((c) => {
@@ -160,7 +111,7 @@ export default function Contatos() {
           </Button>
           <Button
             size="sm"
-            onClick={() => setModalOpen(true)}
+            onClick={abrirCriarContato}
             className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-9 px-4 font-medium shadow-sm gap-1.5"
           >
             <Plus className="w-4 h-4" />
@@ -224,145 +175,35 @@ export default function Contatos() {
             </div>
 
             <div className="pt-3 mt-3 border-t border-[#E5E1D8]/60 flex items-center justify-between text-xs text-[#0F766E] font-medium">
-              <span>Abrir histórico e demandas</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <span className="flex items-center gap-1">
+                Abrir histórico e demandas
+                <ArrowRight className="w-3.5 h-3.5" />
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={(e) => abrirEditarContato(ct, e)}
+                className="h-6 px-2 text-[11px] text-[#5B6470] hover:text-[#0F766E] hover:bg-[#0F766E]/10 gap-1 rounded"
+              >
+                <Pencil className="w-3 h-3" />
+                <span>Editar</span>
+              </Button>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Modal Criar Contato */}
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-md bg-white border border-[#E5E1D8]">
-          <DialogHeader>
-            <DialogTitle className="text-base font-bold text-[#1A1D21]">
-              Cadastrar Novo Contato
-            </DialogTitle>
-          </DialogHeader>
-
-          <form onSubmit={handleSalvarContato} className="space-y-3.5 pt-2">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#1A1D21]">Nome Completo *</label>
-              <Input
-                required
-                placeholder="Ex: Helena Martins"
-                value={nome}
-                onChange={(e) => setNome(e.target.value)}
-                className="text-xs border-[#E5E1D8]"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#5B6470]">Empresa</label>
-                <Input
-                  placeholder="Ex: Loja Y"
-                  value={empresa}
-                  onChange={(e) => setEmpresa(e.target.value)}
-                  className="text-xs border-[#E5E1D8]"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#5B6470]">Cargo</label>
-                <Input
-                  placeholder="Ex: Diretora de Operações"
-                  value={cargo}
-                  onChange={(e) => setCargo(e.target.value)}
-                  className="text-xs border-[#E5E1D8]"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#5B6470]">E-mail</label>
-                <Input
-                  type="email"
-                  placeholder="helena@lojayecommerce.com.br"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="text-xs border-[#E5E1D8]"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#5B6470]">Telefone / WhatsApp</label>
-                <Input
-                  placeholder="+55 (11) 98765-4321"
-                  value={telefone}
-                  onChange={(e) => setTelefone(e.target.value)}
-                  className="text-xs border-[#E5E1D8]"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#5B6470]">Vincular a Projeto</label>
-                <Select value={projetoId} onValueChange={setProjetoId}>
-                  <SelectTrigger className="text-xs border-[#E5E1D8]">
-                    <SelectValue placeholder="Nenhum" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Nenhum</SelectItem>
-                    {projetos.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[#5B6470]">Origem</label>
-                <Select value={origem} onValueChange={(v) => setOrigem(v as OrigemTipo)}>
-                  <SelectTrigger className="text-xs border-[#E5E1D8]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="manual">Manual</SelectItem>
-                    <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                    <SelectItem value="email">E-mail</SelectItem>
-                    <SelectItem value="importado">Importado</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#5B6470]">
-                Tags (separadas por vírgula)
-              </label>
-              <Input
-                placeholder="Ex: vip, decisor, cliente, revisao"
-                value={tags}
-                onChange={(e) => setTags(e.target.value)}
-                className="text-xs border-[#E5E1D8]"
-              />
-            </div>
-
-            <DialogFooter className="pt-3 border-t border-[#E5E1D8]">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setModalOpen(false)}
-                className="text-xs"
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                size="sm"
-                disabled={salvando}
-                className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs"
-              >
-                {salvando ? 'Salvando...' : 'Salvar Contato'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* Modal Criar / Editar Contato */}
+      <ModalEditarContato
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        contato={contatoEditando}
+        modo={modalModo}
+        projetosDisponiveis={projetos}
+        onSalvo={async () => {
+          await carregar()
+        }}
+      />
 
       {/* Modal Importar Contatos (.vcf / .csv) */}
       <ModalImportarContatos
