@@ -13,6 +13,7 @@ import {
   Phone,
   Building,
   Tag,
+  Upload,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -33,6 +34,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
+import { ModalImportarContatos } from '@/components/contatos/ModalImportarContatos'
 
 interface GestaoContatosProps {
   onRecarregarGlobal?: () => void
@@ -60,6 +62,9 @@ export default function GestaoContatos({ onRecarregarGlobal }: GestaoContatosPro
   const [tagsStr, setTagsStr] = useState('')
   const [contexto, setContexto] = useState('')
   const [salvando, setSalvando] = useState(false)
+
+  // Modal Importar Contatos (.vcf / .csv)
+  const [modalImportarOpen, setModalImportarOpen] = useState(false)
 
   const carregarDados = async () => {
     setCarregando(true)
@@ -194,14 +199,25 @@ export default function GestaoContatos({ onRecarregarGlobal }: GestaoContatosPro
           </Select>
         </div>
 
-        <Button
-          size="sm"
-          onClick={abrirNovo}
-          className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs gap-1.5"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>Novo Contato</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setModalImportarOpen(true)}
+            className="text-xs border-[#E5E1D8] gap-1.5"
+          >
+            <Upload className="w-3.5 h-3.5 text-[#5B6470]" />
+            <span>Importar (.vcf / .csv)</span>
+          </Button>
+          <Button
+            size="sm"
+            onClick={abrirNovo}
+            className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs gap-1.5"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Novo Contato</span>
+          </Button>
+        </div>
       </div>
 
       {/* Lista de Contatos */}
@@ -442,6 +458,17 @@ export default function GestaoContatos({ onRecarregarGlobal }: GestaoContatosPro
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal Importar Contatos */}
+      <ModalImportarContatos
+        open={modalImportarOpen}
+        onOpenChange={setModalImportarOpen}
+        contatosExistentes={contatos}
+        onSucesso={() => {
+          carregarDados()
+          onRecarregarGlobal?.()
+        }}
+      />
     </div>
   )
 }

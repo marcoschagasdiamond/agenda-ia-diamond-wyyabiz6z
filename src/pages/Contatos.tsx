@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
+import { ModalImportarContatos } from '@/components/contatos/ModalImportarContatos'
 
 export default function Contatos() {
   const navigate = useNavigate()
@@ -53,9 +54,8 @@ export default function Contatos() {
   const [projetoId, setProjetoId] = useState('none')
   const [salvando, setSalvando] = useState(false)
 
-  // Modal Importar CSV
-  const [modalCsvOpen, setModalCsvOpen] = useState(false)
-  const [csvContent, setCsvContent] = useState('')
+  // Modal Importar Contatos (.vcf e .csv)
+  const [modalImportarOpen, setModalImportarOpen] = useState(false)
 
   const carregar = async () => {
     try {
@@ -119,40 +119,6 @@ export default function Contatos() {
     }
   }
 
-  // Importação simplificada de CSV
-  const handleImportarCsv = async () => {
-    if (!csvContent.trim()) return
-    const lines = csvContent.split('\n')
-    let imported = 0
-
-    for (const line of lines) {
-      const parts = line.split(',').map((p) => p.trim())
-      if (parts.length >= 1 && parts[0] && !parts[0].toLowerCase().includes('nome')) {
-        const [cNome, cEmpresa, cEmail, cTelefone, cCargo] = parts
-        await diamondApi
-          .createContato({
-            nome: cNome,
-            empresa: cEmpresa || undefined,
-            email: cEmail || undefined,
-            telefone: cTelefone || undefined,
-            cargo: cCargo || undefined,
-            origem: 'importado',
-            tags: ['importado'],
-          })
-          .catch(() => {})
-        imported++
-      }
-    }
-
-    toast({
-      title: 'Importação concluída',
-      description: `${imported} contatos importados para a base.`,
-    })
-    setModalCsvOpen(false)
-    setCsvContent('')
-    await carregar()
-  }
-
   const contatosFiltrados = contatos.filter((c) => {
     if (!busca) return true
     const t = busca.toLowerCase()
@@ -186,11 +152,11 @@ export default function Contatos() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setModalCsvOpen(true)}
+            onClick={() => setModalImportarOpen(true)}
             className="text-xs h-9 border-[#E5E1D8] gap-1.5"
           >
             <Upload className="w-3.5 h-3.5 text-[#5B6470]" />
-            Importar CSV
+            Importar Contatos (.vcf / .csv)
           </Button>
           <Button
             size="sm"
@@ -398,46 +364,13 @@ export default function Contatos() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal Importar CSV */}
-      <Dialog open={modalCsvOpen} onOpenChange={setModalCsvOpen}>
-        <DialogContent className="max-w-md bg-white border border-[#E5E1D8]">
-          <DialogHeader>
-            <DialogTitle className="text-base font-bold text-[#1A1D21]">
-              Importar Contatos via CSV
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 pt-2">
-            <p className="text-xs text-[#5B6470]">
-              Cole o conteúdo CSV com as colunas:{' '}
-              <strong>Nome, Empresa, Email, Telefone, Cargo</strong>
-            </p>
-            <textarea
-              rows={6}
-              value={csvContent}
-              onChange={(e) => setCsvContent(e.target.value)}
-              placeholder="Nome, Empresa, Email, Telefone, Cargo&#10;Carlos Silva, Startup X, carlos@x.com, 11999998888, CEO&#10;Mariana Costa, Loja Y, mariana@lojay.com, 11988887777, Marketing"
-              className="w-full text-xs p-2.5 font-mono border border-[#E5E1D8] rounded-md"
-            />
-            <DialogFooter className="pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setModalCsvOpen(false)}
-                className="text-xs"
-              >
-                Cancelar
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleImportarCsv}
-                className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs"
-              >
-                Processar Importação
-              </Button>
-            </DialogFooter>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Modal Importar Contatos (.vcf / .csv) */}
+      <ModalImportarContatos
+        open={modalImportarOpen}
+        onOpenChange={setModalImportarOpen}
+        contatosExistentes={contatos}
+        onSucesso={carregar}
+      />
     </div>
   )
 }
