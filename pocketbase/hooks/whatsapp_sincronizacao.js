@@ -263,11 +263,24 @@ routerAdd(
         )
       } catch (_) {}
 
-      // Buscar contatos cadastrados no sistema
+      // Buscar contatos cadastrados no sistema em páginas (lotes de 200 até esgotar)
       let contatosCadastrados = []
       try {
-        contatosCadastrados = app.findRecordsByFilter('contatos', '', 'nome', 200, 0)
-      } catch (_) {}
+        const batchSize = 200
+        let offset = 0
+        while (true) {
+          const batch = app.findRecordsByFilter('contatos', '', 'nome', batchSize, offset)
+          if (!batch || batch.length === 0) break
+          contatosCadastrados = contatosCadastrados.concat(batch)
+          if (batch.length < batchSize) break
+          offset += batchSize
+        }
+      } catch (errContatos) {
+        console.log(
+          '[WhatsApp] Erro ao buscar contatos cadastrados paginados:',
+          errContatos && errContatos.message ? errContatos.message : errContatos,
+        )
+      }
 
       // Agrupar contatos / remetentes conhecidos
       const remetentesMap = {}
@@ -466,11 +479,24 @@ routerAdd(
         }
       }
 
-      // Carregar contatos cadastrados para vínculo automático por número
+      // Carregar contatos cadastrados para vínculo automático por número em páginas (lotes de 200 até esgotar)
       let contatosCadastrados = []
       try {
-        contatosCadastrados = app.findRecordsByFilter('contatos', '', '', 200, 0)
-      } catch (_) {}
+        const batchSize = 200
+        let offset = 0
+        while (true) {
+          const batch = app.findRecordsByFilter('contatos', '', '', batchSize, offset)
+          if (!batch || batch.length === 0) break
+          contatosCadastrados = contatosCadastrados.concat(batch)
+          if (batch.length < batchSize) break
+          offset += batchSize
+        }
+      } catch (errContatosSync) {
+        console.log(
+          '[WhatsApp Sync] Erro ao carregar contatos cadastrados paginados:',
+          errContatosSync && errContatosSync.message ? errContatosSync.message : errContatosSync,
+        )
+      }
 
       const mapaContatosPorNumero = {}
       for (const c of contatosCadastrados) {
