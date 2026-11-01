@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-17T00:34:39.010Z",
+  "generatedAt": "2026-11-01T20:58:24.782Z",
   "collections": [
     {
       "name": "users",
@@ -2777,6 +2777,169 @@
       "indexes": [
         "CREATE INDEX idx_card_arquivos_card ON card_arquivos (card)",
         "CREATE INDEX idx_card_arquivos_created ON card_arquivos (created DESC)"
+      ]
+    },
+    {
+      "name": "configuracoes_whatsapp",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && usuario = @request.auth.id",
+        "view": "@request.auth.id != '' && usuario = @request.auth.id",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && usuario = @request.auth.id",
+        "delete": "@request.auth.id != '' && usuario = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "usuario",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "modo_selecao",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["apenas_escolhidos", "todos_exceto", "desligado"]
+        },
+        {
+          "name": "contatos_escolhidos",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contatos_ignorados",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "grupos_escolhidos",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ultima_sincronizacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "phone_number_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE UNIQUE INDEX idx_cfg_whatsapp_user ON configuracoes_whatsapp (usuario)"]
+    },
+    {
+      "name": "mensagens_whatsapp_sincronizadas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && usuario = @request.auth.id",
+        "view": "@request.auth.id != '' && usuario = @request.auth.id",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && usuario = @request.auth.id",
+        "delete": "@request.auth.id != '' && usuario = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "usuario",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "message_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "remetente_numero",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "remetente_nome",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_grupo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "grupo_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "grupo_nome",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "autor_mensagem",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "folha_dia_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "timestamp_mensagem",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_msg_wa_user_msgid ON mensagens_whatsapp_sincronizadas (usuario, message_id)"
       ]
     }
   ]

@@ -36,6 +36,7 @@ import {
   ChevronRight,
   ShieldCheck,
   Flame,
+  MessageSquare,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -233,7 +234,9 @@ export const GestaoFolha: React.FC<GestaoFolhaProps> = ({ onRecarregarGlobal }) 
         }
 
         if (filtros.tipo === 'reuniao' && !item.is_reuniao) return false
-        if (filtros.tipo === 'comum' && item.is_reuniao) return false
+        if (filtros.tipo === 'comum' && (item.is_reuniao || item.tipo_origem === 'whatsapp'))
+          return false
+        if (filtros.tipo === 'whatsapp' && item.tipo_origem !== 'whatsapp') return false
 
         if (filtros.fluxoId !== 'todos' && item.fluxo !== filtros.fluxoId) return false
         if (filtros.projetoId !== 'todos' && item.projeto !== filtros.projetoId) return false
@@ -744,6 +747,11 @@ export const GestaoFolha: React.FC<GestaoFolhaProps> = ({ onRecarregarGlobal }) 
                           <Badge className="bg-red-50 text-red-700 hover:bg-red-50 border border-red-200 text-[10px] font-bold px-1.5 py-0 flex items-center gap-1 w-max">
                             <Mic className="w-2.5 h-2.5" />
                             Reunião
+                          </Badge>
+                        ) : item.tipo_origem === 'whatsapp' ? (
+                          <Badge className="bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-bold px-1.5 py-0 flex items-center gap-1 w-max">
+                            <MessageSquare className="w-2.5 h-2.5 text-emerald-600" />
+                            WhatsApp
                           </Badge>
                         ) : (
                           <span className="text-[11px] text-[#5B6470] capitalize">

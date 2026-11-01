@@ -48,6 +48,7 @@ import GestaoCards from '@/pages/config/GestaoCards'
 import GestaoFolha from '@/pages/config/GestaoFolha'
 import ConstrutorFormularios from '@/pages/config/ConstrutorFormularios'
 import GestaoLembretes from '@/pages/config/GestaoLembretes'
+import GestaoWhatsApp from '@/pages/config/GestaoWhatsApp'
 import { Bell, FileEdit } from 'lucide-react'
 
 export default function Config() {
@@ -168,6 +169,14 @@ export default function Config() {
           >
             <Settings className="w-3.5 h-3.5" />
             <span>Central de Gestão</span>
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="whatsapp"
+            className="data-[state=active]:bg-[#0F766E] data-[state=active]:text-white text-xs px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 font-medium"
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            <span>WhatsApp & Sincronização</span>
           </TabsTrigger>
 
           <TabsTrigger
@@ -348,7 +357,14 @@ export default function Config() {
         </TabsContent>
 
         {/* ============================================================== */}
-        {/* 2. ABA: LEMBRETES & AVISOS AUTOMÁTICOS                         */}
+        {/* 2. ABA: WHATSAPP & SINCRONIZAÇÃO                              */}
+        {/* ============================================================== */}
+        <TabsContent value="whatsapp" className="space-y-4 m-0">
+          <GestaoWhatsApp onRecarregarGlobal={recarregarGlobal} />
+        </TabsContent>
+
+        {/* ============================================================== */}
+        {/* 3. ABA: LEMBRETES & AVISOS AUTOMÁTICOS                         */}
         {/* ============================================================== */}
         <TabsContent value="lembretes" className="space-y-4 m-0">
           <GestaoLembretes onRecarregarGlobal={recarregarGlobal} />

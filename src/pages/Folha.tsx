@@ -266,6 +266,22 @@ export default function Folha() {
       setFolhaItems((prev) =>
         prev.map((i) => (i.id === item.id ? { ...i, arquivado: novoStatus } : i)),
       )
+
+      // Requisito 5: Arquivar/descartar um assunto vindo do WhatsApp adiciona o remetente à lista de ignorados
+      if (novoStatus && item.tipo_origem === 'whatsapp') {
+        try {
+          await diamondApi.ignorarRemetenteWhatsApp({ folha_id: item.id })
+          toast({
+            title: 'Assunto arquivado e remetente ignorado',
+            description:
+              'Mensagens futuras deste remetente do WhatsApp não gerarão novos assuntos na Folha.',
+          })
+          return
+        } catch {
+          /* intentionally ignored */
+        }
+      }
+
       toast({
         title: novoStatus ? 'Assunto arquivado' : 'Assunto desarquivado',
         description: novoStatus
@@ -827,8 +843,24 @@ export default function Folha() {
   // Exclusão de registro da folha já salvo
   const handleExcluirRegistro = async (id: string) => {
     try {
+      const itemExcluido = folhaItems.find((i) => i.id === id)
+      // Requisito 5: Descartar um assunto vindo do WhatsApp adiciona o remetente à lista de ignorados
+      if (itemExcluido?.tipo_origem === 'whatsapp') {
+        try {
+          await diamondApi.ignorarRemetenteWhatsApp({ folha_id: id })
+        } catch {
+          /* intentionally ignored */
+        }
+      }
+
       await diamondApi.deleteFolhaDia(id)
-      toast({ title: 'Assunto removido da folha' })
+      toast({
+        title: 'Assunto descartado da folha',
+        description:
+          itemExcluido?.tipo_origem === 'whatsapp'
+            ? 'Remetente adicionado à lista de ignorados do WhatsApp.'
+            : undefined,
+      })
       setFolhaItems((prev) => prev.filter((item) => item.id !== id))
     } catch (err) {
       toast({ title: 'Erro ao remover', variant: 'destructive' })
@@ -1146,9 +1178,11 @@ export default function Folha() {
           }
         }
 
-        // 4. Tipo (comum / reunião)
+        // 4. Tipo (comum / reunião / whatsapp)
         if (filtrosFolha.tipo === 'reuniao' && !item.is_reuniao) return false
-        if (filtrosFolha.tipo === 'comum' && item.is_reuniao) return false
+        if (filtrosFolha.tipo === 'comum' && (item.is_reuniao || item.tipo_origem === 'whatsapp'))
+          return false
+        if (filtrosFolha.tipo === 'whatsapp' && item.tipo_origem !== 'whatsapp') return false
 
         // 5. Vínculo: Categoria › Fluxo
         if (filtrosFolha.fluxoId !== 'todos') {
@@ -1970,6 +2004,11 @@ export default function Folha() {
                           {item.is_reuniao ? (
                             <Badge className="bg-red-50 text-red-700 hover:bg-red-50 border border-red-200 text-[10px] font-bold px-1.5 py-0">
                               REUNIÃO GRAVADA
+                            </Badge>
+                          ) : item.tipo_origem === 'whatsapp' ? (
+                            <Badge className="bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300 text-[10px] font-bold px-1.5 py-0 gap-1">
+                              <MessageSquare className="w-2.5 h-2.5 text-emerald-600" />
+                              WHATSAPP
                             </Badge>
                           ) : (
                             <span className="capitalize font-medium">{item.tipo_origem}</span>

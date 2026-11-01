@@ -37,6 +37,8 @@ import {
   CreditCard,
   FileText,
   Brain,
+  MessageSquare,
+  Bell,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -1439,8 +1441,24 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
 
           <div className="pt-2 border-t border-[#E5E1D8]/70">
             <div className="text-[10px] font-bold uppercase tracking-wider text-[#5B6470] px-2 mb-1">
-              Formulários & Diretrizes
+              Comunicação & Diretrizes
             </div>
+
+            <button
+              onClick={() => irPara('/config?aba=whatsapp')}
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100/80 transition-colors text-left"
+            >
+              <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+              <span>WhatsApp & Sincronização</span>
+            </button>
+
+            <button
+              onClick={() => irPara('/config?aba=lembretes')}
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
+            >
+              <Bell className="w-3.5 h-3.5 text-[#0F766E]" />
+              <span>Lembretes & Disparos</span>
+            </button>
 
             <button
               onClick={() => irPara('/config?aba=formularios')}

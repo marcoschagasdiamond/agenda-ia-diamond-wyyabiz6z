@@ -719,3 +719,73 @@ export interface FormularioResposta {
     formulario?: Formulario
   }
 }
+
+export type WhatsAppModoSelecao = 'apenas_escolhidos' | 'todos_exceto' | 'desligado'
+
+export interface WhatsAppConfig {
+  modo_selecao: WhatsAppModoSelecao
+  contatos_escolhidos: string[]
+  contatos_ignorados: string[]
+  grupos_escolhidos: string[]
+  ultima_sincronizacao?: string
+  phone_number_id?: string
+}
+
+export interface WhatsAppPhoneNumber {
+  id?: string
+  display_phone_number?: string
+  verified_name?: string
+  quality_rating?: string
+  code_verification_status?: string
+}
+
+export interface WhatsAppStatusResponse {
+  conectado: boolean
+  phone_fetch_error?: string | null
+  phone_numbers?: WhatsAppPhoneNumber[]
+  config: WhatsAppConfig
+}
+
+export interface WhatsAppContatoItem {
+  identificador: string
+  nome: string
+  empresa?: string
+  telefone?: string
+  contato_id?: string | null
+  is_grupo?: boolean
+  mensagens_count?: number
+  origem?: 'sistema' | 'historico_whatsapp'
+}
+
+export interface WhatsAppGrupoItem {
+  id: string
+  nome: string
+}
+
+export interface WhatsAppContatosGruposResponse {
+  sucesso: boolean
+  phone_number_id?: string
+  contatos: WhatsAppContatoItem[]
+  grupos: WhatsAppGrupoItem[]
+  grupos_aviso?: string | null
+}
+
+export interface WhatsAppSyncDetalhe {
+  message_id: string
+  folha_id?: string
+  remetente?: string
+  numero?: string
+  is_grupo?: boolean
+  grupo?: string
+  contato_vinculado?: string | null
+}
+
+export interface WhatsAppSyncResponse {
+  sucesso: boolean
+  mensagens_processadas?: number
+  mensagens_novas: number
+  detalhes?: WhatsAppSyncDetalhe[]
+  ultima_sincronizacao?: string
+  mensagem?: string
+  error?: string
+}

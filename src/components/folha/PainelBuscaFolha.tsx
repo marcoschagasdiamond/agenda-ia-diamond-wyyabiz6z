@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/select'
 
 export type PeriodoFiltro = 'todos' | 'hoje' | 'esta_semana' | 'este_mes' | 'personalizado'
-export type TipoFiltro = 'todos' | 'comum' | 'reuniao'
+export type TipoFiltro = 'todos' | 'comum' | 'reuniao' | 'whatsapp'
 export type EstadoDemandaFiltro = 'todos' | 'com_demanda' | 'sem_demanda'
 export type EstadoFluxoFiltro = 'todos' | 'com_fluxo' | 'sem_fluxo'
 export type EstadoArquivoFiltro = 'ativos' | 'arquivados' | 'todos'
@@ -259,6 +259,7 @@ export const PainelBuscaFolha: React.FC<PainelBuscaFolhaProps> = ({
                 <SelectContent>
                   <SelectItem value="todos">Todos os tipos</SelectItem>
                   <SelectItem value="comum">Assunto comum / Anotação</SelectItem>
+                  <SelectItem value="whatsapp">Origem WhatsApp</SelectItem>
                   <SelectItem value="reuniao">Reunião gravada (áudio/ata)</SelectItem>
                 </SelectContent>
               </Select>

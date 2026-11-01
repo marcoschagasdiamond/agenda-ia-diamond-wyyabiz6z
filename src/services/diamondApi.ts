@@ -1356,4 +1356,99 @@ export const diamondApi = {
     }
     return await res.json()
   },
+
+  // ---------------------------------------------------------
+  // INTEGRAÇÃO WHATSAPP (CONECTORES POR USUÁRIO)
+  // ---------------------------------------------------------
+
+  async getWhatsAppStatus(): Promise<import('../types').WhatsAppStatusResponse> {
+    const res = await fetch(`${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/status`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(pb.authStore.token ? { Authorization: pb.authStore.token } : {}),
+      },
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Falha ao carregar status do WhatsApp')
+    }
+    return await res.json()
+  },
+
+  async salvarWhatsAppConfig(
+    config: Partial<import('../types').WhatsAppConfig>,
+  ): Promise<{ sucesso: boolean; mensagem: string }> {
+    const res = await fetch(`${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/config`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(pb.authStore.token ? { Authorization: pb.authStore.token } : {}),
+      },
+      body: JSON.stringify(config),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Falha ao salvar configurações do WhatsApp')
+    }
+    return await res.json()
+  },
+
+  async getWhatsAppContatosGrupos(): Promise<import('../types').WhatsAppContatosGruposResponse> {
+    const res = await fetch(
+      `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/contatos-grupos`,
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(pb.authStore.token ? { Authorization: pb.authStore.token } : {}),
+        },
+      },
+    )
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Falha ao listar contatos e grupos do WhatsApp')
+    }
+    return await res.json()
+  },
+
+  async sincronizarWhatsAppAgora(): Promise<import('../types').WhatsAppSyncResponse> {
+    const res = await fetch(
+      `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/sincronizar`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(pb.authStore.token ? { Authorization: pb.authStore.token } : {}),
+        },
+      },
+    )
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Falha ao sincronizar mensagens do WhatsApp')
+    }
+    return await res.json()
+  },
+
+  async ignorarRemetenteWhatsApp(params: {
+    remetente?: string
+    folha_id?: string
+  }): Promise<{ sucesso: boolean; remetente_ignorado: string; contatos_ignorados: string[] }> {
+    const res = await fetch(
+      `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/whatsapp/ignorar-remetente`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(pb.authStore.token ? { Authorization: pb.authStore.token } : {}),
+        },
+        body: JSON.stringify(params),
+      },
+    )
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Falha ao adicionar remetente aos ignorados')
+    }
+    return await res.json()
+  },
 }
