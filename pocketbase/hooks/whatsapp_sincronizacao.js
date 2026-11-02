@@ -67,26 +67,83 @@ routerAdd(
       // Tentar obter informações de números de telefone registrados na conta conectada do usuário
       let phoneNumbers = []
       let phoneFetchError = null
+      let isUnconnected = false
+
+      // Recuperar phone_number_id previamente memorizado na config, se houver
+      const savedPhoneId = configRec ? configRec.getString('phone_number_id') : ''
+      if (savedPhoneId) {
+        phoneNumbers = [
+          {
+            id: savedPhoneId,
+            display_phone_number: savedPhoneId,
+            verified_name: 'WhatsApp Business',
+          },
+        ]
+      }
+
       try {
         const resPhones = $connectors.execute(authUser, 'WHATSAPP_GET_PHONE_NUMBERS', {})
         if (resPhones.successful && resPhones.data) {
           const raw = resPhones.data
+          let extracted = []
           if (Array.isArray(raw)) {
-            phoneNumbers = raw
+            extracted = raw
           } else if (raw && Array.isArray(raw.data)) {
-            phoneNumbers = raw.data
+            extracted = raw.data
           } else if (raw && Array.isArray(raw.phone_numbers)) {
-            phoneNumbers = raw.phone_numbers
+            extracted = raw.phone_numbers
+          }
+
+          if (extracted.length > 0) {
+            phoneNumbers = extracted
+            if (configRec && extracted[0]?.id && String(extracted[0].id) !== savedPhoneId) {
+              configRec.set('phone_number_id', String(extracted[0].id))
+              try {
+                app.save(configRec)
+              } catch (_) {}
+            }
           }
         } else if (!resPhones.successful) {
-          phoneFetchError = resPhones.error || 'Conta de WhatsApp não conectada'
+          const errStr = String(resPhones.error || '')
+          phoneFetchError = errStr || 'Falha ao consultar números de telefone da conta'
+          // Detectar apenas se for erro conclusivo de não conectado ou credencial revogada/expirada
+          const errLower = errStr.toLowerCase()
+          if (
+            errLower.includes('not connected') ||
+            errLower.includes('não conectada') ||
+            errLower.includes('unauthorized') ||
+            errLower.includes('token expired') ||
+            errLower.includes('token revog') ||
+            errLower.includes('invalid credentials') ||
+            errLower.includes('disconnected')
+          ) {
+            isUnconnected = true
+          }
         }
       } catch (err) {
-        phoneFetchError = err && err.message ? err.message : String(err)
+        const errStr = err && err.message ? err.message : String(err)
+        phoneFetchError = errStr
+        const errLower = errStr.toLowerCase()
+        if (
+          errLower.includes('not connected') ||
+          errLower.includes('não conectada') ||
+          errLower.includes('unauthorized') ||
+          errLower.includes('token expired') ||
+          errLower.includes('disconnected')
+        ) {
+          isUnconnected = true
+        }
       }
 
+      // Se a configuração já existe no banco e não houve erro fatal conclusivo de desconexão,
+      // consideramos o status conectado para evitar degradar visualmente por rate limit ou erro transitório
+      const temConfigSalva = Boolean(configRec && (configRec.id || savedPhoneId))
+      const statusConectado = isUnconnected ? false : temConfigSalva || !phoneFetchError
+
       return e.json(200, {
-        conectado: !phoneFetchError,
+        conectado: statusConectado,
+        tem_conexao_salva: temConfigSalva,
+        aviso_transitorio: !isUnconnected && phoneFetchError ? phoneFetchError : null,
         phone_fetch_error: phoneFetchError,
         phone_numbers: phoneNumbers,
         config: {
@@ -424,25 +481,47 @@ routerAdd(
 
       let phoneId = configRec.getString('phone_number_id')
       if (!phoneId) {
-        const resPhones = $connectors.execute(authUser, 'WHATSAPP_GET_PHONE_NUMBERS', {})
-        if (resPhones.successful && resPhones.data) {
-          const raw = resPhones.data
-          let lista = []
-          if (Array.isArray(raw)) lista = raw
-          else if (raw && Array.isArray(raw.data)) lista = raw.data
-          else if (raw && Array.isArray(raw.phone_numbers)) lista = raw.phone_numbers
+        try {
+          const resPhones = $connectors.execute(authUser, 'WHATSAPP_GET_PHONE_NUMBERS', {})
+          if (resPhones.successful && resPhones.data) {
+            const raw = resPhones.data
+            let lista = []
+            if (Array.isArray(raw)) lista = raw
+            else if (raw && Array.isArray(raw.data)) lista = raw.data
+            else if (raw && Array.isArray(raw.phone_numbers)) lista = raw.phone_numbers
 
-          if (lista.length > 0 && lista[0].id) {
-            phoneId = String(lista[0].id)
-            configRec.set('phone_number_id', phoneId)
-            app.save(configRec)
+            if (lista.length > 0 && lista[0].id) {
+              phoneId = String(lista[0].id)
+              configRec.set('phone_number_id', phoneId)
+              app.save(configRec)
+            }
           }
-        }
+        } catch (_) {}
+      }
+
+      if (!phoneId) {
+        // Fallback: se houver histórico de sincronização anterior, tentar extrair o phoneId das mensagens já sincronizadas
+        try {
+          const syncExemplos = app.findRecordsByFilter(
+            'mensagens_whatsapp_sincronizadas',
+            `usuario = "${authUser.id}"`,
+            '-created',
+            1,
+            0,
+          )
+          if (syncExemplos.length > 0) {
+            phoneId =
+              syncExemplos[0].getString('grupo_id') ||
+              syncExemplos[0].getString('remetente_numero') ||
+              ''
+          }
+        } catch (_) {}
       }
 
       if (!phoneId) {
         return e.json(400, {
-          error: 'Nenhum número de telefone WhatsApp Business vinculado à conta conectada.',
+          error:
+            'Não foi possível detectar o número de telefone da conta conectada. Tente sincronizar novamente ou reconectar.',
         })
       }
 

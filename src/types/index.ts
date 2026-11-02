@@ -741,6 +741,8 @@ export interface WhatsAppPhoneNumber {
 
 export interface WhatsAppStatusResponse {
   conectado: boolean
+  tem_conexao_salva?: boolean
+  aviso_transitorio?: string | null
   phone_fetch_error?: string | null
   phone_numbers?: WhatsAppPhoneNumber[]
   config: WhatsAppConfig

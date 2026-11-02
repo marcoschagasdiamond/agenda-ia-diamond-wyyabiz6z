@@ -496,6 +496,11 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
                       <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                       Conta Conectada
                     </Badge>
+                  ) : status?.tem_conexao_salva ? (
+                    <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      Conexão Ativa
+                    </Badge>
                   ) : (
                     <Badge
                       variant="outline"
@@ -536,7 +541,9 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
         <CardContent className="p-4 bg-[#FAFAF9] flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
           <div className="space-y-0.5">
             <span className="font-semibold text-[#1A1D21] flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+              <span
+                className={`w-2 h-2 rounded-full inline-block ${status?.conectado ? 'bg-emerald-500' : 'bg-amber-500'}`}
+              />
               {status?.phone_numbers && status.phone_numbers.length > 0
                 ? `Número WhatsApp: ${status.phone_numbers[0].display_phone_number || status.phone_numbers[0].id} (${status.phone_numbers[0].verified_name || 'Business'})`
                 : status?.conectado
@@ -548,14 +555,23 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
                 ? `Última sincronização executada em: ${new Date(status.config.ultima_sincronizacao).toLocaleString('pt-BR')}`
                 : 'Nenhuma sincronização de mensagens executada ainda.'}
             </p>
+            {status?.aviso_transitorio && (
+              <p className="text-[11px] text-amber-700 flex items-center gap-1 pt-0.5">
+                <AlertCircle className="w-3 h-3 shrink-0" />
+                <span>
+                  Instabilidade temporária na consulta da conta: a sincronização agendada e manual
+                  continua ativa.
+                </span>
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
             <Button
               size="sm"
               onClick={handleSincronizarAgora}
-              disabled={sincronizando || !status?.conectado}
-              className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-8 px-3 gap-1.5 font-medium shadow-2xs"
+              disabled={sincronizando || (!status?.conectado && !status?.tem_conexao_salva)}
+              className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-8 px-3 gap-1.5 font-medium shadow-2xs disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${sincronizando ? 'animate-spin' : ''}`} />
               <span>{sincronizando ? 'Sincronizando...' : 'Sincronizar Mensagens Agora'}</span>

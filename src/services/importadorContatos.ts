@@ -10,6 +10,8 @@ export interface ContatoImportado {
   isDuplicado?: boolean
   motivoDuplicata?: string
   selecionado: boolean
+  statusImportacao?: 'pendente' | 'sucesso' | 'erro' | 'duplicado_ignorado'
+  erroMensagem?: string
 }
 
 /**
@@ -330,9 +332,15 @@ export function verificarDuplicatas(
 ): ContatoImportado[] {
   // Índices para busca rápida
   const nomesExistentes = new Set(existentes.map((e) => normalizarNome(e.nome)).filter(Boolean))
-  const telefonesExistentes = new Set(
-    existentes.map((e) => normalizarTelefone(e.telefone)).filter((t) => t.length >= 8),
-  )
+  const telefonesExistentes = new Set<string>()
+  for (const e of existentes) {
+    const t = normalizarTelefone(e.telefone)
+    if (t.length >= 8) {
+      telefonesExistentes.add(t)
+      telefonesExistentes.add(t.slice(-8))
+      if (t.length >= 9) telefonesExistentes.add(t.slice(-9))
+    }
+  }
   const emailsExistentes = new Set(
     existentes.map((e) => e.email?.trim().toLowerCase()).filter(Boolean),
   )
@@ -351,7 +359,12 @@ export function verificarDuplicatas(
     let isDup = false
 
     // Verificar se já existe na base
-    if (telNorm.length >= 8 && telefonesExistentes.has(telNorm)) {
+    if (
+      telNorm.length >= 8 &&
+      (telefonesExistentes.has(telNorm) ||
+        telefonesExistentes.has(telNorm.slice(-8)) ||
+        (telNorm.length >= 9 && telefonesExistentes.has(telNorm.slice(-9))))
+    ) {
       isDup = true
       motivo = 'Telefone já cadastrado no sistema'
     } else if (emailNorm && emailsExistentes.has(emailNorm)) {
@@ -362,7 +375,12 @@ export function verificarDuplicatas(
       motivo = 'Nome idêntico a contato já cadastrado'
     }
     // Verificar se repete dentro do arquivo
-    else if (telNorm.length >= 8 && telefonesNoLote.has(telNorm)) {
+    else if (
+      telNorm.length >= 8 &&
+      (telefonesNoLote.has(telNorm) ||
+        telefonesNoLote.has(telNorm.slice(-8)) ||
+        (telNorm.length >= 9 && telefonesNoLote.has(telNorm.slice(-9))))
+    ) {
       isDup = true
       motivo = 'Duplicado no próprio arquivo (mesmo telefone)'
     } else if (emailNorm && emailsNoLote.has(emailNorm)) {
@@ -374,7 +392,11 @@ export function verificarDuplicatas(
     }
 
     if (nomeNorm) nomesNoLote.add(nomeNorm)
-    if (telNorm.length >= 8) telefonesNoLote.add(telNorm)
+    if (telNorm.length >= 8) {
+      telefonesNoLote.add(telNorm)
+      telefonesNoLote.add(telNorm.slice(-8))
+      if (telNorm.length >= 9) telefonesNoLote.add(telNorm.slice(-9))
+    }
     if (emailNorm) emailsNoLote.add(emailNorm)
 
     return {

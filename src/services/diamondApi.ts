@@ -240,6 +240,34 @@ export const diamondApi = {
     })
   },
 
+  /**
+   * Busca lista enxuta de contatos para deduplicação em memória (campos nome, telefone, email).
+   * Itera em lotes paginados com tolerância a limites.
+   */
+  async listContatosParaDeduplicacao(): Promise<
+    { id: string; nome: string; telefone?: string; email?: string }[]
+  > {
+    const todos: { id: string; nome: string; telefone?: string; email?: string }[] = []
+    let page = 1
+    const perPage = 500
+
+    while (true) {
+      const res = await pb
+        .collection('contatos')
+        .getList<{ id: string; nome: string; telefone?: string; email?: string }>(page, perPage, {
+          fields: 'id,nome,telefone,email',
+          sort: 'nome',
+        })
+      todos.push(...res.items)
+      if (res.items.length < perPage || page >= res.totalPages) {
+        break
+      }
+      page++
+    }
+
+    return todos
+  },
+
   async getContato(id: string): Promise<Contato> {
     return await pb.collection('contatos').getOne<Contato>(id, {
       expand: 'projetos,negocios',
