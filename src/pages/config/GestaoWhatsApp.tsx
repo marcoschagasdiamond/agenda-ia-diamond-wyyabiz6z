@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useTransition } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   MessageSquare,
   CheckCircle2,
@@ -8,11 +8,14 @@ import {
   FolderTree,
   AlertCircle,
   HelpCircle,
-  UserCheck,
   Search,
   Check,
-  Eye,
-  Trash2,
+  CheckSquare,
+  Square,
+  Ban,
+  ChevronDown,
+  ArrowDownCircle,
+  Sparkles,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -21,7 +24,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
 import { ConnectorButton } from '@/components/skip/ConnectorButton'
 import { diamondApi } from '@/services/diamondApi'
@@ -33,12 +36,13 @@ import type {
   WhatsAppStatusResponse,
 } from '@/types'
 
+const PAGE_SIZE = 100
+
 interface GestaoWhatsAppProps {
   onRecarregarGlobal?: () => void
 }
 
 export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
-  const [, startTransition] = useTransition()
   const [carregando, setCarregando] = useState(true)
   const [salvandoConfig, setSalvandoConfig] = useState(false)
   const [sincronizando, setSincronizando] = useState(false)
@@ -57,10 +61,21 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
   const [gruposLista, setGruposLista] = useState<WhatsAppGrupoItem[]>([])
   const [gruposAviso, setGruposAviso] = useState<string | null>(null)
 
+  // Abas principais: contatos, grupos ou ignorados
+  const [abaLista, setAbaLista] = useState<'contatos' | 'grupos' | 'ignorados'>('contatos')
+
   // Filtros de busca na tabela
   const [buscaContato, setBuscaContato] = useState('')
   const [buscaGrupo, setBuscaGrupo] = useState('')
-  const [abaLista, setAbaLista] = useState<'contatos' | 'grupos'>('contatos')
+  const [buscaIgnorado, setBuscaIgnorado] = useState('')
+
+  // Paginação progressiva na tela (quantidade renderizada)
+  const [limiteContatos, setLimiteContatos] = useState(PAGE_SIZE)
+  const [limiteIgnorados, setLimiteIgnorados] = useState(PAGE_SIZE)
+
+  // Observer para infinite scroll
+  const sentinelContatosRef = useRef<HTMLDivElement | null>(null)
+  const sentinelIgnoradosRef = useRef<HTMLDivElement | null>(null)
 
   // Último resultado de sincronização
   const [ultimoResultadoSync, setUltimoResultadoSync] = useState<{
@@ -80,6 +95,19 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
 
   const normalizarNumero = (val?: string) => (val || '').replace(/\D/g, '')
 
+  // Sets para busca O(1)
+  const conjuntoEscolhidos = useMemo(() => {
+    return new Set(contatosEscolhidos.map((c) => normalizarNumero(c) || c))
+  }, [contatosEscolhidos])
+
+  const conjuntoIgnorados = useMemo(() => {
+    return new Set(contatosIgnorados.map((c) => normalizarNumero(c) || c))
+  }, [contatosIgnorados])
+
+  const conjuntoGruposEscolhidos = useMemo(() => {
+    return new Set(gruposEscolhidos.map((g) => String(g).trim()))
+  }, [gruposEscolhidos])
+
   const carregarDados = async () => {
     try {
       setCarregando(true)
@@ -93,7 +121,7 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
         setGruposEscolhidos(resStatus.config.grupos_escolhidos || [])
       }
 
-      // Buscar lista de contatos e grupos
+      // Buscar lista completa de contatos e grupos
       const resListas = await diamondApi.getWhatsAppContatosGrupos()
       setContatosLista(resListas.contatos || [])
       setGruposLista(resListas.grupos || [])
@@ -109,6 +137,15 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
   useEffect(() => {
     carregarDados()
   }, [])
+
+  // Resetar limites de exibição ao mudar a busca para permitir rolagem fluida
+  useEffect(() => {
+    setLimiteContatos(PAGE_SIZE)
+  }, [buscaContato])
+
+  useEffect(() => {
+    setLimiteIgnorados(PAGE_SIZE)
+  }, [buscaIgnorado])
 
   const salvarConfiguracoes = async (novasConfiguracoes?: Partial<WhatsAppConfig>) => {
     setSalvandoConfig(true)
@@ -177,12 +214,12 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
     }
   }
 
-  // Toggle para contatos escolhidos (modo apenas_escolhidos)
+  // Toggle individual para contatos escolhidos
   const toggleContatoEscolhido = (identificador: string) => {
     const num = normalizarNumero(identificador) || identificador
     let novaLista: string[] = []
-    if (contatosEscolhidos.includes(num)) {
-      novaLista = contatosEscolhidos.filter((c) => c !== num)
+    if (conjuntoEscolhidos.has(num)) {
+      novaLista = contatosEscolhidos.filter((c) => (normalizarNumero(c) || c) !== num)
     } else {
       novaLista = [...contatosEscolhidos, num]
     }
@@ -190,12 +227,12 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
     salvarConfiguracoes({ contatos_escolhidos: novaLista })
   }
 
-  // Toggle para contatos ignorados (modo todos_exceto)
+  // Toggle individual para contatos ignorados
   const toggleContatoIgnorado = (identificador: string) => {
     const num = normalizarNumero(identificador) || identificador
     let novaLista: string[] = []
-    if (contatosIgnorados.includes(num)) {
-      novaLista = contatosIgnorados.filter((c) => c !== num)
+    if (conjuntoIgnorados.has(num)) {
+      novaLista = contatosIgnorados.filter((c) => (normalizarNumero(c) || c) !== num)
     } else {
       novaLista = [...contatosIgnorados, num]
     }
@@ -203,12 +240,12 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
     salvarConfiguracoes({ contatos_ignorados: novaLista })
   }
 
-  // Toggle para grupos escolhidos (Requisito 3: grupos só entram se marcados explicitamente)
+  // Toggle para grupos escolhidos
   const toggleGrupoEscolhido = (grupoIdOuNome: string) => {
     const chave = String(grupoIdOuNome).trim()
     let novaLista: string[] = []
-    if (gruposEscolhidos.includes(chave)) {
-      novaLista = gruposEscolhidos.filter((g) => g !== chave)
+    if (conjuntoGruposEscolhidos.has(chave)) {
+      novaLista = gruposEscolhidos.filter((g) => String(g).trim() !== chave)
     } else {
       novaLista = [...gruposEscolhidos, chave]
     }
@@ -216,22 +253,228 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
     salvarConfiguracoes({ grupos_escolhidos: novaLista })
   }
 
-  // Filtragem na interface
-  const contatosFiltrados = contatosLista.filter((c) => {
-    if (!buscaContato.trim()) return true
-    const b = buscaContato.toLowerCase()
-    return (
-      (c.nome || '').toLowerCase().includes(b) ||
-      (c.telefone || '').toLowerCase().includes(b) ||
-      (c.empresa || '').toLowerCase().includes(b)
-    )
-  })
+  // 1. Filtragem de TODOS os contatos em memória (sem perder nenhum dos 3900)
+  const contatosFiltrados = useMemo(() => {
+    const termo = buscaContato.trim().toLowerCase()
+    if (!termo) return contatosLista
+    return contatosLista.filter((c) => {
+      const n = (c.nome || '').toLowerCase()
+      const t = (c.telefone || c.identificador || '').toLowerCase()
+      const e = (c.empresa || '').toLowerCase()
+      return n.includes(termo) || t.includes(termo) || e.includes(termo)
+    })
+  }, [contatosLista, buscaContato])
 
-  const gruposFiltrados = gruposLista.filter((g) => {
-    if (!buscaGrupo.trim()) return true
-    const b = buscaGrupo.toLowerCase()
-    return (g.nome || '').toLowerCase().includes(b) || (g.id || '').toLowerCase().includes(b)
-  })
+  // Contatos paginados na tela
+  const contatosVisiveis = useMemo(() => {
+    return contatosFiltrados.slice(0, limiteContatos)
+  }, [contatosFiltrados, limiteContatos])
+
+  const temMaisContatos = contatosVisiveis.length < contatosFiltrados.length
+
+  // Carregar mais contatos
+  const carregarMaisContatos = useCallback(() => {
+    setLimiteContatos((prev) => Math.min(prev + PAGE_SIZE, contatosFiltrados.length))
+  }, [contatosFiltrados.length])
+
+  // 2. Lista de Ignorados (unifica os contatos conhecidos com o array de ignorados)
+  // Cria um mapa rápido por identificador normalizado
+  const mapaContatosPorId = useMemo(() => {
+    const map = new Map<string, WhatsAppContatoItem>()
+    for (const c of contatosLista) {
+      const num = normalizarNumero(c.identificador) || c.identificador
+      if (num) map.set(num, c)
+    }
+    return map
+  }, [contatosLista])
+
+  // Converte a lista de contatosIgnorados em objetos com nome/telefone/empresa
+  const contatosIgnoradosListaCompleta = useMemo(() => {
+    return contatosIgnorados.map((idNum) => {
+      const numLimpo = normalizarNumero(idNum) || idNum
+      const dados = mapaContatosPorId.get(numLimpo)
+      return {
+        identificador: idNum,
+        numLimpo,
+        nome: dados?.nome || `Número: ${idNum}`,
+        telefone: dados?.telefone || idNum,
+        empresa: dados?.empresa || '',
+        contato_id: dados?.contato_id || null,
+        mensagens_count: dados?.mensagens_count || 0,
+      }
+    })
+  }, [contatosIgnorados, mapaContatosPorId])
+
+  // Filtragem na lista de ignorados
+  const ignoradosFiltrados = useMemo(() => {
+    const termo = buscaIgnorado.trim().toLowerCase()
+    if (!termo) return contatosIgnoradosListaCompleta
+    return contatosIgnoradosListaCompleta.filter((c) => {
+      const n = c.nome.toLowerCase()
+      const t = c.telefone.toLowerCase()
+      const e = c.empresa.toLowerCase()
+      return n.includes(termo) || t.includes(termo) || e.includes(termo)
+    })
+  }, [contatosIgnoradosListaCompleta, buscaIgnorado])
+
+  const ignoradosVisiveis = useMemo(() => {
+    return ignoradosFiltrados.slice(0, limiteIgnorados)
+  }, [ignoradosFiltrados, limiteIgnorados])
+
+  const temMaisIgnorados = ignoradosVisiveis.length < ignoradosFiltrados.length
+
+  const carregarMaisIgnorados = useCallback(() => {
+    setLimiteIgnorados((prev) => Math.min(prev + PAGE_SIZE, ignoradosFiltrados.length))
+  }, [ignoradosFiltrados.length])
+
+  // 3. Filtragem de Grupos
+  const gruposFiltrados = useMemo(() => {
+    const termo = buscaGrupo.trim().toLowerCase()
+    if (!termo) return gruposLista
+    return gruposLista.filter((g) => {
+      const n = (g.nome || '').toLowerCase()
+      const id = (g.id || '').toLowerCase()
+      return n.includes(termo) || id.includes(termo)
+    })
+  }, [gruposLista, buscaGrupo])
+
+  // Infinite Scroll com IntersectionObserver para contatos
+  useEffect(() => {
+    const el = sentinelContatosRef.current
+    if (!el || !temMaisContatos) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          carregarMaisContatos()
+        }
+      },
+      { rootMargin: '300px' },
+    )
+
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [temMaisContatos, carregarMaisContatos])
+
+  // Infinite Scroll para ignorados
+  useEffect(() => {
+    const el = sentinelIgnoradosRef.current
+    if (!el || !temMaisIgnorados) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          carregarMaisIgnorados()
+        }
+      },
+      { rootMargin: '300px' },
+    )
+
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [temMaisIgnorados, carregarMaisIgnorados])
+
+  // Ações de seleção em massa sobre os resultados filtrados
+  // No modo "apenas_escolhidos":
+  const totalFiltradosMarcadosEscolhidos = useMemo(() => {
+    let count = 0
+    for (const c of contatosFiltrados) {
+      const num = normalizarNumero(c.identificador) || c.identificador
+      if (conjuntoEscolhidos.has(num)) count++
+    }
+    return count
+  }, [contatosFiltrados, conjuntoEscolhidos])
+
+  // No modo "todos_exceto":
+  const totalFiltradosMarcadosIgnorados = useMemo(() => {
+    let count = 0
+    for (const c of contatosFiltrados) {
+      const num = normalizarNumero(c.identificador) || c.identificador
+      if (conjuntoIgnorados.has(num)) count++
+    }
+    return count
+  }, [contatosFiltrados, conjuntoIgnorados])
+
+  // Selecionar todos os resultados da busca (para contatos escolhidos)
+  const selecionarTodosResultadosEscolhidos = () => {
+    const novoSet = new Set(contatosEscolhidos.map((c) => normalizarNumero(c) || c))
+    for (const c of contatosFiltrados) {
+      const num = normalizarNumero(c.identificador) || c.identificador
+      if (num) novoSet.add(num)
+    }
+    const arrayFinal = Array.from(novoSet)
+    setContatosEscolhidos(arrayFinal)
+    salvarConfiguracoes({ contatos_escolhidos: arrayFinal })
+    toast({
+      title: 'Contatos selecionados em massa',
+      description: `${contatosFiltrados.length} contato(s) adicionado(s) à lista de sincronização.`,
+    })
+  }
+
+  // Desselecionar todos os resultados da busca (para contatos escolhidos)
+  const desselecionarTodosResultadosEscolhidos = () => {
+    const setFiltrados = new Set(
+      contatosFiltrados.map((c) => normalizarNumero(c.identificador) || c.identificador),
+    )
+    const arrayFinal = contatosEscolhidos.filter((c) => {
+      const num = normalizarNumero(c) || c
+      return !setFiltrados.has(num)
+    })
+    setContatosEscolhidos(arrayFinal)
+    salvarConfiguracoes({ contatos_escolhidos: arrayFinal })
+    toast({
+      title: 'Seleção removida',
+      description: `Contatos da busca foram removidos da lista de sincronização.`,
+    })
+  }
+
+  // Marcar todos os resultados da busca como ignorados
+  const ignorarTodosResultadosBusca = () => {
+    const novoSet = new Set(contatosIgnorados.map((c) => normalizarNumero(c) || c))
+    for (const c of contatosFiltrados) {
+      const num = normalizarNumero(c.identificador) || c.identificador
+      if (num) novoSet.add(num)
+    }
+    const arrayFinal = Array.from(novoSet)
+    setContatosIgnorados(arrayFinal)
+    salvarConfiguracoes({ contatos_ignorados: arrayFinal })
+    toast({
+      title: 'Contatos ignorados em massa',
+      description: `${contatosFiltrados.length} contato(s) adicionado(s) aos ignorados.`,
+    })
+  }
+
+  // Desmarcar todos os resultados da busca dos ignorados
+  const desmarcarIgnoradosResultadosBusca = () => {
+    const setFiltrados = new Set(
+      contatosFiltrados.map((c) => normalizarNumero(c.identificador) || c.identificador),
+    )
+    const arrayFinal = contatosIgnorados.filter((c) => {
+      const num = normalizarNumero(c) || c
+      return !setFiltrados.has(num)
+    })
+    setContatosIgnorados(arrayFinal)
+    salvarConfiguracoes({ contatos_ignorados: arrayFinal })
+    toast({
+      title: 'Ignorados desmarcados',
+      description: `Contatos da busca voltarão a sincronizar normalmente.`,
+    })
+  }
+
+  // Remover da lista de ignorados todos os itens filtrados na aba Ignorados
+  const removerFiltradosDeIgnorados = () => {
+    const setRemover = new Set(ignoradosFiltrados.map((item) => item.numLimpo))
+    const arrayFinal = contatosIgnorados.filter((c) => {
+      const num = normalizarNumero(c) || c
+      return !setRemover.has(num)
+    })
+    setContatosIgnorados(arrayFinal)
+    salvarConfiguracoes({ contatos_ignorados: arrayFinal })
+    toast({
+      title: 'Lista de ignorados atualizada',
+      description: `${ignoradosFiltrados.length} contato(s) removido(s) da lista de ignorados.`,
+    })
+  }
 
   return (
     <div className="space-y-6">
@@ -361,7 +604,7 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
         </div>
       )}
 
-      {/* 2. Seleção do Modo de Sincronização (Requisito 2) */}
+      {/* 2. Seleção do Modo de Sincronização */}
       <Card className="border-[#E5E1D8] bg-white shadow-xs">
         <CardHeader className="pb-3 border-b border-[#E5E1D8]/70">
           <div className="flex items-center justify-between">
@@ -502,7 +745,7 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
         </CardContent>
       </Card>
 
-      {/* 3. Lista de Sincronização: Contatos e Grupos à Parte (Requisitos 2 e 3) */}
+      {/* 3. Lista de Sincronização: Contatos, Grupos e Ignorados */}
       <Card className="border-[#E5E1D8] bg-white shadow-xs">
         <CardHeader className="pb-3 border-b border-[#E5E1D8]/70">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -512,17 +755,22 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
                 Contatos & Grupos de WhatsApp
               </CardTitle>
               <CardDescription className="text-xs text-[#5B6470]">
-                {abaLista === 'contatos'
-                  ? modoSelecao === 'apenas_escolhidos'
+                {abaLista === 'contatos' &&
+                  (modoSelecao === 'apenas_escolhidos'
                     ? 'Selecione quais contatos DEVEM sincronizar mensagens na Folha (Whitelist).'
-                    : 'Marque contatos que você NÃO deseja que entrem na Folha (Ignorados).'
-                  : 'Grupos entram estritamente se marcados explicitamente. Cada mensagem registrará quem falou.'}
+                    : modoSelecao === 'todos_exceto'
+                      ? 'Marque contatos que você NÃO deseja que entrem na Folha (Ignorados).'
+                      : 'Modo desligado. Nenhuma mensagem gerará assunto.')}
+                {abaLista === 'ignorados' &&
+                  'Lista de todos os contatos e remetentes ignorados. Você pode pesquisar, remover ou limpar.'}
+                {abaLista === 'grupos' &&
+                  'Grupos entram estritamente se marcados explicitamente. Cada mensagem registrará quem falou.'}
               </CardDescription>
             </div>
 
             <Tabs
               value={abaLista}
-              onValueChange={(val) => setAbaLista(val as 'contatos' | 'grupos')}
+              onValueChange={(val) => setAbaLista(val as 'contatos' | 'grupos' | 'ignorados')}
               className="w-auto shrink-0"
             >
               <TabsList className="bg-[#FAFAF9] border border-[#E5E1D8] h-8 p-0.5">
@@ -532,6 +780,13 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
                 >
                   <Users className="w-3.5 h-3.5" />
                   <span>Contatos ({contatosLista.length})</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="ignorados"
+                  className="data-[state=active]:bg-rose-700 data-[state=active]:text-white text-xs px-3 h-7 rounded-md gap-1.5"
+                >
+                  <Ban className="w-3.5 h-3.5" />
+                  <span>Ignorados ({contatosIgnorados.length})</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="grupos"
@@ -549,60 +804,157 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
           {/* Aba de Contatos */}
           {abaLista === 'contatos' && (
             <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#5B6470]" />
-                  <Input
-                    placeholder="Filtrar por nome, telefone ou empresa..."
-                    value={buscaContato}
-                    onChange={(e) => setBuscaContato(e.target.value)}
-                    className="pl-8.5 text-xs h-8 bg-white border-[#E5E1D8]"
-                  />
+              {/* Barra de Busca + Controles de Ação em Massa */}
+              <div className="space-y-2">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#5B6470]" />
+                    <Input
+                      placeholder="Filtrar por nome, telefone ou empresa em todos os contatos..."
+                      value={buscaContato}
+                      onChange={(e) => setBuscaContato(e.target.value)}
+                      className="pl-8.5 text-xs h-8 bg-white border-[#E5E1D8]"
+                    />
+                    {buscaContato && (
+                      <button
+                        onClick={() => setBuscaContato('')}
+                        className="absolute right-2.5 top-2 text-[10px] text-gray-400 hover:text-gray-600"
+                      >
+                        Limpar
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Botões de Ação em Massa conforme o modo ativo */}
+                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                    {modoSelecao === 'apenas_escolhidos' && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={selecionarTodosResultadosEscolhidos}
+                          disabled={contatosFiltrados.length === 0}
+                          className="text-xs h-8 px-2.5 border-[#0F766E]/40 text-[#0F766E] hover:bg-[#0F766E]/10 gap-1.5"
+                          title="Marcar todos os contatos encontrados nesta busca para sincronizar"
+                        >
+                          <CheckSquare className="w-3.5 h-3.5" />
+                          <span>
+                            {buscaContato.trim()
+                              ? `Marcar busca (${contatosFiltrados.length})`
+                              : `Marcar todos (${contatosLista.length})`}
+                          </span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={desselecionarTodosResultadosEscolhidos}
+                          disabled={
+                            contatosFiltrados.length === 0 || totalFiltradosMarcadosEscolhidos === 0
+                          }
+                          className="text-xs h-8 px-2.5 border-[#E5E1D8] text-[#5B6470] hover:bg-gray-50 gap-1.5"
+                          title="Desmarcar todos os contatos desta busca"
+                        >
+                          <Square className="w-3.5 h-3.5" />
+                          <span>Desmarcar busca</span>
+                        </Button>
+                      </>
+                    )}
+
+                    {modoSelecao === 'todos_exceto' && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={ignorarTodosResultadosBusca}
+                          disabled={contatosFiltrados.length === 0}
+                          className="text-xs h-8 px-2.5 border-rose-200 text-rose-700 hover:bg-rose-50 gap-1.5"
+                          title="Adicionar todos os contatos desta busca aos ignorados"
+                        >
+                          <Ban className="w-3.5 h-3.5" />
+                          <span>
+                            {buscaContato.trim()
+                              ? `Ignorar busca (${contatosFiltrados.length})`
+                              : 'Ignorar todos da lista'}
+                          </span>
+                        </Button>
+                        {totalFiltradosMarcadosIgnorados > 0 && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={desmarcarIgnoradosResultadosBusca}
+                            className="text-xs h-8 px-2.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 gap-1.5"
+                            title="Remover contatos desta busca da lista de ignorados"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Desmarcar ignorados ({totalFiltradosMarcadosIgnorados})</span>
+                          </Button>
+                        )}
+                        {contatosIgnorados.length > 0 && !buscaContato.trim() && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setContatosIgnorados([])
+                              salvarConfiguracoes({ contatos_ignorados: [] })
+                            }}
+                            className="text-xs h-8 px-2.5 border-gray-200 text-gray-600 hover:bg-gray-50"
+                          >
+                            Limpar todos ({contatosIgnorados.length})
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
-                {modoSelecao === 'apenas_escolhidos' && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      const todos = contatosLista.map(
-                        (c) => normalizarNumero(c.identificador) || c.identificador,
-                      )
-                      setContatosEscolhidos(todos)
-                      salvarConfiguracoes({ contatos_escolhidos: todos })
-                    }}
-                    className="text-xs h-8 px-2.5 border-[#E5E1D8]"
-                  >
-                    Marcar Todos
-                  </Button>
-                )}
-                {modoSelecao === 'todos_exceto' && contatosIgnorados.length > 0 && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setContatosIgnorados([])
-                      salvarConfiguracoes({ contatos_ignorados: [] })
-                    }}
-                    className="text-xs h-8 px-2.5 border-rose-200 text-rose-700 hover:bg-rose-50"
-                  >
-                    Limpar Ignorados
-                  </Button>
-                )}
+
+                {/* Linha do Contador Visível: "mostrando X de Y" com total real da base */}
+                <div className="flex items-center justify-between text-xs px-1 text-[#5B6470] bg-[#FAFAF9] p-2 rounded-lg border border-[#E5E1D8]/60">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-[#1A1D21]">
+                      Mostrando {Math.min(limiteContatos, contatosFiltrados.length)} de{' '}
+                      {contatosFiltrados.length} contato(s)
+                      {buscaContato.trim() && (
+                        <span className="text-[#5B6470] font-normal">
+                          {' '}
+                          (filtrados de {contatosLista.length} no total da base)
+                        </span>
+                      )}
+                    </span>
+                    {modoSelecao === 'apenas_escolhidos' && (
+                      <Badge variant="outline" className="text-[10px] text-[#0F766E] bg-emerald-50">
+                        {contatosEscolhidos.length} selecionado(s) para sincronizar
+                      </Badge>
+                    )}
+                    {modoSelecao === 'todos_exceto' && (
+                      <Badge variant="outline" className="text-[10px] text-rose-700 bg-rose-50">
+                        {contatosIgnorados.length} ignorado(s)
+                      </Badge>
+                    )}
+                  </div>
+
+                  {temMaisContatos && (
+                    <span className="text-[11px] text-[#0F766E] font-medium flex items-center gap-1">
+                      <Sparkles className="w-3 h-3" />
+                      Role a tela para carregar mais
+                    </span>
+                  )}
+                </div>
               </div>
 
-              {/* Tabela de Contatos */}
+              {/* Tabela de Contatos Paginada */}
               <div className="border border-[#E5E1D8] rounded-xl overflow-hidden divide-y divide-[#E5E1D8]">
                 {contatosFiltrados.length === 0 ? (
                   <div className="p-8 text-center text-xs text-[#5B6470] bg-[#FAFAF9]">
-                    Nenhum contato encontrado. Contatos cadastrados no sistema ou que enviarem
-                    mensagens aparecerão aqui automaticamente.
+                    {buscaContato.trim()
+                      ? `Nenhum contato encontrado para "${buscaContato}".`
+                      : 'Nenhum contato encontrado. Contatos cadastrados no sistema ou que enviarem mensagens aparecerão aqui automaticamente.'}
                   </div>
                 ) : (
-                  contatosFiltrados.map((contato) => {
+                  contatosVisiveis.map((contato) => {
                     const numLimpo =
                       normalizarNumero(contato.identificador) || contato.identificador
-                    const isEscolhido = contatosEscolhidos.includes(numLimpo)
-                    const isIgnorado = contatosIgnorados.includes(numLimpo)
+                    const isEscolhido = conjuntoEscolhidos.has(numLimpo)
+                    const isIgnorado = conjuntoIgnorados.has(numLimpo)
 
                     return (
                       <div
@@ -635,7 +987,7 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
                           )}
 
                           <div className="min-w-0">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-semibold text-[#1A1D21] truncate">
                                 {contato.nome}
                               </span>
@@ -705,10 +1057,194 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
                   })
                 )}
               </div>
+
+              {/* Botão de carregar mais manual e sentinela de rolagem */}
+              {temMaisContatos && (
+                <div className="pt-2 flex flex-col items-center gap-2">
+                  <div ref={sentinelContatosRef} className="h-2 w-full" />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={carregarMaisContatos}
+                    className="text-xs h-8 border-[#E5E1D8] text-[#0F766E] hover:bg-[#0F766E]/5 gap-1.5"
+                  >
+                    <ArrowDownCircle className="w-3.5 h-3.5" />
+                    <span>
+                      Carregar mais contatos (mostrando {contatosVisiveis.length} de{' '}
+                      {contatosFiltrados.length})
+                    </span>
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Aba de Grupos à Parte (Requisito 3) */}
+          {/* Aba de Ignorados Dedicada com Paginação e Busca */}
+          {abaLista === 'ignorados' && (
+            <div className="space-y-3">
+              <div className="p-3 rounded-lg border border-rose-200 bg-rose-50/70 text-rose-900 text-xs flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2.5">
+                  <Ban className="w-4 h-4 text-rose-700 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <span className="font-bold">Gerenciamento de Contatos Ignorados:</span>
+                    <p className="text-[11px] leading-relaxed">
+                      Mensagens destes números não geram assuntos na Folha do Dia. Você pode
+                      desmarcar contatos individualmente ou limpar a lista.
+                    </p>
+                  </div>
+                </div>
+                {contatosIgnorados.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setContatosIgnorados([])
+                      salvarConfiguracoes({ contatos_ignorados: [] })
+                    }}
+                    className="text-xs h-7 px-2 border-rose-300 text-rose-800 hover:bg-rose-100 shrink-0"
+                  >
+                    Limpar Todos
+                  </Button>
+                )}
+              </div>
+
+              {/* Busca + Ações em Massa na lista de Ignorados */}
+              <div className="space-y-2">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#5B6470]" />
+                    <Input
+                      placeholder="Filtrar entre os contatos ignorados..."
+                      value={buscaIgnorado}
+                      onChange={(e) => setBuscaIgnorado(e.target.value)}
+                      className="pl-8.5 text-xs h-8 bg-white border-[#E5E1D8]"
+                    />
+                    {buscaIgnorado && (
+                      <button
+                        onClick={() => setBuscaIgnorado('')}
+                        className="absolute right-2.5 top-2 text-[10px] text-gray-400 hover:text-gray-600"
+                      >
+                        Limpar
+                      </button>
+                    )}
+                  </div>
+
+                  {ignoradosFiltrados.length > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={removerFiltradosDeIgnorados}
+                      className="text-xs h-8 px-2.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 gap-1.5 shrink-0"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>
+                        {buscaIgnorado.trim()
+                          ? `Remover da busca (${ignoradosFiltrados.length})`
+                          : 'Remover todos'}
+                      </span>
+                    </Button>
+                  )}
+                </div>
+
+                {/* Contador de Ignorados: "mostrando X de Y" */}
+                <div className="flex items-center justify-between text-xs px-1 text-[#5B6470] bg-[#FAFAF9] p-2 rounded-lg border border-[#E5E1D8]/60">
+                  <span className="font-medium text-[#1A1D21]">
+                    Mostrando {Math.min(limiteIgnorados, ignoradosFiltrados.length)} de{' '}
+                    {ignoradosFiltrados.length} contato(s) ignorado(s)
+                    {buscaIgnorado.trim() && (
+                      <span className="text-[#5B6470] font-normal">
+                        {' '}
+                        (filtrados de {contatosIgnorados.length} no total)
+                      </span>
+                    )}
+                  </span>
+                  {temMaisIgnorados && (
+                    <span className="text-[11px] text-[#0F766E] font-medium flex items-center gap-1">
+                      <ChevronDown className="w-3 h-3" />
+                      Role a tela para carregar mais
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Tabela de Ignorados */}
+              <div className="border border-[#E5E1D8] rounded-xl overflow-hidden divide-y divide-[#E5E1D8]">
+                {ignoradosFiltrados.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-[#5B6470] bg-[#FAFAF9]">
+                    {buscaIgnorado.trim()
+                      ? `Nenhum ignorado encontrado para "${buscaIgnorado}".`
+                      : 'Nenhum contato na lista de ignorados no momento.'}
+                  </div>
+                ) : (
+                  ignoradosVisiveis.map((item) => (
+                    <div
+                      key={item.identificador}
+                      className="p-3 bg-white hover:bg-[#FAFAF9] flex items-center justify-between gap-3 transition-colors text-xs"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Checkbox
+                          checked={true}
+                          onCheckedChange={() => toggleContatoIgnorado(item.numLimpo)}
+                          className="border-rose-500 data-[state=checked]:bg-rose-600"
+                          title="Desmarque para voltar a sincronizar este contato"
+                        />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-[#1A1D21] truncate">
+                              {item.nome}
+                            </span>
+                            {item.contato_id && (
+                              <Badge
+                                variant="outline"
+                                className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200"
+                              >
+                                Cadastrado
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-[#5B6470] mt-0.5 flex items-center gap-2">
+                            <span>Tel: {item.telefone}</span>
+                            {item.empresa && <span>• {item.empresa}</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => toggleContatoIgnorado(item.numLimpo)}
+                          className="text-xs h-7 px-2 text-rose-700 hover:text-rose-900 hover:bg-rose-50"
+                        >
+                          Voltar a Sincronizar
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {temMaisIgnorados && (
+                <div className="pt-2 flex flex-col items-center gap-2">
+                  <div ref={sentinelIgnoradosRef} className="h-2 w-full" />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={carregarMaisIgnorados}
+                    className="text-xs h-8 border-[#E5E1D8] text-[#0F766E] hover:bg-[#0F766E]/5 gap-1.5"
+                  >
+                    <ArrowDownCircle className="w-3.5 h-3.5" />
+                    <span>
+                      Carregar mais ignorados (mostrando {ignoradosVisiveis.length} de{' '}
+                      {ignoradosFiltrados.length})
+                    </span>
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Aba de Grupos à Parte */}
           {abaLista === 'grupos' && (
             <div className="space-y-3">
               <div className="p-3 rounded-lg border border-amber-200 bg-amber-50/70 text-amber-900 text-xs flex items-start gap-2.5">
@@ -746,7 +1282,8 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
                 ) : (
                   gruposFiltrados.map((grupo) => {
                     const isMarcado =
-                      gruposEscolhidos.includes(grupo.id) || gruposEscolhidos.includes(grupo.nome)
+                      conjuntoGruposEscolhidos.has(grupo.id) ||
+                      conjuntoGruposEscolhidos.has(grupo.nome)
                     return (
                       <div
                         key={grupo.id}
@@ -790,4 +1327,5 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
     </div>
   )
 }
+
 export default GestaoWhatsApp
