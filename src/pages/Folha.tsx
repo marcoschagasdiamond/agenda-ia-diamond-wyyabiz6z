@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { diamondApi } from '@/services/diamondApi'
+import { useRealtime } from '@/hooks/use-realtime'
 import { useNavegacao } from '@/contexts/NavegacaoContext'
 import type {
   FolhaDia,
@@ -328,6 +330,33 @@ export default function Folha() {
   } | null>(null)
   const [salvandoRevisao, setSalvandoRevisao] = useState(false)
 
+  const [searchParams] = useSearchParams()
+  const destaqueParam = searchParams.get('destaque')
+
+  // Rolagem suave até o item em destaque se fornecido na URL
+  useEffect(() => {
+    if (destaqueParam && folhaItems.length > 0) {
+      const el = document.getElementById(`assunto-${destaqueParam}`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }
+  }, [destaqueParam, folhaItems])
+
+  // Recarga silenciosa somente da listagem de folha_dia e demandas (sem piscar nem alterar formulários)
+  const recarregarFolhaSilencioso = async () => {
+    try {
+      const [f, dem] = await Promise.all([
+        diamondApi.listFolhaDia(),
+        diamondApi.listDemandas().catch(() => []),
+      ])
+      setFolhaItems(f)
+      setDemandasCadastradas(dem)
+    } catch (err) {
+      console.error('Erro ao recarregar folha silencioso:', err)
+    }
+  }
+
   const carregarDados = async () => {
     try {
       const [f, p, c, n, flxs, cats, marcos, dem] = await Promise.all([
@@ -356,7 +385,33 @@ export default function Folha() {
 
   useEffect(() => {
     carregarDados()
+
+    // Polling leve a cada 30 segundos enquanto a página estiver aberta
+    const intervalo = setInterval(() => {
+      recarregarFolhaSilencioso()
+    }, 30000)
+
+    return () => clearInterval(intervalo)
   }, [])
+
+  // Inscrição em tempo real na coleção folha_dia para atualizar instantaneamente quando chegar nova mensagem
+  useRealtime<any>('folha_dia', (e) => {
+    if (e.action === 'create' && e.record) {
+      const novo = e.record as FolhaDia
+      setFolhaItems((prev) => {
+        if (prev.some((item) => item.id === novo.id)) return prev
+        return [novo, ...prev]
+      })
+    } else if (e.action === 'update' && e.record) {
+      const atualizado = e.record as FolhaDia
+      setFolhaItems((prev) =>
+        prev.map((item) => (item.id === atualizado.id ? { ...item, ...atualizado } : item)),
+      )
+    } else if (e.action === 'delete' && e.record) {
+      const deletadoId = e.record.id
+      setFolhaItems((prev) => prev.filter((item) => item.id !== deletadoId))
+    }
+  })
 
   // Sincroniza fluxos e categorias locais com o NavegacaoContext
   useEffect(() => {
@@ -1972,16 +2027,20 @@ export default function Folha() {
               const temDemanda = verificarTemDemanda(item)
               const isFixado = Boolean(item.fixado)
               const isArquivado = Boolean(item.arquivado)
+              const isDestaque = Boolean(destaqueParam && item.id === destaqueParam)
 
               return (
                 <div
                   key={item.id}
+                  id={`assunto-${item.id}`}
                   className={`p-4 rounded-xl border transition-all shadow-2xs flex flex-col justify-between space-y-3 ${
-                    isFixado
-                      ? 'bg-amber-50/40 border-amber-300 ring-1 ring-amber-300/60'
-                      : isArquivado
-                        ? 'bg-[#FAFAF9] border-[#E5E1D8] opacity-75'
-                        : 'bg-white border-[#E5E1D8] hover:border-[#0F766E]/40'
+                    isDestaque
+                      ? 'bg-emerald-50/60 border-emerald-500 ring-2 ring-emerald-500/50 shadow-md'
+                      : isFixado
+                        ? 'bg-amber-50/40 border-amber-300 ring-1 ring-amber-300/60'
+                        : isArquivado
+                          ? 'bg-[#FAFAF9] border-[#E5E1D8] opacity-75'
+                          : 'bg-white border-[#E5E1D8] hover:border-[#0F766E]/40'
                   }`}
                 >
                   <div>

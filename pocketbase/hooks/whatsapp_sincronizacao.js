@@ -7,9 +7,10 @@
  * 3. GET /backend/v1/whatsapp/contatos-grupos -> lista contatos e grupos com base na conta e contatos do sistema
  * 4. POST /backend/v1/whatsapp/sincronizar -> busca mensagens novas do WhatsApp e cria na folha_dia
  * 5. POST /backend/v1/whatsapp/ignorar-remetente -> adiciona remetente à lista de ignorados (usado ao arquivar/descartar)
+ * 6. CRON sincronizar_whatsapp_diamond a cada 5 minutos -> roda sincronização automática
  *
  * NOTA DE ESCOPO DO JSVM:
- * Todas as funções/helpers devem ficar estritamente INLINE dentro de cada callback de hook/route.
+ * Todas as funções/helpers devem ficar estritamente INLINE dentro de cada callback de hook/route/cron.
  */
 
 // 1. Rota de Status e Configuração Atual
@@ -359,7 +360,7 @@ routerAdd(
   $apis.requireAuth(),
 )
 
-// 4. Rota para Sincronizar Mensagens Recebidas e Criar Assuntos na folha_dia
+// 4. Rota para Sincronizar Mensagens Recebidas e Criar Assuntos na folha_dia (Manual sob demanda)
 routerAdd(
   'POST',
   '/backend/v1/whatsapp/sincronizar',
@@ -503,7 +504,6 @@ routerAdd(
         const rawTel = limpar(c.getString('telefone'))
         if (rawTel) {
           mapaContatosPorNumero[rawTel] = c
-          // Variações comuns com ou sem 55 ou dígito 9
           if (rawTel.startsWith('55') && rawTel.length > 2) {
             mapaContatosPorNumero[rawTel.slice(2)] = c
           }
@@ -512,20 +512,22 @@ routerAdd(
 
       const folhaCol = app.findCollectionByNameOrId('folha_dia')
       const syncCol = app.findCollectionByNameOrId('mensagens_whatsapp_sincronizadas')
+      const notifCol = app.findCollectionByNameOrId('notificacoes_sistema')
 
       let criadasCount = 0
       const detalhes = []
+      const novosRemetentes = []
+      let primeiroAssuntoId = ''
       const agoraISO = new Date().toISOString()
       const dataHojeStr = agoraISO.split('T')[0]
 
       for (const msg of mensagensRaw) {
-        // Extração dos campos da mensagem
         const messageId = String(
           msg.id || msg.message_id || msg.wamid || msg.wam_id || msg.key?.id || '',
         )
         if (!messageId) continue
 
-        // Verificar idempotência: já sincronizada para este usuário?
+        // Idempotência: já sincronizada para este usuário?
         let jaExiste = false
         try {
           app.findFirstRecordByFilter(
@@ -537,7 +539,6 @@ routerAdd(
 
         if (jaExiste) continue
 
-        // Extrair remetente, autor, grupo e texto
         const fromRaw = String(
           msg.from || msg.sender || msg.from_number || msg.key?.remoteJid || '',
         )
@@ -570,7 +571,6 @@ routerAdd(
             'Contato WhatsApp',
         )
 
-        // Extrair texto da mensagem
         let textoMensagem = ''
         if (typeof msg.text === 'string') {
           textoMensagem = msg.text
@@ -588,7 +588,6 @@ routerAdd(
         }
 
         if (!textoMensagem.trim()) {
-          // Mensagem sem corpo textual (ex: status de entrega apenas, áudio ou figurinha) -> registra sync mas não polui folha
           const recSyncVazio = new Record(syncCol)
           recSyncVazio.set('usuario', authUser.id)
           recSyncVazio.set('message_id', messageId)
@@ -604,21 +603,15 @@ routerAdd(
           continue
         }
 
-        // 3. Regras de Seleção e Filtro (Requisitos do Usuário)
         let deveEntrar = false
 
         if (isGrupo) {
-          // Requisito 3: "Grupos à parte: grupos só entram se marcados explicitamente"
           const chaveGrupo1 = grupoId
           const chaveGrupo2 = grupoNome
           if (setGruposEscolhidos.has(chaveGrupo1) || setGruposEscolhidos.has(chaveGrupo2)) {
             deveEntrar = true
           }
         } else {
-          // Contatos individuais:
-          // Requisito 2:
-          // (a) "Só contatos escolhidos" — só os marcados entram
-          // (b) "Todos exceto" — entra tudo menos os marcados como ignorados
           if (modoSelecao === 'apenas_escolhidos') {
             if (setEscolhidos.has(remetenteNum)) {
               deveEntrar = true
@@ -633,7 +626,6 @@ routerAdd(
         let folhaIdGerada = ''
 
         if (deveEntrar) {
-          // Vínculo automático a contato existente se número corresponder
           let contatoVinculado = null
           if (remetenteNum) {
             contatoVinculado =
@@ -645,8 +637,6 @@ routerAdd(
               null
           }
 
-          // Montar cabeçalho do registro na Folha
-          // Requisito 3: "cada assunto vindo de um grupo deve indicar quem falou (autor da mensagem)"
           let registroTextoCompleto = ''
           if (isGrupo) {
             registroTextoCompleto = `[WhatsApp Grupo: ${grupoNome || 'Grupo'}] ${autorNome}: ${textoMensagem.trim()}`
@@ -658,7 +648,6 @@ routerAdd(
             ? `Grupo: ${grupoNome || grupoId} • ${autorNome}`
             : `${autorNome} (${remetenteNum})`
 
-          // Timestamp da mensagem ou agora
           let dataHoraMsg = agoraISO.slice(0, 16)
           if (msg.timestamp) {
             try {
@@ -687,6 +676,10 @@ routerAdd(
           app.save(novaFolha)
           folhaIdGerada = novaFolha.id
           criadasCount++
+          if (!primeiroAssuntoId) primeiroAssuntoId = folhaIdGerada
+
+          const remetenteRotulo = isGrupo ? `${autorNome} (${grupoNome || 'Grupo'})` : autorNome
+          novosRemetentes.push(remetenteRotulo)
 
           detalhes.push({
             message_id: messageId,
@@ -699,7 +692,6 @@ routerAdd(
           })
         }
 
-        // Salvar registro de idempotência
         const recSync = new Record(syncCol)
         recSync.set('usuario', authUser.id)
         recSync.set('message_id', messageId)
@@ -712,6 +704,42 @@ routerAdd(
         recSync.set('folha_dia_id', folhaIdGerada)
         recSync.set('timestamp_mensagem', String(msg.timestamp || Date.now()))
         app.save(recSync)
+      }
+
+      // Notificação no sino quando houver novos assuntos criados
+      if (criadasCount > 0) {
+        try {
+          const n = new Record(notifCol)
+          n.set('usuario', authUser.id)
+          n.set('tipo', 'whatsapp')
+          if (criadasCount === 1) {
+            const rem = novosRemetentes[0] || 'Contato WhatsApp'
+            n.set('titulo', `Nova mensagem de WhatsApp de ${rem}`)
+            n.set(
+              'mensagem',
+              `Uma nova mensagem de ${rem} gerou um novo assunto na sua Folha de trabalho.`,
+            )
+          } else {
+            const remExemplos = novosRemetentes.slice(0, 2).join(', ')
+            const resto = criadasCount - 2
+            const complemento = resto > 0 ? ` e mais ${resto}` : ''
+            n.set('titulo', `${criadasCount} novas mensagens de WhatsApp`)
+            n.set(
+              'mensagem',
+              `${criadasCount} novas mensagens recebidas (${remExemplos}${complemento}) adicionaram assuntos na Folha.`,
+            )
+          }
+          n.set('link', primeiroAssuntoId ? `/folha?destaque=${primeiroAssuntoId}` : '/folha')
+          n.set('item_tipo', 'folha')
+          n.set('item_id', primeiroAssuntoId || '')
+          n.set('lida', false)
+          app.save(n)
+        } catch (errNotif) {
+          console.log(
+            '[WhatsApp] Erro ao criar notificação no sino:',
+            errNotif && errNotif.message ? errNotif.message : errNotif,
+          )
+        }
       }
 
       // Atualizar data/hora da última sincronização
@@ -735,7 +763,6 @@ routerAdd(
 )
 
 // 5. Rota de Pós-Filtro: Ignorar Remetente
-// Requisito 5: "Arquivar/descartar um assunto vindo do WhatsApp na Folha adiciona o remetente à lista de ignorados para não voltar."
 routerAdd(
   'POST',
   '/backend/v1/whatsapp/ignorar-remetente',
@@ -772,7 +799,6 @@ routerAdd(
 
       let identificadorAlvo = remetente
 
-      // Se passou folhaId e não remetente, buscar da folha ou da tabela de sync
       if (!identificadorAlvo && folhaId) {
         try {
           const syncRec = app.findFirstRecordByData(
@@ -786,7 +812,6 @@ routerAdd(
           try {
             const f = app.findRecordById('folha_dia', folhaId)
             const ref = f.getString('origem_ref') || ''
-            // tentar extrair número ou nome
             const m = ref.match(/\(([^)]+)\)/)
             if (m) identificadorAlvo = m[1]
             else identificadorAlvo = ref
@@ -823,3 +848,381 @@ routerAdd(
   },
   $apis.requireAuth(),
 )
+
+// 6. Job Agendado: Sincronização Automática a cada 5 minutos
+cronAdd('sincronizar_whatsapp_diamond', '*/5 * * * *', () => {
+  try {
+    const app = $app
+    const folhaCol = app.findCollectionByNameOrId('folha_dia')
+    const syncCol = app.findCollectionByNameOrId('mensagens_whatsapp_sincronizadas')
+    const notifCol = app.findCollectionByNameOrId('notificacoes_sistema')
+
+    // Carregar todas as configurações de usuários
+    let configs = []
+    try {
+      configs = app.findRecordsByFilter('configuracoes_whatsapp', '', '-created', 100, 0)
+    } catch (_) {}
+
+    if (configs.length === 0) {
+      console.log('[WhatsApp Cron] Nenhuma configuração de usuário cadastrada.')
+      return
+    }
+
+    const limpar = (v) => String(v || '').replace(/\D/g, '')
+
+    // Carregar contatos cadastrados para vínculo automático em páginas (lotes de 200 até esgotar)
+    let contatosCadastrados = []
+    try {
+      const batchSize = 200
+      let offset = 0
+      while (true) {
+        const batch = app.findRecordsByFilter('contatos', '', '', batchSize, offset)
+        if (!batch || batch.length === 0) break
+        contatosCadastrados = contatosCadastrados.concat(batch)
+        if (batch.length < batchSize) break
+        offset += batchSize
+      }
+    } catch (errContatos) {
+      console.log(
+        '[WhatsApp Cron] Erro ao carregar contatos cadastrados:',
+        errContatos && errContatos.message ? errContatos.message : errContatos,
+      )
+    }
+
+    const mapaContatosPorNumero = {}
+    for (const c of contatosCadastrados) {
+      const rawTel = limpar(c.getString('telefone'))
+      if (rawTel) {
+        mapaContatosPorNumero[rawTel] = c
+        if (rawTel.startsWith('55') && rawTel.length > 2) {
+          mapaContatosPorNumero[rawTel.slice(2)] = c
+        }
+      }
+    }
+
+    const agoraISO = new Date().toISOString()
+    const dataHojeStr = agoraISO.split('T')[0]
+
+    for (const configRec of configs) {
+      const userId = configRec.getString('usuario')
+      if (!userId) continue
+
+      const modoSelecao = configRec.getString('modo_selecao') || 'todos_exceto'
+      if (modoSelecao === 'desligado') {
+        continue
+      }
+
+      // Buscar registro do usuário para execução com conectores
+      let userRecord = null
+      try {
+        userRecord = app.findRecordById('_pb_users_auth_', userId)
+      } catch (_) {
+        continue
+      }
+
+      let phoneId = configRec.getString('phone_number_id')
+      if (!phoneId) {
+        try {
+          const resPhones = $connectors.execute(userRecord, 'WHATSAPP_GET_PHONE_NUMBERS', {})
+          if (resPhones.successful && resPhones.data) {
+            const raw = resPhones.data
+            let lista = []
+            if (Array.isArray(raw)) lista = raw
+            else if (raw && Array.isArray(raw.data)) lista = raw.data
+            else if (raw && Array.isArray(raw.phone_numbers)) lista = raw.phone_numbers
+
+            if (lista.length > 0 && lista[0].id) {
+              phoneId = String(lista[0].id)
+              configRec.set('phone_number_id', phoneId)
+              app.save(configRec)
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (!phoneId) {
+        continue
+      }
+
+      let contatosEscolhidos = []
+      let contatosIgnorados = []
+      let gruposEscolhidos = []
+      try {
+        contatosEscolhidos = JSON.parse(configRec.getString('contatos_escolhidos')) || []
+      } catch (_) {}
+      try {
+        contatosIgnorados = JSON.parse(configRec.getString('contatos_ignorados')) || []
+      } catch (_) {}
+      try {
+        gruposEscolhidos = JSON.parse(configRec.getString('grupos_escolhidos')) || []
+      } catch (_) {}
+
+      const setEscolhidos = new Set(contatosEscolhidos.map(limpar).filter(Boolean))
+      const setIgnorados = new Set(contatosIgnorados.map(limpar).filter(Boolean))
+      const setGruposEscolhidos = new Set(
+        gruposEscolhidos.map((g) => String(g).trim()).filter(Boolean),
+      )
+
+      let resHistory = null
+      try {
+        resHistory = $connectors.execute(userRecord, 'WHATSAPP_GET_MESSAGE_HISTORY', {
+          phone_number_id: phoneId,
+          limit: 50,
+        })
+      } catch (errHist) {
+        console.log(
+          `[WhatsApp Cron] Erro ao buscar histórico para usuário ${userId}:`,
+          errHist && errHist.message ? errHist.message : errHist,
+        )
+        continue
+      }
+
+      if (!resHistory || !resHistory.successful) {
+        continue
+      }
+
+      let mensagensRaw = []
+      const dataResp = resHistory.data
+      if (Array.isArray(dataResp)) {
+        mensagensRaw = dataResp
+      } else if (dataResp && Array.isArray(dataResp.data)) {
+        mensagensRaw = dataResp.data
+      } else if (dataResp && Array.isArray(dataResp.messages)) {
+        mensagensRaw = dataResp.messages
+      } else if (dataResp && Array.isArray(dataResp.history)) {
+        mensagensRaw = dataResp.history
+      }
+
+      if (mensagensRaw.length === 0 && dataResp && typeof dataResp === 'object') {
+        for (const k of Object.keys(dataResp)) {
+          if (Array.isArray(dataResp[k])) {
+            mensagensRaw = dataResp[k]
+            break
+          }
+        }
+      }
+
+      let criadasCount = 0
+      const novosRemetentes = []
+      let primeiroAssuntoId = ''
+
+      for (const msg of mensagensRaw) {
+        const messageId = String(
+          msg.id || msg.message_id || msg.wamid || msg.wam_id || msg.key?.id || '',
+        )
+        if (!messageId) continue
+
+        let jaExiste = false
+        try {
+          app.findFirstRecordByFilter(
+            'mensagens_whatsapp_sincronizadas',
+            `usuario = "${userId}" && message_id = "${messageId}"`,
+          )
+          jaExiste = true
+        } catch (_) {}
+
+        if (jaExiste) continue
+
+        const fromRaw = String(
+          msg.from || msg.sender || msg.from_number || msg.key?.remoteJid || '',
+        )
+        const isGrupo = Boolean(
+          msg.is_group ||
+          msg.group_id ||
+          msg.chat_type === 'group' ||
+          fromRaw.endsWith('@g.us') ||
+          msg.recipient_type === 'group',
+        )
+
+        const grupoId = isGrupo
+          ? String(msg.group_id || msg.chat_id || fromRaw.replace('@g.us', ''))
+          : ''
+        const grupoNome = isGrupo
+          ? String(msg.group_name || msg.chat_name || msg.subject || grupoId)
+          : ''
+
+        const remetenteNum = isGrupo
+          ? limpar(msg.participant || msg.author || msg.sender_phone || '')
+          : limpar(fromRaw.replace('@s.whatsapp.net', ''))
+
+        const autorNome = String(
+          msg.author_name ||
+            msg.sender_name ||
+            msg.pushName ||
+            msg.push_name ||
+            msg.contact_name ||
+            remetenteNum ||
+            'Contato WhatsApp',
+        )
+
+        let textoMensagem = ''
+        if (typeof msg.text === 'string') {
+          textoMensagem = msg.text
+        } else if (msg.text && typeof msg.text.body === 'string') {
+          textoMensagem = msg.text.body
+        } else if (typeof msg.body === 'string') {
+          textoMensagem = msg.body
+        } else if (msg.message && typeof msg.message.conversation === 'string') {
+          textoMensagem = msg.message.conversation
+        } else if (msg.message && msg.message.extendedTextMessage?.text) {
+          textoMensagem = msg.message.extendedTextMessage.text
+        } else if (msg.content) {
+          textoMensagem =
+            typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+        }
+
+        if (!textoMensagem.trim()) {
+          const recSyncVazio = new Record(syncCol)
+          recSyncVazio.set('usuario', userId)
+          recSyncVazio.set('message_id', messageId)
+          recSyncVazio.set('remetente_numero', remetenteNum)
+          recSyncVazio.set('remetente_nome', autorNome)
+          recSyncVazio.set('is_grupo', isGrupo)
+          recSyncVazio.set('grupo_id', grupoId)
+          recSyncVazio.set('grupo_nome', grupoNome)
+          recSyncVazio.set('autor_mensagem', autorNome)
+          recSyncVazio.set('folha_dia_id', '')
+          recSyncVazio.set('timestamp_mensagem', String(msg.timestamp || Date.now()))
+          app.save(recSyncVazio)
+          continue
+        }
+
+        let deveEntrar = false
+
+        if (isGrupo) {
+          const chaveGrupo1 = grupoId
+          const chaveGrupo2 = grupoNome
+          if (setGruposEscolhidos.has(chaveGrupo1) || setGruposEscolhidos.has(chaveGrupo2)) {
+            deveEntrar = true
+          }
+        } else {
+          if (modoSelecao === 'apenas_escolhidos') {
+            if (setEscolhidos.has(remetenteNum)) {
+              deveEntrar = true
+            }
+          } else if (modoSelecao === 'todos_exceto') {
+            if (!setIgnorados.has(remetenteNum)) {
+              deveEntrar = true
+            }
+          }
+        }
+
+        let folhaIdGerada = ''
+
+        if (deveEntrar) {
+          let contatoVinculado = null
+          if (remetenteNum) {
+            contatoVinculado =
+              mapaContatosPorNumero[remetenteNum] ||
+              (remetenteNum.startsWith('55')
+                ? mapaContatosPorNumero[remetenteNum.slice(2)]
+                : null) ||
+              mapaContatosPorNumero['55' + remetenteNum] ||
+              null
+          }
+
+          let registroTextoCompleto = ''
+          if (isGrupo) {
+            registroTextoCompleto = `[WhatsApp Grupo: ${grupoNome || 'Grupo'}] ${autorNome}: ${textoMensagem.trim()}`
+          } else {
+            registroTextoCompleto = `[WhatsApp] ${autorNome} (${remetenteNum || 'WhatsApp'}): ${textoMensagem.trim()}`
+          }
+
+          const origemRefFormatada = isGrupo
+            ? `Grupo: ${grupoNome || grupoId} • ${autorNome}`
+            : `${autorNome} (${remetenteNum})`
+
+          let dataHoraMsg = agoraISO.slice(0, 16)
+          if (msg.timestamp) {
+            try {
+              const tsNum = Number(msg.timestamp)
+              const d = tsNum > 10000000000 ? new Date(tsNum) : new Date(tsNum * 1000)
+              if (!isNaN(d.getTime())) {
+                dataHoraMsg = d.toISOString().slice(0, 16)
+              }
+            } catch (_) {}
+          }
+
+          const novaFolha = new Record(folhaCol)
+          novaFolha.set('data', dataHojeStr)
+          novaFolha.set('data_hora', dataHoraMsg)
+          novaFolha.set('registro', registroTextoCompleto)
+          novaFolha.set('tipo_origem', 'whatsapp')
+          novaFolha.set('origem_ref', origemRefFormatada)
+          novaFolha.set('status', 'pendente')
+          novaFolha.set('arquivado', false)
+          novaFolha.set('fixado', false)
+
+          if (contatoVinculado) {
+            novaFolha.set('contato', contatoVinculado.id)
+          }
+
+          app.save(novaFolha)
+          folhaIdGerada = novaFolha.id
+          criadasCount++
+          if (!primeiroAssuntoId) primeiroAssuntoId = folhaIdGerada
+
+          const remetenteRotulo = isGrupo ? `${autorNome} (${grupoNome || 'Grupo'})` : autorNome
+          novosRemetentes.push(remetenteRotulo)
+        }
+
+        const recSync = new Record(syncCol)
+        recSync.set('usuario', userId)
+        recSync.set('message_id', messageId)
+        recSync.set('remetente_numero', remetenteNum)
+        recSync.set('remetente_nome', autorNome)
+        recSync.set('is_grupo', isGrupo)
+        recSync.set('grupo_id', grupoId)
+        recSync.set('grupo_nome', grupoNome)
+        recSync.set('autor_mensagem', autorNome)
+        recSync.set('folha_dia_id', folhaIdGerada)
+        recSync.set('timestamp_mensagem', String(msg.timestamp || Date.now()))
+        app.save(recSync)
+      }
+
+      if (criadasCount > 0) {
+        try {
+          const n = new Record(notifCol)
+          n.set('usuario', userId)
+          n.set('tipo', 'whatsapp')
+          if (criadasCount === 1) {
+            const rem = novosRemetentes[0] || 'Contato WhatsApp'
+            n.set('titulo', `Nova mensagem de WhatsApp de ${rem}`)
+            n.set(
+              'mensagem',
+              `Uma nova mensagem de ${rem} gerou um novo assunto na sua Folha de trabalho.`,
+            )
+          } else {
+            const remExemplos = novosRemetentes.slice(0, 2).join(', ')
+            const resto = criadasCount - 2
+            const complemento = resto > 0 ? ` e mais ${resto}` : ''
+            n.set('titulo', `${criadasCount} novas mensagens de WhatsApp`)
+            n.set(
+              'mensagem',
+              `${criadasCount} novas mensagens recebidas (${remExemplos}${complemento}) adicionaram assuntos na Folha.`,
+            )
+          }
+          n.set('link', primeiroAssuntoId ? `/folha?destaque=${primeiroAssuntoId}` : '/folha')
+          n.set('item_tipo', 'folha')
+          n.set('item_id', primeiroAssuntoId || '')
+          n.set('lida', false)
+          app.save(n)
+        } catch (errNotif) {
+          console.log(
+            `[WhatsApp Cron] Erro ao criar notificação no sino para ${userId}:`,
+            errNotif && errNotif.message ? errNotif.message : errNotif,
+          )
+        }
+      }
+
+      configRec.set('ultima_sincronizacao', agoraISO)
+      app.save(configRec)
+
+      console.log(
+        `[WhatsApp Cron] Usuário ${userId}: ${mensagensRaw.length} mensagens processadas, ${criadasCount} novos assuntos criados na Folha.`,
+      )
+    }
+  } catch (err) {
+    console.log('[WhatsApp Cron] Erro no job agendado:', err && err.message ? err.message : err)
+  }
+})

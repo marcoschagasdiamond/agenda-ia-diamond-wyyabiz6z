@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-02T00:06:08.259Z",
+  "generatedAt": "2026-11-02T01:53:03.846Z",
   "collections": [
     {
       "name": "users",
@@ -2567,7 +2567,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["reuniao", "tarefa", "atraso", "sistema"]
+          "selectValues": ["reuniao", "tarefa", "atraso", "sistema", "whatsapp"]
         },
         {
           "name": "titulo",

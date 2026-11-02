@@ -14,7 +14,9 @@ import {
   ExternalLink,
   Settings,
   Sparkles,
+  MessageSquare,
 } from 'lucide-react'
+import { useRealtime } from '@/hooks/use-realtime'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -48,6 +50,25 @@ export default function SinoNotificacoes({ className = '' }: SinoNotificacoesPro
     }, 30000)
     return () => clearInterval(intervalo)
   }, [])
+
+  // Inscrição em tempo real na coleção notificacoes_sistema para refletir avisos do WhatsApp imediatamente
+  useRealtime<any>('notificacoes_sistema', (e) => {
+    if (e.action === 'create' && e.record) {
+      const novo = e.record as NotificacaoSistema
+      setNotificacoes((prev) => {
+        if (prev.some((n) => n.id === novo.id)) return prev
+        return [novo, ...prev]
+      })
+    } else if (e.action === 'update' && e.record) {
+      const atualizado = e.record as NotificacaoSistema
+      setNotificacoes((prev) =>
+        prev.map((n) => (n.id === atualizado.id ? { ...n, ...atualizado } : n)),
+      )
+    } else if (e.action === 'delete' && e.record) {
+      const delId = e.record.id
+      setNotificacoes((prev) => prev.filter((n) => n.id !== delId))
+    }
+  })
 
   const naoLidas = notificacoes.filter((n) => !n.lida)
   const totalNaoLidas = naoLidas.length
@@ -108,6 +129,12 @@ export default function SinoNotificacoes({ className = '' }: SinoNotificacoesPro
 
   const renderIconeTipo = (tipo: string) => {
     switch (tipo) {
+      case 'whatsapp':
+        return (
+          <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+            <MessageSquare className="w-3.5 h-3.5" />
+          </div>
+        )
       case 'reuniao':
         return (
           <div className="w-7 h-7 rounded-lg bg-[#0F766E]/10 text-[#0F766E] flex items-center justify-center shrink-0">
