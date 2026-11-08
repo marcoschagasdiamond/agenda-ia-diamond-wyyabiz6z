@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-08T23:30:39.308Z",
+  "generatedAt": "2026-11-08T23:42:42.846Z",
   "collections": [
     {
       "name": "users",
@@ -593,6 +593,13 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "tese_semente",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "teses_sementes"
         }
       ],
       "indexes": [
@@ -601,7 +608,8 @@
         "CREATE INDEX `idx_folha_dia_arquivado` ON `folha_dia` (arquivado)",
         "CREATE INDEX `idx_folha_dia_fixado` ON `folha_dia` (fixado)",
         "CREATE INDEX `idx_folha_dia_estado_semente` ON `folha_dia` (estado_semente)",
-        "CREATE INDEX `idx_folha_dia_data_revisao_semente` ON `folha_dia` (data_revisao_semente)"
+        "CREATE INDEX `idx_folha_dia_data_revisao_semente` ON `folha_dia` (data_revisao_semente)",
+        "CREATE INDEX `idx_folha_dia_tese_semente` ON `folha_dia` (tese_semente)"
       ]
     },
     {
@@ -2972,6 +2980,61 @@
       ],
       "indexes": [
         "CREATE UNIQUE INDEX idx_msg_wa_user_msgid ON mensagens_whatsapp_sincronizadas (usuario, message_id)"
+      ]
+    },
+    {
+      "name": "teses_sementes",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ordem",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_teses_sementes_nome ON teses_sementes (nome)",
+        "CREATE INDEX idx_teses_sementes_ordem ON teses_sementes (ordem)"
       ]
     }
   ]

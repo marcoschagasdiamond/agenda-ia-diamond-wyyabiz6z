@@ -87,6 +87,8 @@ import {
   FILTROS_PADRAO,
   type FolhaFiltrosState,
 } from '@/components/folha/PainelBuscaFolha'
+import { SementesAgrupadasPorTese } from '@/components/folha/SementesAgrupadasPorTese'
+import type { TeseSemente } from '@/types'
 
 export interface ItemRascunhoAssunto {
   idTemp: string
@@ -250,6 +252,10 @@ export default function Folha() {
   // Estado dos Filtros Avançados e Busca em Tempo Real (Fase 1)
   const [filtrosFolha, setFiltrosFolha] = useState<FolhaFiltrosState>(FILTROS_PADRAO)
 
+  // Cofre por Tese de Sementes
+  const [tesesSementes, setTesesSementes] = useState<TeseSemente[]>([])
+  const [teseFiltroId, setTeseFiltroId] = useState<string>('todas')
+
   // Modal de Arquivar como Semente
   const [modalSementeOpen, setModalSementeOpen] = useState(false)
   const [itemParaSemente, setItemParaSemente] = useState<FolhaDia | null>(null)
@@ -260,11 +266,13 @@ export default function Folha() {
     return d.toISOString().slice(0, 10)
   })
   const [sementeObservacao, setSementeObservacao] = useState('')
+  const [sementeTeseEscolhida, setSementeTeseEscolhida] = useState<string>('none')
   const [salvandoSemente, setSalvandoSemente] = useState(false)
 
   const handleAbrirModalSemente = (item: FolhaDia) => {
     setItemParaSemente(item)
     setSementeCondicao(item.condicao_reativacao || '')
+    setSementeTeseEscolhida(item.tese_semente || 'none')
     if (item.data_revisao_semente) {
       setSementeDataRevisao(item.data_revisao_semente.slice(0, 10))
     } else {
@@ -280,16 +288,24 @@ export default function Folha() {
     if (!itemParaSemente) return
     setSalvandoSemente(true)
     try {
+      const teseIdFinal = sementeTeseEscolhida !== 'none' ? sementeTeseEscolhida : ''
       const atualizado = await diamondApi.arquivarComoSemente(itemParaSemente.id, {
         condicao_reativacao: sementeCondicao,
         data_revisao_semente: sementeDataRevisao,
         observacao: sementeObservacao,
+        tese_semente: teseIdFinal,
       })
 
       setFolhaItems((prev) =>
         prev.map((i) =>
           i.id === itemParaSemente.id
-            ? { ...i, ...atualizado, estado_semente: true, arquivado: true }
+            ? {
+                ...i,
+                ...atualizado,
+                estado_semente: true,
+                arquivado: true,
+                tese_semente: teseIdFinal,
+              }
             : i,
         ),
       )
@@ -297,7 +313,7 @@ export default function Folha() {
       toast({
         title: 'Assunto arquivado como Semente 🌱',
         description:
-          'Guardado para germinar. Você pode consultá-lo na aba Sementes ou aguardar reativação automática.',
+          'Guardado para germinar no cofre. Você pode consultá-lo por tese de mercado na aba Sementes.',
       })
       setModalSementeOpen(false)
       setItemParaSemente(null)
@@ -331,6 +347,48 @@ export default function Folha() {
         description: (err as Error)?.message,
         variant: 'destructive',
       })
+    }
+  }
+
+  const handleAtribuirTeseRapida = async (item: FolhaDia, novaTeseId: string) => {
+    try {
+      const teseValor = novaTeseId === 'none' ? '' : novaTeseId
+      await diamondApi.atribuirTeseSemente(item.id, teseValor)
+      setFolhaItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, tese_semente: teseValor } : i)),
+      )
+      const nomeTese =
+        teseValor === ''
+          ? 'Sem tese'
+          : tesesSementes.find((t) => t.id === teseValor)?.nome || 'Tese'
+      toast({
+        title: 'Tese atualizada',
+        description: `Semente vinculada a: ${nomeTese}`,
+      })
+    } catch (err) {
+      toast({
+        title: 'Erro ao atualizar tese',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleCriarTeseRapida = async (nome: string, descricao?: string) => {
+    try {
+      const novaTese = await diamondApi.createTeseSemente({ nome, descricao })
+      setTesesSementes((prev) => [...prev, novaTese])
+      toast({
+        title: 'Tese de mercado criada!',
+        description: `Tese "${novaTese.nome}" disponível no cofre.`,
+      })
+    } catch (err) {
+      toast({
+        title: 'Erro ao criar tese',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+      throw err
     }
   }
 
@@ -452,7 +510,7 @@ export default function Folha() {
 
   const carregarDados = async () => {
     try {
-      const [f, p, c, n, flxs, cats, marcos, dem] = await Promise.all([
+      const [f, p, c, n, flxs, cats, marcos, dem, teses] = await Promise.all([
         diamondApi.listFolhaDia(),
         diamondApi.listProjetos(),
         diamondApi.listContatos(),
@@ -461,6 +519,7 @@ export default function Folha() {
         diamondApi.listCategoriasFluxo(),
         diamondApi.listMarcosTimeline(),
         diamondApi.listDemandas().catch(() => []),
+        diamondApi.listTesesSementes().catch(() => []),
       ])
       setFolhaItems(f)
       setDemandasCadastradas(dem)
@@ -470,6 +529,7 @@ export default function Folha() {
       setFluxos(flxs)
       setCategorias(cats)
       setMarcosTimeline(marcos)
+      setTesesSementes(teses)
       recarregarDadosGlobais().catch(() => {})
     } catch (err) {
       console.error('Erro ao carregar folha:', err)
@@ -1404,6 +1464,22 @@ export default function Folha() {
     () => folhaItems.filter((i) => Boolean(i.estado_semente)).length,
     [folhaItems],
   )
+
+  const contagemSementesPorTese = useMemo(() => {
+    const counts: Record<string, number> = { sem_tese: 0 }
+    tesesSementes.forEach((t) => {
+      counts[t.id] = 0
+    })
+    folhaItems.forEach((item) => {
+      if (!item.estado_semente) return
+      if (item.tese_semente && counts[item.tese_semente] !== undefined) {
+        counts[item.tese_semente]++
+      } else {
+        counts['sem_tese']++
+      }
+    })
+    return counts
+  }, [folhaItems, tesesSementes])
   const totalArquivados = useMemo(
     () => folhaItems.filter((i) => Boolean(i.arquivado) && !i.estado_semente).length,
     [folhaItems],
@@ -2092,6 +2168,11 @@ export default function Folha() {
         totalFixados={totalFixados}
         totalArquivados={totalArquivados}
         totalSementes={totalSementes}
+        tesesSementes={tesesSementes}
+        teseFiltroId={teseFiltroId}
+        contagemPorTese={contagemSementesPorTese}
+        onTeseFiltroChange={setTeseFiltroId}
+        onCriarTeseRapida={handleCriarTeseRapida}
         projetos={projetos}
         contatos={contatos}
         fluxos={fluxos}
@@ -2120,7 +2201,17 @@ export default function Folha() {
           </span>
         </div>
 
-        {itensFiltrados.length === 0 ? (
+        {filtrosFolha.estadoArquivo === 'sementes' ? (
+          <SementesAgrupadasPorTese
+            sementes={itensFiltrados}
+            teses={tesesSementes}
+            teseFiltroId={teseFiltroId}
+            onReativar={handleReativarSemente}
+            onAtribuirTese={handleAtribuirTeseRapida}
+            onCriarTeseRapida={handleCriarTeseRapida}
+            destaqueId={destaqueParam}
+          />
+        ) : itensFiltrados.length === 0 ? (
           <div className="bg-white border border-[#E5E1D8] rounded-xl p-10 text-center text-xs text-[#5B6470] space-y-3">
             <div className="w-12 h-12 rounded-full bg-[#0F766E]/10 text-[#0F766E] flex items-center justify-center mx-auto">
               <Search className="w-6 h-6" />
@@ -3341,6 +3432,33 @@ export default function Folha() {
                 </p>
               </div>
             )}
+
+            <div>
+              <label className="text-[11px] font-semibold text-[#1A1D21] block mb-1">
+                Tese de Mercado (Cofre por Tese)
+              </label>
+              <Select
+                value={sementeTeseEscolhida}
+                onValueChange={(val) => setSementeTeseEscolhida(val)}
+              >
+                <SelectTrigger className="text-xs h-9 bg-white border-[#E5E1D8]">
+                  <SelectValue placeholder="Selecione uma tese..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">
+                    <span className="text-stone-500">Sem tese definida</span>
+                  </SelectItem>
+                  {tesesSementes.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-[#5B6470] mt-1">
+                Agrupa esta semente dentro da tese de mercado no Cofre.
+              </p>
+            </div>
 
             <div>
               <label className="text-[11px] font-semibold text-[#1A1D21] block mb-1">

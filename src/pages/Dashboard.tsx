@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/use-auth'
 import { diamondApi } from '@/services/diamondApi'
-import type { Card as CardType, FolhaDia, ResumoDia, Projeto } from '@/types'
+import type { Card as CardType, FolhaDia, ResumoDia, Projeto, TeseSemente } from '@/types'
 import {
   FileEdit,
   KanbanSquare,
@@ -20,6 +20,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { DigestSementesCard } from '@/components/dashboard/DigestSementesCard'
 
 export default function Dashboard() {
   const { user, profile, isClientPortal } = useAuth()
@@ -29,6 +30,9 @@ export default function Dashboard() {
   const [folhaPendentes, setFolhaPendentes] = useState<FolhaDia[]>([])
   const [latestResumo, setLatestResumo] = useState<ResumoDia | null>(null)
   const [projetos, setProjetos] = useState<Projeto[]>([])
+  const [sementesMes, setSementesMes] = useState<FolhaDia[]>([])
+  const [totalSementesGeral, setTotalSementesGeral] = useState<number>(0)
+  const [tesesSementes, setTesesSementes] = useState<TeseSemente[]>([])
   const [loading, setLoading] = useState(true)
 
   // Redirecionamento condicional de onboarding
@@ -46,16 +50,21 @@ export default function Dashboard() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [c, f, r, p] = await Promise.all([
+        const [c, f, r, p, sMes, tList] = await Promise.all([
           diamondApi.listCards(),
           diamondApi.listFolhaDia(),
           diamondApi.getLatestResumo(),
           diamondApi.listProjetos(),
+          diamondApi.listSementesRevisaoMes().catch(() => []),
+          diamondApi.listTesesSementes().catch(() => []),
         ])
         setCards(c)
-        setFolhaPendentes(f.filter((item) => item.status === 'pendente'))
+        setFolhaPendentes(f.filter((item) => item.status === 'pendente' && !item.estado_semente))
+        setTotalSementesGeral(f.filter((item) => Boolean(item.estado_semente)).length)
         setLatestResumo(r)
         setProjetos(p)
+        setSementesMes(sMes)
+        setTesesSementes(tList)
       } catch (err) {
         console.error('Erro ao carregar dados do dashboard:', err)
       } finally {
@@ -369,6 +378,14 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
+
+        {/* Painel 4: Digest Mensal de Sementes 🌱 */}
+        <DigestSementesCard
+          sementesMes={sementesMes}
+          totalSementesGeral={totalSementesGeral}
+          teses={tesesSementes}
+          loading={loading}
+        />
       </div>
     </div>
   )

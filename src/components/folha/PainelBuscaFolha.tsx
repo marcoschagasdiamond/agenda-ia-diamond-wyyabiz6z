@@ -29,6 +29,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import type { TeseSemente } from '@/types'
+import { AbaCofreTeses } from './AbaCofreTeses'
 
 export type PeriodoFiltro = 'todos' | 'hoje' | 'esta_semana' | 'este_mes' | 'personalizado'
 export type TipoFiltro = 'todos' | 'comum' | 'reuniao' | 'whatsapp'
@@ -77,6 +79,11 @@ interface PainelBuscaFolhaProps {
   totalFixados: number
   totalArquivados: number
   totalSementes?: number
+  tesesSementes?: TeseSemente[]
+  teseFiltroId?: string
+  contagemPorTese?: Record<string, number>
+  onTeseFiltroChange?: (teseId: string) => void
+  onCriarTeseRapida?: (nome: string, descricao?: string) => Promise<void>
   projetos: Projeto[]
   contatos: Contato[]
   fluxos: FluxoKanban[]
@@ -92,6 +99,11 @@ export const PainelBuscaFolha: React.FC<PainelBuscaFolhaProps> = ({
   totalFixados,
   totalArquivados,
   totalSementes = 0,
+  tesesSementes = [],
+  teseFiltroId = 'todas',
+  contagemPorTese,
+  onTeseFiltroChange,
+  onCriarTeseRapida,
   projetos,
   contatos,
   fluxos,
@@ -128,8 +140,31 @@ export const PainelBuscaFolha: React.FC<PainelBuscaFolhaProps> = ({
     filtros.ordenacao !== 'recentes',
   ].filter(Boolean).length
 
+  const contagensPorTeseCalculada = React.useMemo(() => {
+    if (contagemPorTese) return contagemPorTese
+    const counts: Record<string, number> = { sem_tese: 0 }
+    tesesSementes.forEach((t) => {
+      counts[t.id] = 0
+    })
+    return counts
+  }, [tesesSementes, contagemPorTese])
+
   return (
     <div className="bg-white rounded-xl border border-[#E5E1D8] shadow-xs p-4 space-y-3">
+      {/* Bloco do Cofre por Tese quando na aba Sementes */}
+      {filtros.estadoArquivo === 'sementes' && (
+        <AbaCofreTeses
+          teses={tesesSementes}
+          teseSelecionadaId={teseFiltroId}
+          onSelecionarTese={(id) => onTeseFiltroChange && onTeseFiltroChange(id)}
+          onCriarTeseRapida={async (nome, desc) => {
+            if (onCriarTeseRapida) await onCriarTeseRapida(nome, desc)
+          }}
+          contagemPorTese={contagensPorTeseCalculada}
+          totalSementes={totalSementes}
+        />
+      )}
+
       {/* Linha principal: Busca por texto em tempo real + Botão de Filtros + Ordenação */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
         <div className="relative flex-1">

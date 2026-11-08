@@ -273,13 +273,25 @@ export interface FolhaDia {
   data_revisao_semente?: string
   reativada_em?: string
   semente_origem_id?: string
+  tese_semente?: string
   created: string
   updated: string
   expand?: {
     projeto?: Projeto
     negocio?: Negocio
     contato?: Contato
+    tese_semente?: TeseSemente
   }
+}
+
+export interface TeseSemente {
+  id: string
+  nome: string
+  descricao?: string
+  cor?: string
+  ordem?: number
+  created?: string
+  updated?: string
 }
 
 export interface GrupoFamilia {

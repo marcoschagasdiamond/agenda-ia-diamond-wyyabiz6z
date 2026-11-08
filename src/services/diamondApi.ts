@@ -298,7 +298,7 @@ export const diamondApi = {
     return await pb.collection('folha_dia').getFullList<FolhaDia>({
       filter: filters.join(' && '),
       sort: '-fixado,ordem,created',
-      expand: 'projeto,negocio,contato',
+      expand: 'projeto,negocio,contato,tese_semente',
     })
   },
 
@@ -313,7 +313,7 @@ export const diamondApi = {
     return await pb.collection('folha_dia').getList<FolhaDia>(page, perPage, {
       filter: params.filter || '',
       sort: params.sort || '-fixado,-created',
-      expand: 'projeto,negocio,contato',
+      expand: 'projeto,negocio,contato,tese_semente',
     })
   },
 
@@ -331,6 +331,7 @@ export const diamondApi = {
       condicao_reativacao?: string
       data_revisao_semente?: string
       observacao?: string
+      tese_semente?: string
     },
   ): Promise<FolhaDia> {
     const itemAtual = await pb.collection('folha_dia').getOne<FolhaDia>(id)
@@ -339,30 +340,88 @@ export const diamondApi = {
       registroAtualizado = `${registroAtualizado}\n\n[Observação da Semente]: ${dados.observacao.trim()}`
     }
 
-    return await pb.collection('folha_dia').update<FolhaDia>(id, {
+    const payload: Record<string, any> = {
       estado_semente: true,
       arquivado: true,
       condicao_reativacao: dados.condicao_reativacao || '',
       data_revisao_semente: dados.data_revisao_semente || '',
       registro: registroAtualizado,
+    }
+    if (dados.tese_semente !== undefined) {
+      payload.tese_semente = dados.tese_semente || ''
+    }
+
+    return await pb.collection('folha_dia').update<FolhaDia>(id, payload, {
+      expand: 'projeto,negocio,contato,tese_semente',
     })
+  },
+
+  async atribuirTeseSemente(id: string, teseId: string): Promise<FolhaDia> {
+    return await pb
+      .collection('folha_dia')
+      .update<FolhaDia>(
+        id,
+        { tese_semente: teseId || '' },
+        { expand: 'projeto,negocio,contato,tese_semente' },
+      )
   },
 
   async reativarSemente(id: string): Promise<FolhaDia> {
     const agoraData = new Date().toISOString().slice(0, 10)
-    return await pb.collection('folha_dia').update<FolhaDia>(id, {
-      estado_semente: false,
-      arquivado: false,
-      reativada_em: agoraData,
-    })
+    return await pb.collection('folha_dia').update<FolhaDia>(
+      id,
+      {
+        estado_semente: false,
+        arquivado: false,
+        reativada_em: agoraData,
+      },
+      { expand: 'projeto,negocio,contato,tese_semente' },
+    )
   },
 
   async listSementes(): Promise<FolhaDia[]> {
     return await pb.collection('folha_dia').getFullList<FolhaDia>({
       filter: 'estado_semente = true',
       sort: '-created',
-      expand: 'projeto,negocio,contato',
+      expand: 'projeto,negocio,contato,tese_semente',
     })
+  },
+
+  // Teses de Mercado para o Cofre de Sementes
+  async listTesesSementes(): Promise<any[]> {
+    try {
+      return await pb.collection('teses_sementes').getFullList({
+        sort: 'ordem,nome',
+      })
+    } catch (err) {
+      console.warn('Erro ao listar teses_sementes:', err)
+      return []
+    }
+  },
+
+  async createTeseSemente(dados: {
+    nome: string
+    descricao?: string
+    cor?: string
+    ordem?: number
+  }): Promise<any> {
+    return await pb.collection('teses_sementes').create(dados)
+  },
+
+  async updateTeseSemente(
+    id: string,
+    dados: Partial<{
+      nome: string
+      descricao?: string
+      cor?: string
+      ordem?: number
+    }>,
+  ): Promise<any> {
+    return await pb.collection('teses_sementes').update(id, dados)
+  },
+
+  async deleteTeseSemente(id: string): Promise<boolean> {
+    return await pb.collection('teses_sementes').delete(id)
   },
 
   async loteArquivarFolhaDia(ids: string[], arquivado = true): Promise<number> {
