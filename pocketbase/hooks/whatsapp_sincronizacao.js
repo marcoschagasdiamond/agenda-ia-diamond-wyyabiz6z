@@ -760,6 +760,90 @@ routerAdd(
           const remetenteRotulo = isGrupo ? `${autorNome} (${grupoNome || 'Grupo'})` : autorNome
           novosRemetentes.push(remetenteRotulo)
 
+          // Radar de Reativação de Sementes:
+          // Se o contato vinculado tiver sementes ativas (estado_semente = true),
+          // despertar/marcar a semente e gerar um assunto de alerta na Folha.
+          if (contatoVinculado && !isGrupo) {
+            try {
+              const sementesContato = app.findRecordsByFilter(
+                'folha_dia',
+                `contato = "${contatoVinculado.id}" && estado_semente = true`,
+                '-created',
+                5,
+              )
+
+              for (let sIdx = 0; sIdx < sementesContato.length; sIdx++) {
+                const semRec = sementesContato[sIdx]
+                const semCriada = semRec.getString('data_hora') || semRec.getString('created') || ''
+                let mesesDecorridoTexto = 'algum tempo'
+                if (semCriada) {
+                  try {
+                    const dtOrig = new Date(semCriada)
+                    const agoraDt = new Date()
+                    const diffMeses = Math.max(
+                      1,
+                      Math.round(
+                        (agoraDt.getTime() - dtOrig.getTime()) / (1000 * 60 * 60 * 24 * 30),
+                      ),
+                    )
+                    mesesDecorridoTexto = diffMeses <= 1 ? '1 mês' : `${diffMeses} meses`
+                  } catch (_) {}
+                }
+
+                const condicaoStr = semRec.getString('condicao_reativacao') || ''
+                const trechoCondicao = condicaoStr ? ` | Condição registrada: "${condicaoStr}"` : ''
+
+                // Criar assunto de alerta na Folha indicando a reativação
+                const alertaFolha = new Record(folhaCol)
+                alertaFolha.set('data', dataHojeStr)
+                alertaFolha.set('data_hora', agoraISO.slice(0, 16))
+                alertaFolha.set(
+                  'registro',
+                  `🌱 [Radar de Reativação] ${autorNome} voltou a falar com você pelo WhatsApp!\nHá uma semente de negócio dele arquivada há ${mesesDecorridoTexto}${trechoCondicao}.\n\nAssunto da semente: "${semRec.getString('registro')}"\nMensagem recebida agora: "${textoMensagem.trim()}"`,
+                )
+                alertaFolha.set('tipo_origem', 'whatsapp')
+                alertaFolha.set('origem_ref', `${autorNome} (Radar Semente 🌱)`)
+                alertaFolha.set('status', 'pendente')
+                alertaFolha.set('arquivado', false)
+                alertaFolha.set('fixado', true)
+                alertaFolha.set('contato', contatoVinculado.id)
+                alertaFolha.set('semente_origem_id', semRec.id)
+                alertaFolha.set('reativada_em', agoraISO)
+                app.save(alertaFolha)
+
+                // Atualizar a semente original: reativada_em
+                semRec.set('reativada_em', agoraISO)
+                app.save(semRec)
+
+                criadasCount++
+
+                // Notificação no sino dedicada à reativação de semente
+                try {
+                  const notifSemente = new Record(notifCol)
+                  notifSemente.set('usuario', authUser.id)
+                  notifSemente.set('tipo', 'whatsapp')
+                  notifSemente.set(
+                    'titulo',
+                    `🌱 Semente Reativada: ${autorNome} voltou a falar com você`,
+                  )
+                  notifSemente.set(
+                    'mensagem',
+                    `Há uma semente de negócio de ${autorNome} arquivada há ${mesesDecorridoTexto}. Um alerta de reativação foi fixado no topo da sua Folha.`,
+                  )
+                  notifSemente.set('link', `/folha?destaque=${alertaFolha.id}`)
+                  notifSemente.set('item_tipo', 'folha')
+                  notifSemente.set('item_id', alertaFolha.id)
+                  notifSemente.set('lida', false)
+                  app.save(notifSemente)
+                } catch (errNotifSem) {
+                  console.log('[WhatsApp Radar] Erro ao criar notificação de semente:', errNotifSem)
+                }
+              }
+            } catch (errRadar) {
+              console.log('[WhatsApp Radar] Erro ao processar sementes do contato:', errRadar)
+            }
+          }
+
           detalhes.push({
             message_id: messageId,
             folha_id: folhaIdGerada,
@@ -1243,6 +1327,85 @@ cronAdd('sincronizar_whatsapp_diamond', '*/5 * * * *', () => {
 
           const remetenteRotulo = isGrupo ? `${autorNome} (${grupoNome || 'Grupo'})` : autorNome
           novosRemetentes.push(remetenteRotulo)
+
+          // Radar de Reativação de Sementes no Cron
+          if (contatoVinculado && !isGrupo) {
+            try {
+              const sementesContato = app.findRecordsByFilter(
+                'folha_dia',
+                `contato = "${contatoVinculado.id}" && estado_semente = true`,
+                '-created',
+                5,
+              )
+
+              for (let sIdx = 0; sIdx < sementesContato.length; sIdx++) {
+                const semRec = sementesContato[sIdx]
+                const semCriada = semRec.getString('data_hora') || semRec.getString('created') || ''
+                let mesesDecorridoTexto = 'algum tempo'
+                if (semCriada) {
+                  try {
+                    const dtOrig = new Date(semCriada)
+                    const agoraDt = new Date()
+                    const diffMeses = Math.max(
+                      1,
+                      Math.round(
+                        (agoraDt.getTime() - dtOrig.getTime()) / (1000 * 60 * 60 * 24 * 30),
+                      ),
+                    )
+                    mesesDecorridoTexto = diffMeses <= 1 ? '1 mês' : `${diffMeses} meses`
+                  } catch (_) {}
+                }
+
+                const condicaoStr = semRec.getString('condicao_reativacao') || ''
+                const trechoCondicao = condicaoStr ? ` | Condição registrada: "${condicaoStr}"` : ''
+
+                const alertaFolha = new Record(folhaCol)
+                alertaFolha.set('data', dataHojeStr)
+                alertaFolha.set('data_hora', agoraISO.slice(0, 16))
+                alertaFolha.set(
+                  'registro',
+                  `🌱 [Radar de Reativação] ${autorNome} voltou a falar com você pelo WhatsApp!\nHá uma semente de negócio dele arquivada há ${mesesDecorridoTexto}${trechoCondicao}.\n\nAssunto da semente: "${semRec.getString('registro')}"\nMensagem recebida agora: "${textoMensagem.trim()}"`,
+                )
+                alertaFolha.set('tipo_origem', 'whatsapp')
+                alertaFolha.set('origem_ref', `${autorNome} (Radar Semente 🌱)`)
+                alertaFolha.set('status', 'pendente')
+                alertaFolha.set('arquivado', false)
+                alertaFolha.set('fixado', true)
+                alertaFolha.set('contato', contatoVinculado.id)
+                alertaFolha.set('semente_origem_id', semRec.id)
+                alertaFolha.set('reativada_em', agoraISO)
+                app.save(alertaFolha)
+
+                semRec.set('reativada_em', agoraISO)
+                app.save(semRec)
+
+                criadasCount++
+
+                try {
+                  const notifSemente = new Record(notifCol)
+                  notifSemente.set('usuario', userId)
+                  notifSemente.set('tipo', 'whatsapp')
+                  notifSemente.set(
+                    'titulo',
+                    `🌱 Semente Reativada: ${autorNome} voltou a falar com você`,
+                  )
+                  notifSemente.set(
+                    'mensagem',
+                    `Há uma semente de negócio de ${autorNome} arquivada há ${mesesDecorridoTexto}. Um alerta de reativação foi fixado no topo da sua Folha.`,
+                  )
+                  notifSemente.set('link', `/folha?destaque=${alertaFolha.id}`)
+                  notifSemente.set('item_tipo', 'folha')
+                  notifSemente.set('item_id', alertaFolha.id)
+                  notifSemente.set('lida', false)
+                  app.save(notifSemente)
+                } catch (errNotifSem) {
+                  console.log('[WhatsApp Cron Radar] Erro ao criar notificação:', errNotifSem)
+                }
+              }
+            } catch (errRadar) {
+              console.log('[WhatsApp Cron Radar] Erro ao processar sementes:', errRadar)
+            }
+          }
         }
 
         const recSync = new Record(syncCol)

@@ -50,7 +50,16 @@ import {
   Archive,
   ArchiveRestore,
   Search,
+  Sprout,
+  MoreVertical,
 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { GravadorReuniao } from '@/components/folha/GravadorReuniao'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -240,6 +249,90 @@ export default function Folha() {
 
   // Estado dos Filtros Avançados e Busca em Tempo Real (Fase 1)
   const [filtrosFolha, setFiltrosFolha] = useState<FolhaFiltrosState>(FILTROS_PADRAO)
+
+  // Modal de Arquivar como Semente
+  const [modalSementeOpen, setModalSementeOpen] = useState(false)
+  const [itemParaSemente, setItemParaSemente] = useState<FolhaDia | null>(null)
+  const [sementeCondicao, setSementeCondicao] = useState('')
+  const [sementeDataRevisao, setSementeDataRevisao] = useState(() => {
+    const d = new Date()
+    d.setMonth(d.getMonth() + 6)
+    return d.toISOString().slice(0, 10)
+  })
+  const [sementeObservacao, setSementeObservacao] = useState('')
+  const [salvandoSemente, setSalvandoSemente] = useState(false)
+
+  const handleAbrirModalSemente = (item: FolhaDia) => {
+    setItemParaSemente(item)
+    setSementeCondicao(item.condicao_reativacao || '')
+    if (item.data_revisao_semente) {
+      setSementeDataRevisao(item.data_revisao_semente.slice(0, 10))
+    } else {
+      const d = new Date()
+      d.setMonth(d.getMonth() + 6)
+      setSementeDataRevisao(d.toISOString().slice(0, 10))
+    }
+    setSementeObservacao('')
+    setModalSementeOpen(true)
+  }
+
+  const handleConfirmarArquivarSemente = async () => {
+    if (!itemParaSemente) return
+    setSalvandoSemente(true)
+    try {
+      const atualizado = await diamondApi.arquivarComoSemente(itemParaSemente.id, {
+        condicao_reativacao: sementeCondicao,
+        data_revisao_semente: sementeDataRevisao,
+        observacao: sementeObservacao,
+      })
+
+      setFolhaItems((prev) =>
+        prev.map((i) =>
+          i.id === itemParaSemente.id
+            ? { ...i, ...atualizado, estado_semente: true, arquivado: true }
+            : i,
+        ),
+      )
+
+      toast({
+        title: 'Assunto arquivado como Semente 🌱',
+        description:
+          'Guardado para germinar. Você pode consultá-lo na aba Sementes ou aguardar reativação automática.',
+      })
+      setModalSementeOpen(false)
+      setItemParaSemente(null)
+    } catch (err) {
+      toast({
+        title: 'Erro ao arquivar como semente',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoSemente(false)
+    }
+  }
+
+  const handleReativarSemente = async (item: FolhaDia) => {
+    try {
+      const atualizado = await diamondApi.reativarSemente(item.id)
+      setFolhaItems((prev) =>
+        prev.map((i) =>
+          i.id === item.id ? { ...i, ...atualizado, estado_semente: false, arquivado: false } : i,
+        ),
+      )
+      toast({
+        title: 'Semente reativada com sucesso! 🌱 ➔ 📋',
+        description:
+          'O assunto voltou para a lista ativa da Folha com seu histórico e vínculos preservados.',
+      })
+    } catch (err) {
+      toast({
+        title: 'Erro ao reativar semente',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    }
+  }
 
   // Ações de Fixar e Arquivar
   const handleToggleFixar = async (item: FolhaDia) => {
@@ -1143,8 +1236,14 @@ export default function Folha() {
     }
   }
 
-  const pendentes = folhaItems.filter((item) => item.status === 'pendente')
-  const processados = folhaItems.filter((item) => item.status === 'processado')
+  // Sementes são um terceiro estado especial — não entram nos pendentes/ativos comuns nem nas estatísticas de demandas
+  const sementes = folhaItems.filter((item) => Boolean(item.estado_semente))
+  const pendentes = folhaItems.filter(
+    (item) => item.status === 'pendente' && !item.estado_semente && !item.arquivado,
+  )
+  const processados = folhaItems.filter(
+    (item) => item.status === 'processado' && !item.estado_semente && !item.arquivado,
+  )
 
   // Conjunto de IDs ou textos de assuntos que possuem demandas cadastradas
   const assuntosComDemandaSet = useMemo(() => {
@@ -1185,10 +1284,17 @@ export default function Folha() {
   const itensFiltrados = useMemo(() => {
     return folhaItems
       .filter((item) => {
-        // 1. Filtro de Arquivamento
-        const isArquivado = Boolean(item.arquivado)
-        if (filtrosFolha.estadoArquivo === 'ativos' && isArquivado) return false
-        if (filtrosFolha.estadoArquivo === 'arquivados' && !isArquivado) return false
+        // 1. Filtro de Arquivamento e Estado Semente
+        const isSemente = Boolean(item.estado_semente)
+        const isArquivado = Boolean(item.arquivado) && !isSemente
+
+        if (filtrosFolha.estadoArquivo === 'ativos') {
+          if (isSemente || Boolean(item.arquivado)) return false
+        } else if (filtrosFolha.estadoArquivo === 'sementes') {
+          if (!isSemente) return false
+        } else if (filtrosFolha.estadoArquivo === 'arquivados') {
+          if (!isArquivado || isSemente) return false
+        }
 
         // 2. Busca por texto em tempo real (título, notas, transcrição da reunião, ata)
         if (filtrosFolha.busca.trim()) {
@@ -1294,14 +1400,39 @@ export default function Folha() {
       })
   }, [folhaItems, filtrosFolha, demandasCadastradas])
 
+  const totalSementes = useMemo(
+    () => folhaItems.filter((i) => Boolean(i.estado_semente)).length,
+    [folhaItems],
+  )
   const totalArquivados = useMemo(
-    () => folhaItems.filter((i) => Boolean(i.arquivado)).length,
+    () => folhaItems.filter((i) => Boolean(i.arquivado) && !i.estado_semente).length,
     [folhaItems],
   )
   const totalFixados = useMemo(
-    () => folhaItems.filter((i) => Boolean(i.fixado) && !i.arquivado).length,
+    () => folhaItems.filter((i) => Boolean(i.fixado) && !i.arquivado && !i.estado_semente).length,
     [folhaItems],
   )
+
+  const formatarTempoDecorrido = (dataOrigemStr?: string) => {
+    if (!dataOrigemStr) return ''
+    try {
+      const d = new Date(dataOrigemStr)
+      if (isNaN(d.getTime())) return ''
+      const agora = new Date()
+      const diffMs = Math.max(0, agora.getTime() - d.getTime())
+      const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+      if (diffDias < 1) return 'hoje'
+      if (diffDias === 1) return 'há 1 dia'
+      if (diffDias < 30) return `há ${diffDias} dias`
+      const diffMeses = Math.floor(diffDias / 30)
+      if (diffMeses <= 1) return 'há 1 mês'
+      if (diffMeses < 12) return `há ${diffMeses} meses`
+      const diffAnos = Math.floor(diffDias / 365)
+      return diffAnos <= 1 ? 'há 1 ano' : `há ${diffAnos} anos`
+    } catch {
+      return ''
+    }
+  }
 
   const getOrigemIcon = (tipo?: OrigemTipo, isReuniao?: boolean) => {
     if (isReuniao) {
@@ -1960,6 +2091,7 @@ export default function Folha() {
         totalGeral={folhaItems.length}
         totalFixados={totalFixados}
         totalArquivados={totalArquivados}
+        totalSementes={totalSementes}
         projetos={projetos}
         contatos={contatos}
         fluxos={fluxos}
@@ -1973,11 +2105,13 @@ export default function Folha() {
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold text-[#1A1D21] flex items-center gap-2">
               <Clock className="w-4 h-4 text-[#D97706]" />
-              {filtrosFolha.estadoArquivo === 'arquivados'
-                ? `Assuntos Arquivados (${itensFiltrados.length})`
-                : filtrosFolha.estadoArquivo === 'todos'
-                  ? `Todos os Assuntos (${itensFiltrados.length})`
-                  : `Assuntos da Folha (${itensFiltrados.length})`}
+              {filtrosFolha.estadoArquivo === 'sementes'
+                ? `Sementes em Germinação 🌱 (${itensFiltrados.length})`
+                : filtrosFolha.estadoArquivo === 'arquivados'
+                  ? `Assuntos Arquivados (${itensFiltrados.length})`
+                  : filtrosFolha.estadoArquivo === 'todos'
+                    ? `Todos os Assuntos (${itensFiltrados.length})`
+                    : `Assuntos da Folha (${itensFiltrados.length})`}
             </h2>
           </div>
           <span className="text-xs text-[#5B6470]">
@@ -2104,34 +2238,49 @@ export default function Folha() {
                         </Button>
 
                         {/* Botão Arquivar / Desarquivar */}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleToggleArquivar(item)}
-                          className={`h-7 px-1.5 text-[11px] gap-1 ${
-                            isArquivado
-                              ? 'text-blue-700 bg-blue-50 hover:bg-blue-100 font-semibold'
-                              : 'text-[#5B6470] hover:text-[#1A1D21]'
-                          }`}
-                          title={
-                            isArquivado
-                              ? 'Desarquivar (voltar para a lista principal)'
-                              : 'Arquivar assunto'
-                          }
-                        >
-                          {isArquivado ? (
-                            <>
-                              <ArchiveRestore className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Desarquivar</span>
-                            </>
-                          ) : (
-                            <>
-                              <Archive className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Arquivar</span>
-                            </>
-                          )}
-                        </Button>
+                        {/* Se for Semente: Botão Reativar direto */}
+                        {item.estado_semente ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => handleReativarSemente(item)}
+                            className="h-7 px-2 text-[11px] gap-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-2xs"
+                            title="Reativar semente e devolver à Folha ativa"
+                          >
+                            <Sprout className="w-3.5 h-3.5" />
+                            <span>Reativar</span>
+                          </Button>
+                        ) : (
+                          /* Botão Arquivar / Desarquivar */
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleToggleArquivar(item)}
+                            className={`h-7 px-1.5 text-[11px] gap-1 ${
+                              isArquivado
+                                ? 'text-blue-700 bg-blue-50 hover:bg-blue-100 font-semibold'
+                                : 'text-[#5B6470] hover:text-[#1A1D21]'
+                            }`}
+                            title={
+                              isArquivado
+                                ? 'Desarquivar (voltar para a lista principal)'
+                                : 'Arquivar assunto'
+                            }
+                          >
+                            {isArquivado ? (
+                              <>
+                                <ArchiveRestore className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Desarquivar</span>
+                              </>
+                            ) : (
+                              <>
+                                <Archive className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Arquivar</span>
+                              </>
+                            )}
+                          </Button>
+                        )}
 
                         <Button
                           type="button"
@@ -2155,16 +2304,63 @@ export default function Folha() {
                         >
                           <ArrowDown className="w-3 h-3" />
                         </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleExcluirRegistro(item.id)}
-                          className="h-6 w-6 p-0 text-[#5B6470] hover:text-red-600"
-                          title="Excluir assunto"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
+
+                        {/* Menu de 3 pontinhos com ação 'Arquivar como Semente' */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 text-[#5B6470] hover:text-[#1A1D21]"
+                              title="Mais opções do assunto"
+                            >
+                              <MoreVertical className="w-3.5 h-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="text-xs w-48">
+                            {!item.estado_semente ? (
+                              <DropdownMenuItem
+                                onClick={() => handleAbrirModalSemente(item)}
+                                className="cursor-pointer gap-2 text-emerald-800 font-medium"
+                              >
+                                <Sprout className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Arquivar como Semente</span>
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem
+                                onClick={() => handleReativarSemente(item)}
+                                className="cursor-pointer gap-2 text-emerald-800 font-medium"
+                              >
+                                <Sprout className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Reativar Semente</span>
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => handleToggleFixar(item)}
+                              className="cursor-pointer gap-2"
+                            >
+                              <Pin className="w-3.5 h-3.5 text-amber-600" />
+                              <span>{isFixado ? 'Desafixar do topo' : 'Fixar no topo'}</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleToggleArquivar(item)}
+                              className="cursor-pointer gap-2"
+                            >
+                              <Archive className="w-3.5 h-3.5 text-[#5B6470]" />
+                              <span>{isArquivado ? 'Desarquivar' : 'Arquivar comum'}</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => handleExcluirRegistro(item.id)}
+                              className="cursor-pointer gap-2 text-red-600 focus:text-red-700"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Excluir assunto</span>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
 
@@ -2181,6 +2377,17 @@ export default function Folha() {
                       </div>
 
                       <div className="flex items-center gap-1">
+                        {item.estado_semente && (
+                          <Badge className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold gap-1 shadow-2xs">
+                            <Sprout className="w-3 h-3 text-emerald-700" />
+                            <span>Semente 🌱</span>
+                          </Badge>
+                        )}
+                        {item.reativada_em && !item.estado_semente && (
+                          <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[9px] font-semibold gap-1">
+                            🌱 Reativada ({item.reativada_em.slice(0, 10)})
+                          </Badge>
+                        )}
                         {temDemanda ? (
                           <Badge className="bg-emerald-100 text-emerald-800 border-none text-[9px] font-semibold gap-1">
                             <CheckCircle2 className="w-2.5 h-2.5" />
@@ -2198,6 +2405,37 @@ export default function Folha() {
                         )}
                       </div>
                     </div>
+
+                    {/* Caixa de Contexto da Semente */}
+                    {item.estado_semente && (
+                      <div className="mb-2.5 p-2.5 rounded-lg bg-amber-50/80 border border-amber-200/90 text-xs text-amber-900 space-y-1">
+                        <div className="flex items-center justify-between font-semibold text-[11px] text-amber-800">
+                          <span className="flex items-center gap-1.5">
+                            <Sprout className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Semente em germinação</span>
+                            {item.data_hora || item.created ? (
+                              <span className="font-normal text-amber-700">
+                                ({formatarTempoDecorrido(item.data_hora || item.created)})
+                              </span>
+                            ) : null}
+                          </span>
+                          {item.data_revisao_semente && (
+                            <span className="text-[10px] bg-amber-200/70 text-amber-900 px-1.5 py-0.2 rounded font-medium">
+                              Revisão: {item.data_revisao_semente.slice(0, 10)}
+                            </span>
+                          )}
+                        </div>
+                        {item.condicao_reativacao ? (
+                          <p className="text-[11px] text-amber-950/90">
+                            <strong>Condição de reativação:</strong> {item.condicao_reativacao}
+                          </p>
+                        ) : (
+                          <p className="text-[11px] text-amber-800 italic">
+                            Sem condição específica — reativa por contato no WhatsApp ou revisão.
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     {/* Player de áudio e indicadores de reunião gravada */}
                     {item.is_reuniao && (
@@ -3065,6 +3303,116 @@ export default function Folha() {
                 <>
                   <Check className="w-3.5 h-3.5 mr-1.5" />
                   Aprovar & Salvar no Sistema
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Arquivar como Semente */}
+      <Dialog open={modalSementeOpen} onOpenChange={setModalSementeOpen}>
+        <DialogContent className="max-w-md bg-white border border-[#E5E1D8]">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 bg-amber-100 text-amber-800 rounded-lg">
+                <Sprout className="w-5 h-5 text-emerald-700" />
+              </span>
+              <div>
+                <DialogTitle className="text-base font-bold text-[#1A1D21]">
+                  Arquivar como Semente 🌱
+                </DialogTitle>
+                <DialogDescription className="text-xs text-[#5B6470]">
+                  Guarde esta oportunidade ou negócio que hoje não tem interesse, mas pode render no
+                  futuro.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-3.5 pt-2 text-xs">
+            {itemParaSemente && (
+              <div className="p-2.5 rounded-lg bg-[#FAFAF9] border border-[#E5E1D8] text-[#1A1D21] max-h-24 overflow-y-auto">
+                <span className="text-[10px] uppercase font-bold text-[#5B6470] block mb-0.5">
+                  Assunto original:
+                </span>
+                <p className="line-clamp-3 text-[11px] leading-relaxed">
+                  {itemParaSemente.registro}
+                </p>
+              </div>
+            )}
+
+            <div>
+              <label className="text-[11px] font-semibold text-[#1A1D21] block mb-1">
+                Condição de Reativação
+              </label>
+              <Input
+                placeholder='Ex.: "quando alguém procurar esse tipo de serviço" ou "quando cliente retomar contato"'
+                value={sementeCondicao}
+                onChange={(e) => setSementeCondicao(e.target.value)}
+                className="text-xs h-9 bg-white border-[#E5E1D8]"
+              />
+              <p className="text-[10px] text-[#5B6470] mt-1">
+                Explica o gatilho para reabrir este assunto no futuro.
+              </p>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold text-[#1A1D21] block mb-1">
+                Data Prevista de Revisão
+              </label>
+              <Input
+                type="date"
+                value={sementeDataRevisao}
+                onChange={(e) => setSementeDataRevisao(e.target.value)}
+                className="text-xs h-9 bg-white border-[#E5E1D8]"
+              />
+              <p className="text-[10px] text-[#5B6470] mt-1">
+                Sugerido: daqui a 6 meses. O radar também reativa caso o contato fale no WhatsApp.
+              </p>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold text-[#1A1D21] block mb-1">
+                Observação adicional (opcional)
+              </label>
+              <Textarea
+                placeholder="Detalhes do contexto, limites ou motivos para arquivar temporariamente..."
+                rows={2}
+                value={sementeObservacao}
+                onChange={(e) => setSementeObservacao(e.target.value)}
+                className="text-xs bg-white border-[#E5E1D8]"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="pt-2 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setModalSementeOpen(false)}
+              className="text-xs"
+              disabled={salvandoSemente}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleConfirmarArquivarSemente}
+              disabled={salvandoSemente}
+              className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs px-4 gap-1.5 font-semibold"
+            >
+              {salvandoSemente ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Arquivando...</span>
+                </>
+              ) : (
+                <>
+                  <Sprout className="w-3.5 h-3.5" />
+                  <span>Salvar como Semente</span>
                 </>
               )}
             </Button>

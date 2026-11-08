@@ -268,6 +268,11 @@ export interface FolhaDia {
   ata_organizada?: AtaOrganizadaReuniao | string
   arquivado?: boolean
   fixado?: boolean
+  estado_semente?: boolean
+  condicao_reativacao?: string
+  data_revisao_semente?: string
+  reativada_em?: string
+  semente_origem_id?: string
   created: string
   updated: string
   expand?: {

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-02T13:04:51.795Z",
+  "generatedAt": "2026-11-08T23:30:39.308Z",
   "collections": [
     {
       "name": "users",
@@ -563,13 +563,45 @@
           "type": "bool",
           "required": false,
           "system": false
+        },
+        {
+          "name": "estado_semente",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "condicao_reativacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_revisao_semente",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reativada_em",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "semente_origem_id",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
         "CREATE INDEX idx_folha_dia_data ON folha_dia (data)",
         "CREATE INDEX idx_folha_dia_status ON folha_dia (status)",
         "CREATE INDEX `idx_folha_dia_arquivado` ON `folha_dia` (arquivado)",
-        "CREATE INDEX `idx_folha_dia_fixado` ON `folha_dia` (fixado)"
+        "CREATE INDEX `idx_folha_dia_fixado` ON `folha_dia` (fixado)",
+        "CREATE INDEX `idx_folha_dia_estado_semente` ON `folha_dia` (estado_semente)",
+        "CREATE INDEX `idx_folha_dia_data_revisao_semente` ON `folha_dia` (data_revisao_semente)"
       ]
     },
     {

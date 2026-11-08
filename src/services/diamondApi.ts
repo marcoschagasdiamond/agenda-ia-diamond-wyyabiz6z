@@ -325,6 +325,46 @@ export const diamondApi = {
     return await pb.collection('folha_dia').update<FolhaDia>(id, { fixado })
   },
 
+  async arquivarComoSemente(
+    id: string,
+    dados: {
+      condicao_reativacao?: string
+      data_revisao_semente?: string
+      observacao?: string
+    },
+  ): Promise<FolhaDia> {
+    const itemAtual = await pb.collection('folha_dia').getOne<FolhaDia>(id)
+    let registroAtualizado = itemAtual.registro || ''
+    if (dados.observacao && dados.observacao.trim()) {
+      registroAtualizado = `${registroAtualizado}\n\n[Observação da Semente]: ${dados.observacao.trim()}`
+    }
+
+    return await pb.collection('folha_dia').update<FolhaDia>(id, {
+      estado_semente: true,
+      arquivado: true,
+      condicao_reativacao: dados.condicao_reativacao || '',
+      data_revisao_semente: dados.data_revisao_semente || '',
+      registro: registroAtualizado,
+    })
+  },
+
+  async reativarSemente(id: string): Promise<FolhaDia> {
+    const agoraData = new Date().toISOString().slice(0, 10)
+    return await pb.collection('folha_dia').update<FolhaDia>(id, {
+      estado_semente: false,
+      arquivado: false,
+      reativada_em: agoraData,
+    })
+  },
+
+  async listSementes(): Promise<FolhaDia[]> {
+    return await pb.collection('folha_dia').getFullList<FolhaDia>({
+      filter: 'estado_semente = true',
+      sort: '-created',
+      expand: 'projeto,negocio,contato',
+    })
+  },
+
   async loteArquivarFolhaDia(ids: string[], arquivado = true): Promise<number> {
     let alterados = 0
     for (const id of ids) {

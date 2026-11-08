@@ -34,7 +34,7 @@ export type PeriodoFiltro = 'todos' | 'hoje' | 'esta_semana' | 'este_mes' | 'per
 export type TipoFiltro = 'todos' | 'comum' | 'reuniao' | 'whatsapp'
 export type EstadoDemandaFiltro = 'todos' | 'com_demanda' | 'sem_demanda'
 export type EstadoFluxoFiltro = 'todos' | 'com_fluxo' | 'sem_fluxo'
-export type EstadoArquivoFiltro = 'ativos' | 'arquivados' | 'todos'
+export type EstadoArquivoFiltro = 'ativos' | 'arquivados' | 'sementes' | 'todos'
 export type OrdenacaoFiltro = 'recentes' | 'antigos'
 
 export interface FolhaFiltrosState {
@@ -76,6 +76,7 @@ interface PainelBuscaFolhaProps {
   totalGeral: number
   totalFixados: number
   totalArquivados: number
+  totalSementes?: number
   projetos: Projeto[]
   contatos: Contato[]
   fluxos: FluxoKanban[]
@@ -90,6 +91,7 @@ export const PainelBuscaFolha: React.FC<PainelBuscaFolhaProps> = ({
   totalGeral,
   totalFixados,
   totalArquivados,
+  totalSementes = 0,
   projetos,
   contatos,
   fluxos,
@@ -175,7 +177,7 @@ export const PainelBuscaFolha: React.FC<PainelBuscaFolhaProps> = ({
             )}
           </Button>
 
-          {/* Seletor rápido de Arquivo (Ativos / Arquivados / Todos) */}
+          {/* Seletor rápido de Arquivo (Ativos / Arquivados / Sementes / Todos) */}
           <div className="flex items-center bg-[#F4F2EE] p-0.5 rounded-lg border border-[#E5E1D8]">
             <button
               type="button"
@@ -187,6 +189,23 @@ export const PainelBuscaFolha: React.FC<PainelBuscaFolhaProps> = ({
               }`}
             >
               Ativos
+            </button>
+            <button
+              type="button"
+              onClick={() => atualizar('estadoArquivo', 'sementes')}
+              className={`px-2.5 py-1 text-xs rounded-md font-medium flex items-center gap-1 transition-colors ${
+                filtros.estadoArquivo === 'sementes'
+                  ? 'bg-white text-emerald-800 shadow-2xs font-semibold'
+                  : 'text-[#5B6470] hover:text-[#1A1D21]'
+              }`}
+            >
+              <span className="text-xs">🌱</span>
+              <span>Sementes</span>
+              {totalSementes > 0 && (
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1 rounded-full font-bold">
+                  {totalSementes}
+                </span>
+              )}
             </button>
             <button
               type="button"
