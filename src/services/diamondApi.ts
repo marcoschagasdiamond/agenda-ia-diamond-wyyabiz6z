@@ -387,6 +387,37 @@ export const diamondApi = {
     })
   },
 
+  async listSementesRevisaoMes(ano?: number, mes?: number): Promise<FolhaDia[]> {
+    const now = new Date()
+    const targetAno = ano ?? now.getFullYear()
+    const targetMes = mes ?? now.getMonth() + 1
+    const mesStr = String(targetMes).padStart(2, '0')
+    const prefix = `${targetAno}-${mesStr}`
+
+    try {
+      return await pb.collection('folha_dia').getFullList<FolhaDia>({
+        filter: `estado_semente = true && data_revisao_semente ~ '${prefix}'`,
+        sort: 'data_revisao_semente',
+        expand: 'projeto,negocio,contato,tese_semente',
+      })
+    } catch {
+      // Fallback em memória caso a query com operador ~ encontre alguma restrição
+      try {
+        const todas = await pb.collection('folha_dia').getFullList<FolhaDia>({
+          filter: 'estado_semente = true',
+          sort: 'data_revisao_semente',
+          expand: 'projeto,negocio,contato,tese_semente',
+        })
+        return todas.filter(
+          (s) => s.data_revisao_semente && s.data_revisao_semente.startsWith(prefix),
+        )
+      } catch (err) {
+        console.warn('Erro ao listar sementes com revisão no mês:', err)
+        return []
+      }
+    }
+  },
+
   // Teses de Mercado para o Cofre de Sementes
   async listTesesSementes(): Promise<any[]> {
     try {

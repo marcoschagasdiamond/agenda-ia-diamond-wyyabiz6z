@@ -24,6 +24,10 @@ interface SementesAgrupadasPorTeseProps {
   teses: TeseSemente[]
   teseFiltroId: string
   renderItem: (item: FolhaDia, idx: number) => React.ReactNode
+  onReativar?: (item: FolhaDia) => void | Promise<void>
+  onAtribuirTese?: (item: FolhaDia, teseId: string) => void | Promise<void>
+  onCriarTeseRapida?: (nome: string, descricao?: string) => Promise<void>
+  destaqueId?: string | null
 }
 
 export const SementesAgrupadasPorTese: React.FC<SementesAgrupadasPorTeseProps> = ({

@@ -52,6 +52,8 @@ import {
   Search,
   Sprout,
   MoreVertical,
+  Calendar,
+  FolderLock,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -268,6 +270,10 @@ export default function Folha() {
   const [sementeObservacao, setSementeObservacao] = useState('')
   const [sementeTeseEscolhida, setSementeTeseEscolhida] = useState<string>('none')
   const [salvandoSemente, setSalvandoSemente] = useState(false)
+  const [mostrarCriarTeseModal, setMostrarCriarTeseModal] = useState(false)
+  const [novaTeseNomeModal, setNovaTeseNomeModal] = useState('')
+  const [novaTeseDescModal, setNovaTeseDescModal] = useState('')
+  const [criandoTeseModal, setCriandoTeseModal] = useState(false)
 
   const handleAbrirModalSemente = (item: FolhaDia) => {
     setItemParaSemente(item)
@@ -2202,15 +2208,221 @@ export default function Folha() {
         </div>
 
         {filtrosFolha.estadoArquivo === 'sementes' ? (
-          <SementesAgrupadasPorTese
-            sementes={itensFiltrados}
-            teses={tesesSementes}
-            teseFiltroId={teseFiltroId}
-            onReativar={handleReativarSemente}
-            onAtribuirTese={handleAtribuirTeseRapida}
-            onCriarTeseRapida={handleCriarTeseRapida}
-            destaqueId={destaqueParam}
-          />
+          itensFiltrados.length === 0 ? (
+            <div className="bg-white border border-[#E5E1D8] rounded-xl p-10 text-center text-xs text-[#5B6470] space-y-3">
+              <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center mx-auto">
+                <Sprout className="w-6 h-6 text-emerald-700" />
+              </div>
+              <p className="font-semibold text-sm text-[#1A1D21]">
+                Nenhuma semente encontrada para os filtros atuais.
+              </p>
+              <p className="text-[#5B6470] max-w-md mx-auto">
+                Você pode arquivar qualquer assunto da Folha como Semente 🌱 para guardá-lo no cofre
+                e acompanhar por tese de mercado.
+              </p>
+            </div>
+          ) : (
+            <SementesAgrupadasPorTese
+              sementes={itensFiltrados}
+              teses={tesesSementes}
+              teseFiltroId={teseFiltroId}
+              onReativar={handleReativarSemente}
+              onAtribuirTese={handleAtribuirTeseRapida}
+              onCriarTeseRapida={handleCriarTeseRapida}
+              destaqueId={destaqueParam}
+              renderItem={(item, idx) => {
+                const numeroDisplay = item.ordem || idx + 1
+                const temDemanda = verificarTemDemanda(item)
+                const isFixado = Boolean(item.fixado)
+                const isDestaque = Boolean(destaqueParam && item.id === destaqueParam)
+
+                return (
+                  <div
+                    key={item.id}
+                    id={`assunto-${item.id}`}
+                    className={`p-4 rounded-xl border transition-all shadow-2xs flex flex-col justify-between space-y-3 ${
+                      isDestaque
+                        ? 'bg-emerald-50/70 border-emerald-500 ring-2 ring-emerald-500/50 shadow-md'
+                        : 'bg-white border-[#E5E1D8] hover:border-emerald-500/40'
+                    }`}
+                  >
+                    <div>
+                      {/* Header do card com numeração, tese seletora e reativar */}
+                      <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-[#E5E1D8]/60">
+                        <div className="flex items-center gap-2">
+                          <span className="flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                            {numeroDisplay}
+                          </span>
+                          <div className="flex items-center gap-1.5 text-[11px] text-[#5B6470]">
+                            {getOrigemIcon(item.tipo_origem, item.is_reuniao)}
+                            <Badge className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold gap-1 shadow-2xs">
+                              <Sprout className="w-3 h-3 text-emerald-700" />
+                              <span>Semente 🌱</span>
+                            </Badge>
+                            {item.origem_ref && <span>• {item.origem_ref}</span>}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          {/* Seletor rápido de Tese no card */}
+                          <Select
+                            value={item.tese_semente || 'none'}
+                            onValueChange={(val) => handleAtribuirTeseRapida(item, val)}
+                          >
+                            <SelectTrigger className="h-7 text-[11px] bg-white border-stone-200 w-[150px] sm:w-[170px]">
+                              <SelectValue placeholder="Sem tese" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Sem tese</SelectItem>
+                              {tesesSementes.map((t) => (
+                                <SelectItem key={t.id} value={t.id}>
+                                  {t.nome}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+
+                          {/* Botão Reativar direto */}
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => handleReativarSemente(item)}
+                            className="h-7 px-2.5 text-[11px] gap-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-2xs"
+                            title="Reativar semente e devolver à Folha ativa"
+                          >
+                            <Sprout className="w-3.5 h-3.5" />
+                            <span>Reativar</span>
+                          </Button>
+
+                          {/* Menu 3 pontinhos */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0 text-[#5B6470]"
+                              >
+                                <MoreVertical className="w-3.5 h-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48 text-xs">
+                              <DropdownMenuItem
+                                onClick={() => handleReativarSemente(item)}
+                                className="cursor-pointer gap-2 text-emerald-800 font-medium"
+                              >
+                                <Sprout className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Reativar Semente</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleAbrirModalSemente(item)}
+                                className="cursor-pointer gap-2"
+                              >
+                                <FolderLock className="w-3.5 h-3.5 text-amber-600" />
+                                <span>Editar Semente / Tese</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => handleExcluirRegistro(item.id)}
+                                className="cursor-pointer gap-2 text-red-600 focus:text-red-700"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Excluir semente</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
+
+                      {/* Data e Prazo de Revisão */}
+                      <div className="flex flex-wrap items-center justify-between gap-1 mb-2">
+                        <div className="flex items-center gap-1.5 text-[11px] text-[#0F766E] font-medium">
+                          <Clock className="w-3 h-3" />
+                          <span>
+                            Arquivado em:{' '}
+                            {item.data_hora
+                              ? item.data_hora.replace('T', ' ')
+                              : item.data || item.created?.slice(0, 16).replace('T', ' ')}
+                          </span>
+                        </div>
+
+                        {item.data_revisao_semente && (
+                          <span className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded font-semibold flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            Revisão prevista: {item.data_revisao_semente.slice(0, 10)}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Contexto e Condição de Reativação da Semente */}
+                      <div className="mb-2.5 p-2.5 rounded-lg bg-amber-50/80 border border-amber-200/90 text-xs text-amber-900 space-y-1">
+                        <div className="flex items-center justify-between font-semibold text-[11px] text-amber-800">
+                          <span className="flex items-center gap-1.5">
+                            <Sprout className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Semente em germinação</span>
+                            {item.data_hora || item.created ? (
+                              <span className="font-normal text-amber-700">
+                                ({formatarTempoDecorrido(item.data_hora || item.created)})
+                              </span>
+                            ) : null}
+                          </span>
+                        </div>
+                        {item.condicao_reativacao ? (
+                          <p className="text-[11px] text-amber-950/90">
+                            <strong>Condição de reativação:</strong> {item.condicao_reativacao}
+                          </p>
+                        ) : (
+                          <p className="text-[11px] text-amber-800 italic">
+                            Sem condição específica — reativa por contato no WhatsApp ou revisão.
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Texto Principal do Registro */}
+                      <p className="text-xs text-[#1A1D21] font-medium leading-relaxed whitespace-pre-wrap break-words">
+                        {item.registro}
+                      </p>
+                    </div>
+
+                    {/* Rodapé do card */}
+                    <div className="pt-2 border-t border-[#E5E1D8]/60 flex items-center justify-between text-[11px] text-[#5B6470]">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {item.expand?.projeto && (
+                          <span className="bg-[#F4F2EE] px-2 py-0.5 rounded font-medium truncate max-w-[140px]">
+                            📁 {item.expand.projeto.nome}
+                          </span>
+                        )}
+                        {item.expand?.contato && (
+                          <span className="bg-[#F4F2EE] px-2 py-0.5 rounded font-medium truncate max-w-[140px]">
+                            👤 {item.expand.contato.nome}
+                          </span>
+                        )}
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          handleAbrirCriarDemanda({
+                            id: item.id,
+                            numero: numeroDisplay,
+                            texto: item.registro,
+                            projetoId: item.projeto,
+                            contatoId: item.contato,
+                            timeline: item.timeline,
+                          })
+                        }
+                        className="h-6 px-2 text-[11px] text-[#0F766E] border-[#0F766E]/30 hover:bg-[#0F766E]/10 gap-1"
+                      >
+                        <CheckSquare className="w-3 h-3" />
+                        Criar demanda
+                      </Button>
+                    </div>
+                  </div>
+                )
+              }}
+            />
+          )
         ) : itensFiltrados.length === 0 ? (
           <div className="bg-white border border-[#E5E1D8] rounded-xl p-10 text-center text-xs text-[#5B6470] space-y-3">
             <div className="w-12 h-12 rounded-full bg-[#0F766E]/10 text-[#0F766E] flex items-center justify-center mx-auto">
@@ -3434,27 +3646,113 @@ export default function Folha() {
             )}
 
             <div>
-              <label className="text-[11px] font-semibold text-[#1A1D21] block mb-1">
-                Tese de Mercado (Cofre por Tese)
-              </label>
-              <Select
-                value={sementeTeseEscolhida}
-                onValueChange={(val) => setSementeTeseEscolhida(val)}
-              >
-                <SelectTrigger className="text-xs h-9 bg-white border-[#E5E1D8]">
-                  <SelectValue placeholder="Selecione uma tese..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">
-                    <span className="text-stone-500">Sem tese definida</span>
-                  </SelectItem>
-                  {tesesSementes.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.nome}
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-semibold text-[#1A1D21]">
+                  Tese de Mercado (Cofre por Tese)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setMostrarCriarTeseModal(!mostrarCriarTeseModal)}
+                  className="text-[11px] font-semibold text-emerald-800 hover:text-emerald-900 flex items-center gap-1 hover:underline"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>{mostrarCriarTeseModal ? 'Fechar nova tese' : '+ Nova Tese'}</span>
+                </button>
+              </div>
+
+              {mostrarCriarTeseModal ? (
+                <div className="p-2.5 rounded-lg border border-emerald-300 bg-emerald-50/50 space-y-2 mb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-900 block">
+                    Criar Nova Tese de Mercado
+                  </span>
+                  <Input
+                    placeholder="Nome da tese (ex: Crédito Rural, Aquisição de Startups)"
+                    value={novaTeseNomeModal}
+                    onChange={(e) => setNovaTeseNomeModal(e.target.value)}
+                    className="text-xs h-8 bg-white border-emerald-200"
+                  />
+                  <Input
+                    placeholder="Descrição / Critério (opcional)"
+                    value={novaTeseDescModal}
+                    onChange={(e) => setNovaTeseDescModal(e.target.value)}
+                    className="text-xs h-8 bg-white border-emerald-200"
+                  />
+                  <div className="flex justify-end gap-1.5 pt-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setMostrarCriarTeseModal(false)
+                        setNovaTeseNomeModal('')
+                        setNovaTeseDescModal('')
+                      }}
+                      className="h-7 text-xs px-2"
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={!novaTeseNomeModal.trim() || criandoTeseModal}
+                      onClick={async () => {
+                        if (!novaTeseNomeModal.trim()) return
+                        setCriandoTeseModal(true)
+                        try {
+                          const criada = await diamondApi.createTeseSemente({
+                            nome: novaTeseNomeModal.trim(),
+                            descricao: novaTeseDescModal.trim() || undefined,
+                          })
+                          setTesesSementes((prev) => [...prev, criada])
+                          setSementeTeseEscolhida(criada.id)
+                          setNovaTeseNomeModal('')
+                          setNovaTeseDescModal('')
+                          setMostrarCriarTeseModal(false)
+                          toast({
+                            title: 'Tese criada!',
+                            description: `Tese "${criada.nome}" criada e vinculada a esta semente.`,
+                          })
+                        } catch (err) {
+                          toast({
+                            title: 'Erro ao criar tese',
+                            description: (err as Error)?.message,
+                            variant: 'destructive',
+                          })
+                        } finally {
+                          setCriandoTeseModal(false)
+                        }
+                      }}
+                      className="h-7 text-xs bg-emerald-700 hover:bg-emerald-800 text-white font-semibold px-2.5 gap-1"
+                    >
+                      {criandoTeseModal ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Plus className="w-3 h-3" />
+                      )}
+                      <span>Criar e Selecionar</span>
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Select
+                  value={sementeTeseEscolhida}
+                  onValueChange={(val) => setSementeTeseEscolhida(val)}
+                >
+                  <SelectTrigger className="text-xs h-9 bg-white border-[#E5E1D8]">
+                    <SelectValue placeholder="Selecione uma tese..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      <span className="text-stone-500">Sem tese definida</span>
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    {tesesSementes.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <p className="text-[10px] text-[#5B6470] mt-1">
                 Agrupa esta semente dentro da tese de mercado no Cofre.
               </p>
