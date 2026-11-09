@@ -11,7 +11,7 @@
 onRecordCreate((e) => {
   try {
     const user = e.record
-    if (!user) return
+    if (!user) return e.next()
 
     const email = user.email() || user.getString('email')
     const nome = user.getString('name') || 'Nova Conta'
@@ -22,7 +22,7 @@ onRecordCreate((e) => {
       licencaExistente = $app.findFirstRecordByData('licencas_conta', 'titular_email', email)
     } catch (_) {}
 
-    if (licencaExistente) return
+    if (licencaExistente) return e.next()
 
     // Buscar configuração vigente do plano gratuito
     let cfgMaxDias = 2
@@ -151,4 +151,5 @@ onRecordCreate((e) => {
   } catch (err) {
     console.log('[Nova Licença] Erro ao inicializar licença gratuita:', err)
   }
+  return e.next()
 }, 'users')

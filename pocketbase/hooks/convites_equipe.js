@@ -336,7 +336,7 @@ onRecordAfterCreateSuccess((e) => {
       }
     }
 
-    // 2. Fallback: disparo via Resend do Master (executeAsOwner se configurado)
+    // 2. Fallback: disparo via Resend do Master / Dono do App (executeAsOwner ou conector pessoal do Master)
     if (!conectorExecutadoComSucesso) {
       try {
         let resOwner = null
@@ -348,13 +348,75 @@ onRecordAfterCreateSuccess((e) => {
             html: html,
           })
         } catch (_) {
-          resOwner = $connectors.executeAsOwner('resend', 'send-email', {
-            from: remetenteCompleto,
-            to: conviteEmail,
-            subject: assuntoFinal,
-            html: html,
-          })
+          try {
+            resOwner = $connectors.executeAsOwner('resend', 'send-email', {
+              from: remetenteCompleto,
+              to: conviteEmail,
+              subject: assuntoFinal,
+              html: html,
+            })
+          } catch (_) {}
         }
+
+        // Se executeAsOwner não concluiu, tenta via registro de usuário com Resend conectado (ex.: Master / criador)
+        if (!resOwner || resOwner.successful === false) {
+          let userResendRecord = convidadorRecord
+          if (!userResendRecord) {
+            try {
+              const masterUsers = app.findRecordsByFilter(
+                'users',
+                "email ~ 'marcoschagas' || email ~ 'marcos.chagas' || email ~ 'dgroup'",
+                '-created',
+                1,
+              )
+              if (masterUsers && masterUsers.length > 0) {
+                userResendRecord = masterUsers[0]
+              }
+            } catch (_) {}
+          }
+          if (userResendRecord) {
+            try {
+              let resUserOwner = $connectors.execute(userResendRecord, 'RESEND_SEND_EMAIL', {
+                from: remetenteCompleto,
+                to: conviteEmail,
+                subject: assuntoFinal,
+                html: html,
+              })
+              if (resUserOwner && resUserOwner.successful === false) {
+                try {
+                  const resUserOwner2 = $connectors.execute(
+                    userResendRecord,
+                    'resend',
+                    'send-email',
+                    {
+                      from: remetenteCompleto,
+                      to: conviteEmail,
+                      subject: assuntoFinal,
+                      html: html,
+                    },
+                  )
+                  if (resUserOwner2 && resUserOwner2.successful) {
+                    resUserOwner = resUserOwner2
+                  }
+                } catch (_) {}
+              }
+              if (resUserOwner && resUserOwner.successful) {
+                resOwner = resUserOwner
+              } else if (
+                resUserOwner &&
+                resUserOwner.successful === false &&
+                (!resOwner || !resOwner.error)
+              ) {
+                resOwner = resUserOwner
+              }
+            } catch (uOwnerErr) {
+              if (!resOwner) {
+                erroEmailTexto = formatarErro(uOwnerErr, 'email')
+              }
+            }
+          }
+        }
+
         if (resOwner && resOwner.successful === false) {
           erroEmailTexto = formatarErro(resOwner.error, 'email')
         } else if (resOwner && resOwner.successful) {
@@ -857,13 +919,75 @@ routerAdd('POST', '/backend/v1/convites/reenviar', (e) => {
                 html: html,
               })
             } catch (_) {
-              resOwner = $connectors.executeAsOwner('resend', 'send-email', {
-                from: remetenteCompleto,
-                to: conviteEmail,
-                subject: assuntoFinal,
-                html: html,
-              })
+              try {
+                resOwner = $connectors.executeAsOwner('resend', 'send-email', {
+                  from: remetenteCompleto,
+                  to: conviteEmail,
+                  subject: assuntoFinal,
+                  html: html,
+                })
+              } catch (_) {}
             }
+
+            // Se executeAsOwner não concluiu, tenta via usuário conectado (authRecord, convidadorRecord ou Master)
+            if (!resOwner || resOwner.successful === false) {
+              let userResendRecord = authRecord || convidadorRecord
+              if (!userResendRecord) {
+                try {
+                  const masterUsers = app.findRecordsByFilter(
+                    'users',
+                    "email ~ 'marcoschagas' || email ~ 'marcos.chagas' || email ~ 'dgroup'",
+                    '-created',
+                    1,
+                  )
+                  if (masterUsers && masterUsers.length > 0) {
+                    userResendRecord = masterUsers[0]
+                  }
+                } catch (_) {}
+              }
+              if (userResendRecord) {
+                try {
+                  let resUserOwner = $connectors.execute(userResendRecord, 'RESEND_SEND_EMAIL', {
+                    from: remetenteCompleto,
+                    to: conviteEmail,
+                    subject: assuntoFinal,
+                    html: html,
+                  })
+                  if (resUserOwner && resUserOwner.successful === false) {
+                    try {
+                      const resUserOwner2 = $connectors.execute(
+                        userResendRecord,
+                        'resend',
+                        'send-email',
+                        {
+                          from: remetenteCompleto,
+                          to: conviteEmail,
+                          subject: assuntoFinal,
+                          html: html,
+                        },
+                      )
+                      if (resUserOwner2 && resUserOwner2.successful) {
+                        resUserOwner = resUserOwner2
+                      }
+                    } catch (_) {}
+                  }
+                  if (resUserOwner && resUserOwner.successful) {
+                    resOwner = resUserOwner
+                  } else if (
+                    resUserOwner &&
+                    resUserOwner.successful === false &&
+                    (!resOwner || !resOwner.error)
+                  ) {
+                    resOwner = resUserOwner
+                  }
+                } catch (uOwnerErr) {
+                  if (!resOwner) {
+                    erroEmailTexto = formatarErro(uOwnerErr, 'email')
+                  }
+                }
+              }
+            }
+
             if (resOwner && resOwner.successful === false) {
               erroEmailTexto = formatarErro(resOwner.error, 'email')
             } else if (resOwner && resOwner.successful) {
