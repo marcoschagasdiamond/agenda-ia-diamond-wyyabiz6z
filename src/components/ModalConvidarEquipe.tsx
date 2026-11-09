@@ -39,6 +39,7 @@ import {
   CheckCircle2,
   Info,
 } from 'lucide-react'
+import { ModalDesbloqueioPlano } from '@/components/comercial/ModalDesbloqueioPlano'
 
 interface ModalConvidarEquipeProps {
   open: boolean

@@ -85,7 +85,7 @@ export default function Projetos() {
       .catch(() => {})
   }, [projetos, user])
 
-  const atingiuLimiteProjetos = Boolean(limites?.atingiuLimiteProjetos)
+  const atingiuLimiteProjetos = Boolean(limites?.bloqueadoProjetos)
 
   const handleTentarCriarProjeto = () => {
     if (atingiuLimiteProjetos) {
@@ -229,11 +229,12 @@ export default function Projetos() {
       {/* Banner de Consumo e Limite do Plano */}
       {limites && (
         <BannerConsumoPlano
-          tipo="projetos"
-          atual={limites.projetosCadastrados}
-          limite={limites.limiteProjetos}
-          bloqueado={limites.atingiuLimiteProjetos}
-          nomePlano={limites.plano}
+          titulo="Projetos & Negócios"
+          usado={limites.projetosUsados}
+          max={limites.projetosMax}
+          unidade="projetos"
+          bloqueado={limites.bloqueadoProjetos}
+          recursoNome="projetos"
           onDesbloquear={() => setModalUpgradeOpen(true)}
         />
       )}
@@ -470,7 +471,7 @@ export default function Projetos() {
         open={modalUpgradeOpen}
         onOpenChange={setModalUpgradeOpen}
         recursoNome="Projetos Ilimitados"
-        motivo={`Você atingiu o limite de ${limites?.limiteProjetos ?? 2} projetos do plano gratuito (Prova Viva). Ative o plano pago para cadastrar projetos ilimitados com cronogramas e orçamentos.`}
+        motivo={`Você atingiu o limite de ${limites?.projetosMax ?? 2} projetos do plano gratuito (Prova Viva). Ative o plano pago para cadastrar projetos ilimitados com cronogramas e orçamentos.`}
         isMaster={isMaster}
       />
     </div>

@@ -206,16 +206,48 @@ export default function Equipe() {
     }
   }
 
+  // Eleger outro membro como administrador
+  const handleElegerAdmin = async (membro: MembroEquipe) => {
+    try {
+      await diamondApi.elegerAdmin(membro.id)
+      await recarregarDadosGlobais()
+      toast({
+        title: 'Administrador eleito com sucesso!',
+        description: `${membro.nome || membro.email} agora possui perfil de administrador.`,
+      })
+    } catch {
+      toast({ title: 'Erro ao eleger administrador', variant: 'destructive' })
+    }
+  }
+
+  // Rebaixar administrador eleito para membro comum
+  const handleRemoverAdmin = async (membro: MembroEquipe) => {
+    try {
+      await diamondApi.removerAdmin(membro.id)
+      await recarregarDadosGlobais()
+      toast({
+        title: 'Função de administrador removida',
+        description: `${membro.nome || membro.email} voltou ao papel de membro da equipe.`,
+      })
+    } catch {
+      toast({ title: 'Erro ao remover administrador', variant: 'destructive' })
+    }
+  }
+
   // Alterar função ou nível de acesso do membro
   const handleAlterarNivelMembro = async (
     membro: MembroEquipe,
     novoNivel: 'leitura' | 'edicao' | 'admin',
   ) => {
     try {
-      await diamondApi.updateMembroEquipe(membro.id, {
-        nivel_acesso: novoNivel,
-        funcao: novoNivel === 'admin' ? 'admin' : 'membro',
-      })
+      if (novoNivel === 'admin') {
+        await diamondApi.elegerAdmin(membro.id)
+      } else {
+        await diamondApi.updateMembroEquipe(membro.id, {
+          nivel_acesso: novoNivel,
+          funcao: 'membro',
+        })
+      }
       await recarregarDadosGlobais()
       toast({ title: `Nível de acesso atualizado para ${novoNivel}` })
     } catch {

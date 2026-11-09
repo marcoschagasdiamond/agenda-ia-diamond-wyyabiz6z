@@ -90,7 +90,10 @@ import {
   type FolhaFiltrosState,
 } from '@/components/folha/PainelBuscaFolha'
 import { SementesAgrupadasPorTese } from '@/components/folha/SementesAgrupadasPorTese'
-import type { TeseSemente } from '@/types'
+import type { TeseSemente, LimitesConsumoConta } from '@/types'
+import { BannerConsumoPlano } from '@/components/comercial/BannerConsumoPlano'
+import { ModalDesbloqueioPlano } from '@/components/comercial/ModalDesbloqueioPlano'
+import { useAuth } from '@/hooks/use-auth'
 
 export interface ItemRascunhoAssunto {
   idTemp: string
@@ -257,6 +260,11 @@ export default function Folha() {
   // Cofre por Tese de Sementes
   const [tesesSementes, setTesesSementes] = useState<TeseSemente[]>([])
   const [teseFiltroId, setTeseFiltroId] = useState<string>('todas')
+
+  const { user, isMaster } = useAuth()
+  const [limites, setLimites] = useState<LimitesConsumoConta | null>(null)
+  const [modalUpgradeOpen, setModalUpgradeOpen] = useState(false)
+  const [upgradeMotivo, setUpgradeMotivo] = useState('')
 
   // Modal de Arquivar como Semente
   const [modalSementeOpen, setModalSementeOpen] = useState(false)
@@ -544,6 +552,10 @@ export default function Folha() {
 
   useEffect(() => {
     carregarDados()
+    diamondApi
+      .getLimitesConsumoConta(user?.id, user?.email)
+      .then(setLimites)
+      .catch(() => {})
 
     // Polling leve a cada 30 segundos enquanto a página estiver aberta
     const intervalo = setInterval(() => {
@@ -551,7 +563,7 @@ export default function Folha() {
     }, 30000)
 
     return () => clearInterval(intervalo)
-  }, [])
+  }, [user])
 
   // Inscrição em tempo real na coleção folha_dia para atualizar instantaneamente quando chegar nova mensagem
   useRealtime<any>('folha_dia', (e) => {
@@ -935,6 +947,56 @@ export default function Folha() {
     }
   }
 
+  // Verificação de limite de dias de Folha antes de lançar
+  const verificarBloqueioDiaFolha = (datasParaVerificar: string[]): boolean => {
+    if (!limites) return false
+    // Se a conta não tem limite de dias de folha (pro / enterprise), não bloqueia
+    if (!limites.bloqueadoFolha && limites.diasFolhaUsados < limites.diasFolhaMax) {
+      // Mas se o usuário estiver tentando adicionar um dia NOVO e já estiver no limite:
+      const diasCadastrados = new Set<string>()
+      folhaItems.forEach((f) => {
+        const d = (
+          f.data_hora ? f.data_hora.slice(0, 10) : f.data ? f.data.slice(0, 10) : ''
+        ).trim()
+        if (d) diasCadastrados.add(d)
+      })
+
+      const tentandoAdicionarDiaInedito = datasParaVerificar.some(
+        (d) => d && !diasCadastrados.has(d),
+      )
+      if (tentandoAdicionarDiaInedito && diasCadastrados.size >= limites.diasFolhaMax) {
+        setUpgradeMotivo(
+          `Você atingiu o limite de ${limites.diasFolhaMax} dias de folha do plano gratuito (Prova Viva). Ative o plano pago para criar folhas em dias ilimitados.`,
+        )
+        setModalUpgradeOpen(true)
+        return true
+      }
+      return false
+    }
+
+    if (limites.bloqueadoFolha) {
+      const diasCadastrados = new Set<string>()
+      folhaItems.forEach((f) => {
+        const d = (
+          f.data_hora ? f.data_hora.slice(0, 10) : f.data ? f.data.slice(0, 10) : ''
+        ).trim()
+        if (d) diasCadastrados.add(d)
+      })
+      const tentandoAdicionarDiaInedito = datasParaVerificar.some(
+        (d) => d && !diasCadastrados.has(d),
+      )
+      if (tentandoAdicionarDiaInedito) {
+        setUpgradeMotivo(
+          `Você atingiu o limite de ${limites.diasFolhaMax} dias de folha do plano gratuito (Prova Viva). Ative o plano pago para criar folhas em dias ilimitados.`,
+        )
+        setModalUpgradeOpen(true)
+        return true
+      }
+    }
+
+    return false
+  }
+
   // Lançamento individual de um assunto do rascunho
   const handleLancarAssuntoIndividual = async (idTemp: string) => {
     const item = assuntos.find((a) => a.idTemp === idTemp)
@@ -944,6 +1006,14 @@ export default function Folha() {
         description: 'Digite o conteúdo do assunto antes de lançá-lo.',
         variant: 'destructive',
       })
+      return
+    }
+
+    const dataPartAlvo = item.dataHora
+      ? item.dataHora.split('T')[0]
+      : new Date().toISOString().split('T')[0]
+
+    if (verificarBloqueioDiaFolha([dataPartAlvo])) {
       return
     }
 
@@ -1005,6 +1075,14 @@ export default function Folha() {
         description: 'Digite o conteúdo de pelo menos um assunto para lançar na folha.',
         variant: 'destructive',
       })
+      return
+    }
+
+    const datasAlvo = validos.map((item) =>
+      item.dataHora ? item.dataHora.split('T')[0] : new Date().toISOString().split('T')[0],
+    )
+
+    if (verificarBloqueioDiaFolha(datasAlvo)) {
       return
     }
 
@@ -1635,6 +1713,24 @@ export default function Folha() {
           </Button>
         </div>
       </div>
+
+      {/* Banner de Consumo e Limite do Plano */}
+      {limites && (
+        <BannerConsumoPlano
+          titulo="Folha em Branco do Dia"
+          usado={limites.diasFolhaUsados}
+          max={limites.diasFolhaMax}
+          unidade="dias"
+          bloqueado={limites.bloqueadoFolha}
+          recursoNome="dias de folha"
+          onDesbloquear={() => {
+            setUpgradeMotivo(
+              `Você utilizou ${limites.diasFolhaUsados} de ${limites.diasFolhaMax} dias de folha no plano gratuito (Prova Viva). Ative o plano pago para criar e gerenciar folhas em dias ilimitados.`,
+            )
+            setModalUpgradeOpen(true)
+          }}
+        />
+      )}
 
       {/* Seletor de Modo de Captura: Texto Multi-Assuntos vs Gravador de Reuniões */}
       <div className="flex items-center gap-2 border-b border-[#E5E1D8] pb-1">
@@ -4060,6 +4156,18 @@ export default function Folha() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Desbloqueio Comercial do Plano */}
+      <ModalDesbloqueioPlano
+        open={modalUpgradeOpen}
+        onOpenChange={setModalUpgradeOpen}
+        recursoNome="Dias de Folha Ilimitados"
+        motivo={
+          upgradeMotivo ||
+          `Você atingiu o limite de ${limites?.diasFolhaMax ?? 2} dias de folha do plano gratuito (Prova Viva). Ative o plano pago para criar folhas em dias ilimitados.`
+        }
+        isMaster={isMaster}
+      />
     </div>
   )
 }
