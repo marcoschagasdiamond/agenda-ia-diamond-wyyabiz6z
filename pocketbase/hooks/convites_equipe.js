@@ -21,25 +21,56 @@ onRecordAfterCreateSuccess((e) => {
   const app = e.app
   const conviteRecord = e.record
 
-  function formatarErro(err) {
-    if (!err) return 'Erro desconhecido'
-    let msg = ''
-    if (typeof err === 'string') msg = err
-    else if (err.message) msg = String(err.message)
-    else {
+  function formatarErro(err, canal) {
+    const isEmail = canal === 'email'
+    const msgPadraoDesconectado = isEmail
+      ? 'Conta de e-mail (Resend) não conectada — conecte em Configurações → E-mail & Convites'
+      : 'WhatsApp não conectado — conecte em Configurações → WhatsApp'
+
+    if (!err) return msgPadraoDesconectado
+
+    let raw = ''
+    if (typeof err === 'string') {
+      raw = err
+    } else if (err.message) {
+      raw = String(err.message)
+    } else if (err.error) {
+      raw = String(err.error)
+    } else {
       try {
-        msg = JSON.stringify(err)
+        raw = JSON.stringify(err)
       } catch (_) {
-        msg = String(err)
+        raw = String(err)
       }
     }
-    if (
-      msg.includes('connector') &&
-      (msg.includes('not connected') || msg.includes('inactive') || msg.includes('disabled'))
-    ) {
-      return 'Conector não está ativo ou não foi autenticado pelo usuário.'
+
+    if (!raw || raw === '{}' || raw === 'null' || raw === 'undefined') {
+      return msgPadraoDesconectado
     }
-    return msg.length > 500 ? msg.substring(0, 500) + '...' : msg
+
+    const lower = raw.toLowerCase()
+    if (
+      lower.includes('connector') ||
+      lower.includes('not connected') ||
+      lower.includes('not configured') ||
+      lower.includes('inactive') ||
+      lower.includes('disabled') ||
+      lower.includes('unauthorized') ||
+      lower.includes('no connection') ||
+      lower.includes('not found') ||
+      lower.includes('missing token') ||
+      lower.includes('invalid credentials') ||
+      lower.includes('failed to find connector') ||
+      lower.includes('tool not found')
+    ) {
+      return msgPadraoDesconectado
+    }
+
+    if (lower.includes('domain is not verified') || lower.includes('validation_error')) {
+      return `Resend: ${raw} (Dica: o domínio precisa estar verificado no Resend ou usar remetente verificado)`
+    }
+
+    return raw.length > 500 ? raw.substring(0, 500) + '...' : raw
   }
 
   function sanitizarTelefone(tel) {
@@ -145,8 +176,8 @@ onRecordAfterCreateSuccess((e) => {
     return null
   }
 
-  const conviteEmail = conviteRecord.getString('email')
-  const conviteTelefone = conviteRecord.getString('telefone')
+  const conviteEmail = (conviteRecord.getString('email') || '').trim()
+  const conviteTelefone = (conviteRecord.getString('telefone') || '').trim()
   const token = conviteRecord.getString('token')
   const escopoTipo = conviteRecord.getString('escopo_tipo') || 'geral'
   const escopoNome = conviteRecord.getString('escopo_nome') || 'Workspace Geral'
@@ -177,7 +208,10 @@ onRecordAfterCreateSuccess((e) => {
   let emailEnviado = false
   let erroEmailTexto = ''
 
-  if (conviteEmail) {
+  if (!conviteEmail) {
+    emailEnviado = false
+    erroEmailTexto = 'Sem e-mail cadastrado'
+  } else {
     const configMaster = carregarConfigMasterEmail()
     const configUsuario = carregarConfigUsuarioEmail(convidadoPorId)
 
@@ -265,35 +299,51 @@ onRecordAfterCreateSuccess((e) => {
       </div>
     `
 
-    try {
-      let conectorExecutado = false
+    let conectorExecutadoComSucesso = false
+    let erroDisparo = ''
 
-      if (convidadorRecord && configUsuario && configUsuario.usar_resend_proprio) {
-        try {
-          $connectors.execute(convidadorRecord, 'resend', 'send-email', {
-            from: remetenteCompleto,
-            to: conviteEmail,
-            subject: assuntoFinal,
-            html: html,
-          })
-          emailEnviado = true
-          conectorExecutado = true
-        } catch (userErr) {
-          erroEmailTexto = `Falha no Resend pessoal (${formatarErro(userErr)}). `
-        }
-      }
-
-      if (!conectorExecutado) {
-        $connectors.executeAsOwner('resend', 'send-email', {
+    // 1. Tenta via conector pessoal do convidador se ele configurou Resend próprio
+    if (convidadorRecord && configUsuario && configUsuario.usar_resend_proprio) {
+      try {
+        const resUser = $connectors.execute(convidadorRecord, 'resend', 'send-email', {
           from: remetenteCompleto,
           to: conviteEmail,
           subject: assuntoFinal,
           html: html,
         })
-        emailEnviado = true
+        if (resUser && resUser.successful === false) {
+          erroDisparo = formatarErro(resUser.error, 'email')
+        } else {
+          emailEnviado = true
+          conectorExecutadoComSucesso = true
+        }
+      } catch (userErr) {
+        erroDisparo = formatarErro(userErr, 'email')
       }
-    } catch (err) {
-      erroEmailTexto += formatarErro(err)
+    }
+
+    // 2. Fallback: disparo via Resend do Master (executeAsOwner)
+    if (!conectorExecutadoComSucesso) {
+      try {
+        const resOwner = $connectors.executeAsOwner('resend', 'send-email', {
+          from: remetenteCompleto,
+          to: conviteEmail,
+          subject: assuntoFinal,
+          html: html,
+        })
+        if (resOwner && resOwner.successful === false) {
+          erroEmailTexto = formatarErro(resOwner.error, 'email')
+        } else {
+          emailEnviado = true
+          erroEmailTexto = ''
+        }
+      } catch (ownerErr) {
+        erroEmailTexto = formatarErro(ownerErr, 'email')
+      }
+    }
+
+    if (!emailEnviado && !erroEmailTexto) {
+      erroEmailTexto = erroDisparo || formatarErro(null, 'email')
     }
   }
 
@@ -304,110 +354,117 @@ onRecordAfterCreateSuccess((e) => {
   let erroWhatsAppTexto = ''
 
   const telFormatado = sanitizarTelefone(conviteTelefone)
-  if (telFormatado) {
-    if (!convidadorRecord) {
-      erroWhatsAppTexto = 'Usuário que convidou não foi localizado para envio do WhatsApp.'
-    } else {
-      try {
-        const textoMsg = montarTextoWhatsApp({
-          convidadorNome,
-          escopoTipo,
-          escopoNome,
-          nivelAcesso,
-          mensagem: mensagemConvite,
-          linkConvite,
-        })
+  if (!conviteTelefone) {
+    whatsappEnviado = false
+    erroWhatsAppTexto = 'Sem telefone cadastrado'
+  } else if (!telFormatado) {
+    whatsappEnviado = false
+    erroWhatsAppTexto = 'Telefone cadastrado inválido para WhatsApp'
+  } else if (!convidadorRecord) {
+    whatsappEnviado = false
+    erroWhatsAppTexto = 'Usuário que convidou não foi localizado para envio do WhatsApp'
+  } else {
+    try {
+      const textoMsg = montarTextoWhatsApp({
+        convidadorNome,
+        escopoTipo,
+        escopoNome,
+        nivelAcesso,
+        mensagem: mensagemConvite,
+        linkConvite,
+      })
 
-        // Obter phone_number_id do usuário que convida se configurado
-        let phoneNumberId = ''
+      // Obter phone_number_id do usuário que convida se configurado
+      let phoneNumberId = ''
+      try {
+        const cfgZap = app.findFirstRecordByData(
+          'configuracoes_whatsapp',
+          'usuario',
+          convidadorRecord.id,
+        )
+        if (cfgZap) {
+          phoneNumberId = cfgZap.getString('phone_number_id') || ''
+        }
+      } catch (_) {}
+
+      // Se não tiver gravado na config, tenta obter via WHATSAPP_GET_PHONE_NUMBERS
+      if (!phoneNumberId) {
         try {
-          const cfgZap = app.findFirstRecordByData(
-            'configuracoes_whatsapp',
-            'usuario',
-            convidadorRecord.id,
-          )
-          if (cfgZap) {
-            phoneNumberId = cfgZap.getString('phone_number_id') || ''
+          const resPhones = $connectors.execute(convidadorRecord, 'WHATSAPP_GET_PHONE_NUMBERS', {})
+          if (resPhones && resPhones.successful && resPhones.data) {
+            const raw = resPhones.data
+            let list = []
+            if (Array.isArray(raw)) list = raw
+            else if (raw && Array.isArray(raw.data)) list = raw.data
+            else if (raw && Array.isArray(raw.phone_numbers)) list = raw.phone_numbers
+
+            if (list.length > 0 && list[0]?.id) {
+              phoneNumberId = String(list[0].id)
+            }
           }
         } catch (_) {}
-
-        // Se não tiver gravado na config, tenta obter via WHATSAPP_GET_PHONE_NUMBERS
-        if (!phoneNumberId) {
-          try {
-            const resPhones = $connectors.execute(
-              convidadorRecord,
-              'WHATSAPP_GET_PHONE_NUMBERS',
-              {},
-            )
-            if (resPhones && resPhones.successful && resPhones.data) {
-              const raw = resPhones.data
-              let list = []
-              if (Array.isArray(raw)) list = raw
-              else if (raw && Array.isArray(raw.data)) list = raw.data
-              else if (raw && Array.isArray(raw.phone_numbers)) list = raw.phone_numbers
-
-              if (list.length > 0 && list[0]?.id) {
-                phoneNumberId = String(list[0].id)
-              }
-            }
-          } catch (_) {}
-        }
-
-        // Tenta enviar mensagem de texto pelo WhatsApp pessoal
-        let envioZapOk = false
-        let erroZapDetalhe = ''
-
-        // Tentativa 1: WHATSAPP_SEND_MESSAGE (Composio padrão)
-        try {
-          const payloadZap = {
-            recipient: telFormatado,
-            to: telFormatado,
-            type: 'text',
-            text: { body: textoMsg },
-            message: textoMsg,
-          }
-          if (phoneNumberId) {
-            payloadZap.phone_number_id = phoneNumberId
-          }
-
-          const resZap = $connectors.execute(convidadorRecord, 'WHATSAPP_SEND_MESSAGE', payloadZap)
-          if (resZap && resZap.successful) {
-            envioZapOk = true
-          } else if (resZap && resZap.error) {
-            erroZapDetalhe = String(resZap.error)
-          }
-        } catch (zErr1) {
-          erroZapDetalhe = formatarErro(zErr1)
-        }
-
-        // Tentativa 2: fallback com slug whatsapp 'send-message' caso seja outro runtime
-        if (!envioZapOk) {
-          try {
-            const resZap2 = $connectors.execute(convidadorRecord, 'whatsapp', 'send-message', {
-              to: telFormatado,
-              recipient: telFormatado,
-              phone_number_id: phoneNumberId || undefined,
-              message: textoMsg,
-              text: textoMsg,
-            })
-            if (resZap2 && resZap2.successful) {
-              envioZapOk = true
-            } else if (resZap2 && resZap2.error && !erroZapDetalhe) {
-              erroZapDetalhe = String(resZap2.error)
-            }
-          } catch (zErr2) {
-            if (!erroZapDetalhe) erroZapDetalhe = formatarErro(zErr2)
-          }
-        }
-
-        if (envioZapOk) {
-          whatsappEnviado = true
-        } else {
-          erroWhatsAppTexto = erroZapDetalhe || 'WhatsApp não conectado ou falha no envio.'
-        }
-      } catch (zapErrGeral) {
-        erroWhatsAppTexto = formatarErro(zapErrGeral)
       }
+
+      // Tenta enviar mensagem de texto pelo WhatsApp pessoal
+      let envioZapOk = false
+      let erroZapCapturado = ''
+
+      // Tentativa 1: WHATSAPP_SEND_MESSAGE (Composio padrão)
+      try {
+        const payloadZap = {
+          recipient: telFormatado,
+          to: telFormatado,
+          type: 'text',
+          text: { body: textoMsg },
+          message: textoMsg,
+        }
+        if (phoneNumberId) {
+          payloadZap.phone_number_id = phoneNumberId
+        }
+
+        const resZap = $connectors.execute(convidadorRecord, 'WHATSAPP_SEND_MESSAGE', payloadZap)
+        if (resZap && resZap.successful) {
+          envioZapOk = true
+        } else if (resZap && (resZap.error || resZap.successful === false)) {
+          erroZapCapturado = formatarErro(resZap.error || 'Falha no conector WhatsApp', 'whatsapp')
+        }
+      } catch (zErr1) {
+        erroZapCapturado = formatarErro(zErr1, 'whatsapp')
+      }
+
+      // Tentativa 2: fallback com toolkit 'whatsapp' e slug 'send-message'
+      if (!envioZapOk) {
+        try {
+          const resZap2 = $connectors.execute(convidadorRecord, 'whatsapp', 'send-message', {
+            to: telFormatado,
+            recipient: telFormatado,
+            phone_number_id: phoneNumberId || undefined,
+            message: textoMsg,
+            text: textoMsg,
+          })
+          if (resZap2 && resZap2.successful) {
+            envioZapOk = true
+            erroZapCapturado = ''
+          } else if (
+            resZap2 &&
+            (resZap2.error || resZap2.successful === false) &&
+            !erroZapCapturado
+          ) {
+            erroZapCapturado = formatarErro(resZap2.error, 'whatsapp')
+          }
+        } catch (zErr2) {
+          if (!erroZapCapturado) erroZapCapturado = formatarErro(zErr2, 'whatsapp')
+        }
+      }
+
+      if (envioZapOk) {
+        whatsappEnviado = true
+        erroWhatsAppTexto = ''
+      } else {
+        erroWhatsAppTexto = erroZapCapturado || formatarErro(null, 'whatsapp')
+      }
+    } catch (zapErrGeral) {
+      erroWhatsAppTexto = formatarErro(zapErrGeral, 'whatsapp')
     }
   }
 
@@ -415,13 +472,13 @@ onRecordAfterCreateSuccess((e) => {
   // Persistir status multicanal no convite
   // -------------------------------------------------------------
   try {
+    const agoraIso = new Date().toISOString()
+    conviteRecord.set('enviado_em', agoraIso)
     conviteRecord.set('email_enviado', emailEnviado)
     conviteRecord.set('erro_envio', emailEnviado ? '' : erroEmailTexto)
 
-    if (telFormatado) {
-      conviteRecord.set('whatsapp_enviado', whatsappEnviado)
-      conviteRecord.set('whatsapp_erro', whatsappEnviado ? '' : erroWhatsAppTexto)
-    }
+    conviteRecord.set('whatsapp_enviado', whatsappEnviado)
+    conviteRecord.set('whatsapp_erro', whatsappEnviado ? '' : erroWhatsAppTexto)
 
     app.save(conviteRecord)
   } catch (saveErr) {
@@ -451,25 +508,56 @@ routerAdd('POST', '/backend/v1/convites/reenviar', (e) => {
 
   const app = e.app
 
-  function formatarErro(err) {
-    if (!err) return 'Erro desconhecido'
-    let msg = ''
-    if (typeof err === 'string') msg = err
-    else if (err.message) msg = String(err.message)
-    else {
+  function formatarErro(err, canalTipo) {
+    const isEmail = canalTipo === 'email'
+    const msgPadraoDesconectado = isEmail
+      ? 'Conta de e-mail (Resend) não conectada — conecte em Configurações → E-mail & Convites'
+      : 'WhatsApp não conectado — conecte em Configurações → WhatsApp'
+
+    if (!err) return msgPadraoDesconectado
+
+    let raw = ''
+    if (typeof err === 'string') {
+      raw = err
+    } else if (err.message) {
+      raw = String(err.message)
+    } else if (err.error) {
+      raw = String(err.error)
+    } else {
       try {
-        msg = JSON.stringify(err)
+        raw = JSON.stringify(err)
       } catch (_) {
-        msg = String(err)
+        raw = String(err)
       }
     }
-    if (
-      msg.includes('connector') &&
-      (msg.includes('not connected') || msg.includes('inactive') || msg.includes('disabled'))
-    ) {
-      return 'Conector não está ativo ou não foi autenticado pelo usuário.'
+
+    if (!raw || raw === '{}' || raw === 'null' || raw === 'undefined') {
+      return msgPadraoDesconectado
     }
-    return msg.length > 500 ? msg.substring(0, 500) + '...' : msg
+
+    const lower = raw.toLowerCase()
+    if (
+      lower.includes('connector') ||
+      lower.includes('not connected') ||
+      lower.includes('not configured') ||
+      lower.includes('inactive') ||
+      lower.includes('disabled') ||
+      lower.includes('unauthorized') ||
+      lower.includes('no connection') ||
+      lower.includes('not found') ||
+      lower.includes('missing token') ||
+      lower.includes('invalid credentials') ||
+      lower.includes('failed to find connector') ||
+      lower.includes('tool not found')
+    ) {
+      return msgPadraoDesconectado
+    }
+
+    if (lower.includes('domain is not verified') || lower.includes('validation_error')) {
+      return `Resend: ${raw} (Dica: o domínio precisa estar verificado no Resend ou usar remetente verificado)`
+    }
+
+    return raw.length > 500 ? raw.substring(0, 500) + '...' : raw
   }
 
   function sanitizarTelefone(tel) {
@@ -517,8 +605,8 @@ routerAdd('POST', '/backend/v1/convites/reenviar', (e) => {
       return e.json(404, { erro: 'Convite não encontrado.' })
     }
 
-    const conviteEmail = conviteRecord.getString('email')
-    const conviteTelefone = conviteRecord.getString('telefone')
+    const conviteEmail = (conviteRecord.getString('email') || '').trim()
+    const conviteTelefone = (conviteRecord.getString('telefone') || '').trim()
     const token = conviteRecord.getString('token')
     const escopoTipo = conviteRecord.getString('escopo_tipo') || 'geral'
     const escopoNome = conviteRecord.getString('escopo_nome') || 'Workspace Geral'
@@ -551,168 +639,193 @@ routerAdd('POST', '/backend/v1/convites/reenviar', (e) => {
     let whatsappEnviado = conviteRecord.getBool('whatsapp_enviado')
     let erroWhatsAppTexto = conviteRecord.getString('whatsapp_erro')
 
+    const agoraIso = new Date().toISOString()
+
     // 1. REENVIAR E-MAIL SE SOLICITADO
     if (canal === 'email' || canal === 'ambos') {
       emailProcessado = true
-      let configMaster = {
-        remetente_nome: 'Agenda IA Diamond',
-        remetente_email: 'onboarding@resend.dev',
-        assunto_convite: 'Convite de Equipe: {convidador} convidou você para o Agenda IA Diamond',
-        titulo_cabecalho: 'AGENDA IA DIAMOND',
-        subtitulo_cabecalho: 'Gestão Estratégica & Segundo Cérebro Executivo',
-        texto_apresentacao:
-          'convidou você para colaborar na plataforma Agenda IA Diamond com acesso dedicado.',
-        texto_botao_aceite: 'Aceitar Convite e Acessar',
-        cor_primaria: '#0F766E',
-        cor_cabecalho: '#1A1D21',
-        texto_rodape: 'Enviado automaticamente por Agenda IA Diamond • Não responda a este e-mail.',
-      }
 
-      try {
-        const records = app.findRecordsByFilter('config_email', 'ativo = true', '-created', 1)
-        if (records && records.length > 0) {
-          const r = records[0]
-          configMaster.remetente_nome = r.getString('remetente_nome') || configMaster.remetente_nome
-          configMaster.remetente_email =
-            r.getString('remetente_email') || configMaster.remetente_email
-          configMaster.assunto_convite =
-            r.getString('assunto_convite') || configMaster.assunto_convite
-          configMaster.titulo_cabecalho =
-            r.getString('titulo_cabecalho') || configMaster.titulo_cabecalho
-          configMaster.subtitulo_cabecalho =
-            r.getString('subtitulo_cabecalho') || configMaster.subtitulo_cabecalho
-          configMaster.texto_apresentacao =
-            r.getString('texto_apresentacao') || configMaster.texto_apresentacao
-          configMaster.texto_botao_aceite =
-            r.getString('texto_botao_aceite') || configMaster.texto_botao_aceite
-          configMaster.cor_primaria = r.getString('cor_primaria') || configMaster.cor_primaria
-          configMaster.cor_cabecalho = r.getString('cor_cabecalho') || configMaster.cor_cabecalho
-          configMaster.texto_rodape = r.getString('texto_rodape') || configMaster.texto_rodape
+      if (!conviteEmail) {
+        emailEnviado = false
+        erroEmailTexto = 'Sem e-mail cadastrado'
+      } else {
+        let configMaster = {
+          remetente_nome: 'Agenda IA Diamond',
+          remetente_email: 'onboarding@resend.dev',
+          assunto_convite: 'Convite de Equipe: {convidador} convidou você para o Agenda IA Diamond',
+          titulo_cabecalho: 'AGENDA IA DIAMOND',
+          subtitulo_cabecalho: 'Gestão Estratégica & Segundo Cérebro Executivo',
+          texto_apresentacao:
+            'convidou você para colaborar na plataforma Agenda IA Diamond com acesso dedicado.',
+          texto_botao_aceite: 'Aceitar Convite e Acessar',
+          cor_primaria: '#0F766E',
+          cor_cabecalho: '#1A1D21',
+          texto_rodape:
+            'Enviado automaticamente por Agenda IA Diamond • Não responda a este e-mail.',
         }
-      } catch (_) {}
 
-      let configUsuario = null
-      if (convidadoPorId) {
         try {
-          const uList = app.findRecordsByFilter(
-            'config_email_usuario',
-            `usuario = '${convidadoPorId}'`,
-            '-created',
-            1,
-          )
-          if (uList && uList.length > 0) {
-            const ur = uList[0]
-            configUsuario = {
-              mensagem_personalizada_convite: ur.getString('mensagem_personalizada_convite') || '',
-              remetente_nome_preferido: ur.getString('remetente_nome_preferido') || '',
-              usar_resend_proprio: ur.getBool('usar_resend_proprio'),
-            }
+          const records = app.findRecordsByFilter('config_email', 'ativo = true', '-created', 1)
+          if (records && records.length > 0) {
+            const r = records[0]
+            configMaster.remetente_nome =
+              r.getString('remetente_nome') || configMaster.remetente_nome
+            configMaster.remetente_email =
+              r.getString('remetente_email') || configMaster.remetente_email
+            configMaster.assunto_convite =
+              r.getString('assunto_convite') || configMaster.assunto_convite
+            configMaster.titulo_cabecalho =
+              r.getString('titulo_cabecalho') || configMaster.titulo_cabecalho
+            configMaster.subtitulo_cabecalho =
+              r.getString('subtitulo_cabecalho') || configMaster.subtitulo_cabecalho
+            configMaster.texto_apresentacao =
+              r.getString('texto_apresentacao') || configMaster.texto_apresentacao
+            configMaster.texto_botao_aceite =
+              r.getString('texto_botao_aceite') || configMaster.texto_botao_aceite
+            configMaster.cor_primaria = r.getString('cor_primaria') || configMaster.cor_primaria
+            configMaster.cor_cabecalho = r.getString('cor_cabecalho') || configMaster.cor_cabecalho
+            configMaster.texto_rodape = r.getString('texto_rodape') || configMaster.texto_rodape
           }
         } catch (_) {}
-      }
 
-      let mensagemFinal = mensagemConvite
-      if (!mensagemFinal && configUsuario && configUsuario.mensagem_personalizada_convite) {
-        mensagemFinal = configUsuario.mensagem_personalizada_convite
-      }
-
-      let remetenteNomeFinal = configMaster.remetente_nome || 'Agenda IA Diamond'
-      if (configUsuario && configUsuario.remetente_nome_preferido) {
-        remetenteNomeFinal = configUsuario.remetente_nome_preferido
-      }
-      const remetenteEmailFinal = configMaster.remetente_email || 'onboarding@resend.dev'
-      const remetenteCompleto = `${remetenteNomeFinal} <${remetenteEmailFinal}>`
-
-      const escopoDescricao =
-        escopoTipo === 'geral'
-          ? 'Acesso Geral ao Workspace'
-          : `${escopoTipo.charAt(0).toUpperCase() + escopoTipo.slice(1)}: ${escopoNome}`
-
-      const nivelAcessoFormatado =
-        nivelAcesso === 'admin'
-          ? 'Administrador'
-          : nivelAcesso === 'edicao'
-            ? 'Editor / Membro Ativo'
-            : 'Visualizador (Somente Leitura)'
-
-      const assuntoFinal = (
-        configMaster.assunto_convite ||
-        'Convite de Equipe: {convidador} convidou você para o Agenda IA Diamond'
-      )
-        .replace('{convidador}', convidadorNome)
-        .replace('{escopo}', escopoNome)
-
-      const html = `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #FAFAF9; padding: 24px; border-radius: 16px; color: #1A1D21;">
-          <div style="background-color: ${configMaster.cor_cabecalho}; padding: 24px; border-radius: 12px; text-align: center; margin-bottom: 24px;">
-            <h1 style="color: #FFFFFF; font-size: 20px; font-weight: 700; margin: 0; letter-spacing: 0.5px;">${configMaster.titulo_cabecalho}</h1>
-            <p style="color: #9CA3AF; font-size: 12px; margin: 6px 0 0 0;">${configMaster.subtitulo_cabecalho}</p>
-          </div>
-          <div style="background-color: #FFFFFF; padding: 28px; border-radius: 12px; border: 1px solid #E5E1D8; margin-bottom: 20px;">
-            <h2 style="font-size: 18px; font-weight: 600; margin: 0 0 12px 0; color: #1A1D21;">Você recebeu um convite de equipe</h2>
-            <p style="font-size: 14px; line-height: 1.6; color: #4B5563; margin: 0 0 20px 0;">
-              Olá, <strong>${conviteEmail}</strong>.<br />
-              <strong>${convidadorNome}</strong> ${configMaster.texto_apresentacao}
-            </p>
-            <div style="background-color: #F3F4F6; border-left: 4px solid ${configMaster.cor_primaria}; padding: 16px; border-radius: 8px; margin-bottom: 24px;">
-              <p style="margin: 0 0 8px 0; font-size: 13px; color: #1F2937;"><strong>Acesso atribuído:</strong> ${escopoDescricao}</p>
-              <p style="margin: 0; font-size: 13px; color: #1F2937;"><strong>Nível de permissão:</strong> ${nivelAcessoFormatado}</p>
-            </div>
-            ${
-              mensagemFinal
-                ? `
-            <div style="background-color: #F8FAFC; border: 1px dashed #CBD5E1; padding: 14px; border-radius: 8px; margin-bottom: 24px;">
-              <p style="margin: 0 0 4px 0; font-size: 11px; text-transform: uppercase; font-weight: 700; color: #64748B;">Mensagem de ${convidadorNome}:</p>
-              <p style="margin: 0; font-size: 13px; color: #334155; font-style: italic; white-space: pre-wrap;">"${mensagemFinal}"</p>
-            </div>`
-                : ''
+        let configUsuario = null
+        if (convidadoPorId) {
+          try {
+            const uList = app.findRecordsByFilter(
+              'config_email_usuario',
+              `usuario = '${convidadoPorId}'`,
+              '-created',
+              1,
+            )
+            if (uList && uList.length > 0) {
+              const ur = uList[0]
+              configUsuario = {
+                mensagem_personalizada_convite:
+                  ur.getString('mensagem_personalizada_convite') || '',
+                remetente_nome_preferido: ur.getString('remetente_nome_preferido') || '',
+                usar_resend_proprio: ur.getBool('usar_resend_proprio'),
+              }
             }
-            <div style="text-align: center; margin: 32px 0;">
-              <a href="${linkConvite}" style="background-color: ${configMaster.cor_primaria}; color: #FFFFFF; text-decoration: none; font-size: 14px; font-weight: 600; padding: 14px 28px; border-radius: 8px; display: inline-block;">${configMaster.texto_botao_aceite}</a>
+          } catch (_) {}
+        }
+
+        let mensagemFinal = mensagemConvite
+        if (!mensagemFinal && configUsuario && configUsuario.mensagem_personalizada_convite) {
+          mensagemFinal = configUsuario.mensagem_personalizada_convite
+        }
+
+        let remetenteNomeFinal = configMaster.remetente_nome || 'Agenda IA Diamond'
+        if (configUsuario && configUsuario.remetente_nome_preferido) {
+          remetenteNomeFinal = configUsuario.remetente_nome_preferido
+        }
+        const remetenteEmailFinal = configMaster.remetente_email || 'onboarding@resend.dev'
+        const remetenteCompleto = `${remetenteNomeFinal} <${remetenteEmailFinal}>`
+
+        const escopoDescricao =
+          escopoTipo === 'geral'
+            ? 'Acesso Geral ao Workspace'
+            : `${escopoTipo.charAt(0).toUpperCase() + escopoTipo.slice(1)}: ${escopoNome}`
+
+        const nivelAcessoFormatado =
+          nivelAcesso === 'admin'
+            ? 'Administrador'
+            : nivelAcesso === 'edicao'
+              ? 'Editor / Membro Ativo'
+              : 'Visualizador (Somente Leitura)'
+
+        const assuntoFinal = (
+          configMaster.assunto_convite ||
+          'Convite de Equipe: {convidador} convidou você para o Agenda IA Diamond'
+        )
+          .replace('{convidador}', convidadorNome)
+          .replace('{escopo}', escopoNome)
+
+        const html = `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #FAFAF9; padding: 24px; border-radius: 16px; color: #1A1D21;">
+            <div style="background-color: ${configMaster.cor_cabecalho}; padding: 24px; border-radius: 12px; text-align: center; margin-bottom: 24px;">
+              <h1 style="color: #FFFFFF; font-size: 20px; font-weight: 700; margin: 0; letter-spacing: 0.5px;">${configMaster.titulo_cabecalho}</h1>
+              <p style="color: #9CA3AF; font-size: 12px; margin: 6px 0 0 0;">${configMaster.subtitulo_cabecalho}</p>
             </div>
-            <p style="font-size: 12px; color: #9CA3AF; text-align: center; margin: 0;">
-              Ou copie e cole o link direto no seu navegador:<br />
-              <a href="${linkConvite}" style="color: ${configMaster.cor_primaria}; word-break: break-all; font-size: 11px;">${linkConvite}</a>
-            </p>
+            <div style="background-color: #FFFFFF; padding: 28px; border-radius: 12px; border: 1px solid #E5E1D8; margin-bottom: 20px;">
+              <h2 style="font-size: 18px; font-weight: 600; margin: 0 0 12px 0; color: #1A1D21;">Você recebeu um convite de equipe</h2>
+              <p style="font-size: 14px; line-height: 1.6; color: #4B5563; margin: 0 0 20px 0;">
+                Olá, <strong>${conviteEmail}</strong>.<br />
+                <strong>${convidadorNome}</strong> ${configMaster.texto_apresentacao}
+              </p>
+              <div style="background-color: #F3F4F6; border-left: 4px solid ${configMaster.cor_primaria}; padding: 16px; border-radius: 8px; margin-bottom: 24px;">
+                <p style="margin: 0 0 8px 0; font-size: 13px; color: #1F2937;"><strong>Acesso atribuído:</strong> ${escopoDescricao}</p>
+                <p style="margin: 0; font-size: 13px; color: #1F2937;"><strong>Nível de permissão:</strong> ${nivelAcessoFormatado}</p>
+              </div>
+              ${
+                mensagemFinal
+                  ? `
+              <div style="background-color: #F8FAFC; border: 1px dashed #CBD5E1; padding: 14px; border-radius: 8px; margin-bottom: 24px;">
+                <p style="margin: 0 0 4px 0; font-size: 11px; text-transform: uppercase; font-weight: 700; color: #64748B;">Mensagem de ${convidadorNome}:</p>
+                <p style="margin: 0; font-size: 13px; color: #334155; font-style: italic; white-space: pre-wrap;">"${mensagemFinal}"</p>
+              </div>`
+                  : ''
+              }
+              <div style="text-align: center; margin: 32px 0;">
+                <a href="${linkConvite}" style="background-color: ${configMaster.cor_primaria}; color: #FFFFFF; text-decoration: none; font-size: 14px; font-weight: 600; padding: 14px 28px; border-radius: 8px; display: inline-block;">${configMaster.texto_botao_aceite}</a>
+              </div>
+              <p style="font-size: 12px; color: #9CA3AF; text-align: center; margin: 0;">
+                Ou copie e cole o link direto no seu navegador:<br />
+                <a href="${linkConvite}" style="color: ${configMaster.cor_primaria}; word-break: break-all; font-size: 11px;">${linkConvite}</a>
+              </p>
+            </div>
+            <div style="text-align: center; font-size: 11px; color: #9CA3AF;">
+              <p style="margin: 0 0 4px 0;">${configMaster.texto_rodape}</p>
+              <p style="margin: 0;">Este convite expira em 7 dias a partir do envio.</p>
+            </div>
           </div>
-          <div style="text-align: center; font-size: 11px; color: #9CA3AF;">
-            <p style="margin: 0 0 4px 0;">${configMaster.texto_rodape}</p>
-            <p style="margin: 0;">Este convite expira em 7 dias a partir do envio.</p>
-          </div>
-        </div>
-      `
+        `
 
-      emailEnviado = false
-      erroEmailTexto = ''
+        emailEnviado = false
+        erroEmailTexto = ''
+        let conectorExecutadoComSucesso = false
+        let erroDisparo = ''
 
-      try {
-        let conectorExecutado = false
         if (convidadorRecord && configUsuario && configUsuario.usar_resend_proprio) {
           try {
-            $connectors.execute(convidadorRecord, 'resend', 'send-email', {
+            const resUser = $connectors.execute(convidadorRecord, 'resend', 'send-email', {
               from: remetenteCompleto,
               to: conviteEmail,
               subject: assuntoFinal,
               html: html,
             })
-            emailEnviado = true
-            conectorExecutado = true
+            if (resUser && resUser.successful === false) {
+              erroDisparo = formatarErro(resUser.error, 'email')
+            } else {
+              emailEnviado = true
+              conectorExecutadoComSucesso = true
+            }
           } catch (uErr) {
-            erroEmailTexto = `Falha no Resend pessoal (${formatarErro(uErr)}). `
+            erroDisparo = formatarErro(uErr, 'email')
           }
         }
 
-        if (!conectorExecutado) {
-          $connectors.executeAsOwner('resend', 'send-email', {
-            from: remetenteCompleto,
-            to: conviteEmail,
-            subject: assuntoFinal,
-            html: html,
-          })
-          emailEnviado = true
+        if (!conectorExecutadoComSucesso) {
+          try {
+            const resOwner = $connectors.executeAsOwner('resend', 'send-email', {
+              from: remetenteCompleto,
+              to: conviteEmail,
+              subject: assuntoFinal,
+              html: html,
+            })
+            if (resOwner && resOwner.successful === false) {
+              erroEmailTexto = formatarErro(resOwner.error, 'email')
+            } else {
+              emailEnviado = true
+              erroEmailTexto = ''
+            }
+          } catch (ownerErr) {
+            erroEmailTexto = formatarErro(ownerErr, 'email')
+          }
         }
-      } catch (err) {
-        erroEmailTexto += formatarErro(err)
+
+        if (!emailEnviado && !erroEmailTexto) {
+          erroEmailTexto = erroDisparo || formatarErro(null, 'email')
+        }
       }
 
       conviteRecord.set('email_enviado', emailEnviado)
@@ -724,12 +837,15 @@ routerAdd('POST', '/backend/v1/convites/reenviar', (e) => {
       whatsappProcessado = true
       const telFormatado = sanitizarTelefone(conviteTelefone)
 
-      if (!telFormatado) {
+      if (!conviteTelefone) {
         whatsappEnviado = false
-        erroWhatsAppTexto = 'Convite não possui número de telefone cadastrado.'
+        erroWhatsAppTexto = 'Sem telefone cadastrado'
+      } else if (!telFormatado) {
+        whatsappEnviado = false
+        erroWhatsAppTexto = 'Telefone cadastrado inválido para WhatsApp'
       } else if (!convidadorRecord) {
         whatsappEnviado = false
-        erroWhatsAppTexto = 'Usuário que convidou não foi localizado para envio do WhatsApp.'
+        erroWhatsAppTexto = 'Usuário que convidou não foi localizado para envio do WhatsApp'
       } else {
         whatsappEnviado = false
         erroWhatsAppTexto = ''
@@ -778,7 +894,7 @@ routerAdd('POST', '/backend/v1/convites/reenviar', (e) => {
           }
 
           let envioZapOk = false
-          let erroZapDetalhe = ''
+          let erroZapCapturado = ''
 
           try {
             const payloadZap = {
@@ -799,11 +915,14 @@ routerAdd('POST', '/backend/v1/convites/reenviar', (e) => {
             )
             if (resZap && resZap.successful) {
               envioZapOk = true
-            } else if (resZap && resZap.error) {
-              erroZapDetalhe = String(resZap.error)
+            } else if (resZap && (resZap.error || resZap.successful === false)) {
+              erroZapCapturado = formatarErro(
+                resZap.error || 'Falha no conector WhatsApp',
+                'whatsapp',
+              )
             }
           } catch (zErr1) {
-            erroZapDetalhe = formatarErro(zErr1)
+            erroZapCapturado = formatarErro(zErr1, 'whatsapp')
           }
 
           if (!envioZapOk) {
@@ -817,21 +936,27 @@ routerAdd('POST', '/backend/v1/convites/reenviar', (e) => {
               })
               if (resZap2 && resZap2.successful) {
                 envioZapOk = true
-              } else if (resZap2 && resZap2.error && !erroZapDetalhe) {
-                erroZapDetalhe = String(resZap2.error)
+                erroZapCapturado = ''
+              } else if (
+                resZap2 &&
+                (resZap2.error || resZap2.successful === false) &&
+                !erroZapCapturado
+              ) {
+                erroZapCapturado = formatarErro(resZap2.error, 'whatsapp')
               }
             } catch (zErr2) {
-              if (!erroZapDetalhe) erroZapDetalhe = formatarErro(zErr2)
+              if (!erroZapCapturado) erroZapCapturado = formatarErro(zErr2, 'whatsapp')
             }
           }
 
           if (envioZapOk) {
             whatsappEnviado = true
+            erroWhatsAppTexto = ''
           } else {
-            erroWhatsAppTexto = erroZapDetalhe || 'WhatsApp não conectado ou falha no envio.'
+            erroWhatsAppTexto = erroZapCapturado || formatarErro(null, 'whatsapp')
           }
         } catch (zapGeralErr) {
-          erroWhatsAppTexto = formatarErro(zapGeralErr)
+          erroWhatsAppTexto = formatarErro(zapGeralErr, 'whatsapp')
         }
       }
 
@@ -839,11 +964,13 @@ routerAdd('POST', '/backend/v1/convites/reenviar', (e) => {
       conviteRecord.set('whatsapp_erro', whatsappEnviado ? '' : erroWhatsAppTexto)
     }
 
+    conviteRecord.set('enviado_em', agoraIso)
     app.save(conviteRecord)
 
     return e.json(200, {
       sucesso: true,
       canal,
+      enviado_em: agoraIso,
       email_processado: emailProcessado,
       email_enviado: emailEnviado,
       email_erro: erroEmailTexto,
@@ -884,10 +1011,12 @@ routerAdd('POST', '/backend/v1/email/teste-usuario', (e) => {
   const app = e.app
 
   function formatarErro(err) {
-    if (!err) return 'Erro desconhecido ao enviar e-mail'
+    if (!err)
+      return 'Conta de e-mail (Resend) não conectada — conecte em Configurações → E-mail & Convites'
     let msg = ''
     if (typeof err === 'string') msg = err
     else if (err.message) msg = String(err.message)
+    else if (err.error) msg = String(err.error)
     else {
       try {
         msg = JSON.stringify(err)
@@ -895,14 +1024,25 @@ routerAdd('POST', '/backend/v1/email/teste-usuario', (e) => {
         msg = String(err)
       }
     }
+    if (!msg || msg === '{}' || msg === 'null' || msg === 'undefined') {
+      return 'Conta de e-mail (Resend) não conectada — conecte em Configurações → E-mail & Convites'
+    }
+    const lower = msg.toLowerCase()
     if (
-      msg.includes('connector') &&
-      (msg.includes('not connected') || msg.includes('inactive') || msg.includes('disabled'))
+      lower.includes('connector') ||
+      lower.includes('not connected') ||
+      lower.includes('not configured') ||
+      lower.includes('inactive') ||
+      lower.includes('disabled') ||
+      lower.includes('unauthorized') ||
+      lower.includes('no connection') ||
+      lower.includes('not found') ||
+      lower.includes('tool not found')
     ) {
-      return 'Conector Resend não está ativo ou não foi autenticado pelo proprietário/usuário.'
+      return 'Conta de e-mail (Resend) não conectada — conecte em Configurações → E-mail & Convites'
     }
     if (msg.includes('domain is not verified') || msg.includes('validation_error')) {
-      return `Resend: ${msg} (Dica: o domínio precisa estar verificado ou usar onboarding@resend.dev)`
+      return `Resend: ${msg} (Dica: o domínio precisa estar verificado no Resend ou usar remetente verificado)`
     }
     return msg.length > 500 ? msg.substring(0, 500) + '...' : msg
   }
@@ -987,32 +1127,40 @@ routerAdd('POST', '/backend/v1/email/teste-usuario', (e) => {
     let conectorExecutado = false
     if (configUsuario && configUsuario.usar_resend_proprio) {
       try {
-        $connectors.execute(authRecord, 'resend', 'send-email', {
+        const resUser = $connectors.execute(authRecord, 'resend', 'send-email', {
           from: remetenteCompleto,
           to: userEmail,
           subject: 'Teste de Envio de E-mail • Agenda IA Diamond',
           html: htmlTeste,
         })
-        enviado = true
-        disparadoPor = 'usuario_proprio'
-        conectorExecutado = true
+        if (resUser && resUser.successful === false) {
+          erroTexto = formatarErro(resUser.error)
+        } else {
+          enviado = true
+          disparadoPor = 'usuario_proprio'
+          conectorExecutado = true
+        }
       } catch (uErr) {
-        erroTexto = `Falha no conector pessoal (${formatarErro(uErr)}). `
+        erroTexto = formatarErro(uErr)
       }
     }
 
     if (!conectorExecutado) {
-      $connectors.executeAsOwner('resend', 'send-email', {
+      const resOwner = $connectors.executeAsOwner('resend', 'send-email', {
         from: remetenteCompleto,
         to: userEmail,
         subject: 'Teste de Envio de E-mail (Master) • Agenda IA Diamond',
         html: htmlTeste,
       })
-      enviado = true
-      disparadoPor = 'owner'
+      if (resOwner && resOwner.successful === false) {
+        erroTexto = formatarErro(resOwner.error)
+      } else {
+        enviado = true
+        disparadoPor = 'owner'
+      }
     }
   } catch (err) {
-    erroTexto += formatarErro(err)
+    erroTexto = formatarErro(err)
   }
 
   if (enviado) {
@@ -1025,7 +1173,9 @@ routerAdd('POST', '/backend/v1/email/teste-usuario', (e) => {
   } else {
     return e.json(500, {
       sucesso: false,
-      erro: erroTexto || 'Falha ao disparar e-mail de teste pelo Resend.',
+      erro:
+        erroTexto ||
+        'Conta de e-mail (Resend) não conectada — conecte em Configurações → E-mail & Convites',
       disparado_por: disparadoPor,
     })
   }

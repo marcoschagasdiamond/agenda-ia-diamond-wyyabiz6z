@@ -896,18 +896,18 @@ export default function Equipe() {
                         )}
                         {convite.erro_envio && (
                           <span
-                            className="text-amber-700 block text-[10px] truncate max-w-sm"
+                            className="text-amber-800 block text-[10px] font-medium max-w-md break-words mt-0.5 bg-amber-50/80 px-1.5 py-0.5 rounded border border-amber-200"
                             title={convite.erro_envio}
                           >
-                            E-mail: {convite.erro_envio}
+                            <span className="font-bold">E-mail:</span> {convite.erro_envio}
                           </span>
                         )}
                         {convite.whatsapp_erro && (
                           <span
-                            className="text-rose-700 block text-[10px] truncate max-w-sm"
+                            className="text-rose-800 block text-[10px] font-medium max-w-md break-words mt-0.5 bg-rose-50/80 px-1.5 py-0.5 rounded border border-rose-200"
                             title={convite.whatsapp_erro}
                           >
-                            WhatsApp: {convite.whatsapp_erro}
+                            <span className="font-bold">WhatsApp:</span> {convite.whatsapp_erro}
                           </span>
                         )}
                       </span>
