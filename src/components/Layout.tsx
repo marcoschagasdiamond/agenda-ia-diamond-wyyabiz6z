@@ -187,11 +187,12 @@ export default function Layout({ children }: LayoutProps) {
   }
 
   return (
-    <div className="flex min-h-screen bg-[#F4F2EE] text-[#1A1D21]">
+    <div className="flex h-screen overflow-hidden bg-[#F4F2EE] text-[#1A1D21]">
       {/* ======================================================== */}
       {/* 1. RAIL FIXO DA ESQUERDA (ÍCONES DO DASHBOARD A CONFIG)  */}
+      {/* Permanece fixo na tela; sua lista interna rola se couber */}
       {/* ======================================================== */}
-      <aside className="hidden md:flex flex-col w-[68px] border-r border-[#E5E1D8] bg-[#1A1D21] text-white shrink-0 z-30 select-none">
+      <aside className="hidden md:flex flex-col w-[68px] h-full border-r border-[#E5E1D8] bg-[#1A1D21] text-white shrink-0 z-30 select-none">
         {/* Logo Diamond no topo do rail */}
         <div className="h-14 flex items-center justify-center border-b border-white/10 shrink-0">
           <button
@@ -206,7 +207,7 @@ export default function Layout({ children }: LayoutProps) {
           </button>
         </div>
 
-        {/* Lista de Ícones do Rail */}
+        {/* Lista de Ícones do Rail com rolagem interna própria */}
         <nav className="flex-1 py-3 px-1.5 space-y-1 overflow-y-auto flex flex-col items-center">
           {currentNavItems.map((item) => {
             const Icon = item.icon
@@ -270,19 +271,21 @@ export default function Layout({ children }: LayoutProps) {
 
       {/* ======================================================== */}
       {/* 2. SEGUNDA COLUNA CONTEXTUAL (DIAMONDGROUP MODEL)        */}
+      {/* Permanece fixa na tela; possui rolagem interna nos painéis*/}
       {/* ======================================================== */}
       {colunaSecundariaAberta && (
-        <aside className="hidden md:flex flex-col w-[260px] lg:w-[280px] border-r border-[#E5E1D8] bg-white shadow-xs shrink-0 z-20">
+        <aside className="hidden md:flex flex-col w-[260px] lg:w-[280px] h-full border-r border-[#E5E1D8] bg-white shadow-xs shrink-0 z-20 overflow-hidden">
           <NavContextColumn />
         </aside>
       )}
 
       {/* ======================================================== */}
       {/* 3. ÁREA DE CONTEÚDO PRINCIPAL (DIREITA DAS DUAS COLUNAS) */}
+      {/* Topbar fixa no topo e <main> com rolagem independente      */}
       {/* ======================================================== */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Topbar Superior */}
-        <header className="h-14 border-b border-[#E5E1D8] bg-white flex items-center justify-between px-4 sticky top-0 z-10">
+        <header className="h-14 border-b border-[#E5E1D8] bg-white flex items-center justify-between px-4 shrink-0 z-10">
           <div className="flex items-center gap-2.5">
             {/* Botão Mobile para abrir navegação completa */}
             <button
@@ -359,8 +362,10 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         </header>
 
-        {/* Content Body */}
-        <main className="flex-1 p-4 md:p-6 overflow-y-auto">{children}</main>
+        {/* Content Body com rolagem vertical independente */}
+        <main className="flex-1 p-4 md:p-6 overflow-y-auto overscroll-y-contain focus:outline-none">
+          {children}
+        </main>
       </div>
 
       {/* ======================================================== */}
