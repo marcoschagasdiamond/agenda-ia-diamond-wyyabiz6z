@@ -305,15 +305,29 @@ onRecordAfterCreateSuccess((e) => {
     // 1. Tenta via conector pessoal do convidador se ele configurou Resend próprio
     if (convidadorRecord && configUsuario && configUsuario.usar_resend_proprio) {
       try {
-        const resUser = $connectors.execute(convidadorRecord, 'resend', 'send-email', {
+        let resUser = $connectors.execute(convidadorRecord, 'RESEND_SEND_EMAIL', {
           from: remetenteCompleto,
           to: conviteEmail,
           subject: assuntoFinal,
           html: html,
         })
         if (resUser && resUser.successful === false) {
+          // Fallback de compatibilidade
+          try {
+            const resUser2 = $connectors.execute(convidadorRecord, 'resend', 'send-email', {
+              from: remetenteCompleto,
+              to: conviteEmail,
+              subject: assuntoFinal,
+              html: html,
+            })
+            if (resUser2 && resUser2.successful) {
+              resUser = resUser2
+            }
+          } catch (_) {}
+        }
+        if (resUser && resUser.successful === false) {
           erroDisparo = formatarErro(resUser.error, 'email')
-        } else {
+        } else if (resUser && resUser.successful) {
           emailEnviado = true
           conectorExecutadoComSucesso = true
         }
@@ -322,18 +336,28 @@ onRecordAfterCreateSuccess((e) => {
       }
     }
 
-    // 2. Fallback: disparo via Resend do Master (executeAsOwner)
+    // 2. Fallback: disparo via Resend do Master (executeAsOwner se configurado)
     if (!conectorExecutadoComSucesso) {
       try {
-        const resOwner = $connectors.executeAsOwner('resend', 'send-email', {
-          from: remetenteCompleto,
-          to: conviteEmail,
-          subject: assuntoFinal,
-          html: html,
-        })
+        let resOwner = null
+        try {
+          resOwner = $connectors.executeAsOwner('RESEND_SEND_EMAIL', {
+            from: remetenteCompleto,
+            to: conviteEmail,
+            subject: assuntoFinal,
+            html: html,
+          })
+        } catch (_) {
+          resOwner = $connectors.executeAsOwner('resend', 'send-email', {
+            from: remetenteCompleto,
+            to: conviteEmail,
+            subject: assuntoFinal,
+            html: html,
+          })
+        }
         if (resOwner && resOwner.successful === false) {
           erroEmailTexto = formatarErro(resOwner.error, 'email')
-        } else {
+        } else if (resOwner && resOwner.successful) {
           emailEnviado = true
           erroEmailTexto = ''
         }
@@ -787,15 +811,28 @@ routerAdd('POST', '/backend/v1/convites/reenviar', (e) => {
 
         if (convidadorRecord && configUsuario && configUsuario.usar_resend_proprio) {
           try {
-            const resUser = $connectors.execute(convidadorRecord, 'resend', 'send-email', {
+            let resUser = $connectors.execute(convidadorRecord, 'RESEND_SEND_EMAIL', {
               from: remetenteCompleto,
               to: conviteEmail,
               subject: assuntoFinal,
               html: html,
             })
             if (resUser && resUser.successful === false) {
+              try {
+                const resUser2 = $connectors.execute(convidadorRecord, 'resend', 'send-email', {
+                  from: remetenteCompleto,
+                  to: conviteEmail,
+                  subject: assuntoFinal,
+                  html: html,
+                })
+                if (resUser2 && resUser2.successful) {
+                  resUser = resUser2
+                }
+              } catch (_) {}
+            }
+            if (resUser && resUser.successful === false) {
               erroDisparo = formatarErro(resUser.error, 'email')
-            } else {
+            } else if (resUser && resUser.successful) {
               emailEnviado = true
               conectorExecutadoComSucesso = true
             }
@@ -806,15 +843,25 @@ routerAdd('POST', '/backend/v1/convites/reenviar', (e) => {
 
         if (!conectorExecutadoComSucesso) {
           try {
-            const resOwner = $connectors.executeAsOwner('resend', 'send-email', {
-              from: remetenteCompleto,
-              to: conviteEmail,
-              subject: assuntoFinal,
-              html: html,
-            })
+            let resOwner = null
+            try {
+              resOwner = $connectors.executeAsOwner('RESEND_SEND_EMAIL', {
+                from: remetenteCompleto,
+                to: conviteEmail,
+                subject: assuntoFinal,
+                html: html,
+              })
+            } catch (_) {
+              resOwner = $connectors.executeAsOwner('resend', 'send-email', {
+                from: remetenteCompleto,
+                to: conviteEmail,
+                subject: assuntoFinal,
+                html: html,
+              })
+            }
             if (resOwner && resOwner.successful === false) {
               erroEmailTexto = formatarErro(resOwner.error, 'email')
-            } else {
+            } else if (resOwner && resOwner.successful) {
               emailEnviado = true
               erroEmailTexto = ''
             }
@@ -1127,15 +1174,28 @@ routerAdd('POST', '/backend/v1/email/teste-usuario', (e) => {
     let conectorExecutado = false
     if (configUsuario && configUsuario.usar_resend_proprio) {
       try {
-        const resUser = $connectors.execute(authRecord, 'resend', 'send-email', {
+        let resUser = $connectors.execute(authRecord, 'RESEND_SEND_EMAIL', {
           from: remetenteCompleto,
           to: userEmail,
           subject: 'Teste de Envio de E-mail • Agenda IA Diamond',
           html: htmlTeste,
         })
         if (resUser && resUser.successful === false) {
+          try {
+            const resUser2 = $connectors.execute(authRecord, 'resend', 'send-email', {
+              from: remetenteCompleto,
+              to: userEmail,
+              subject: 'Teste de Envio de E-mail • Agenda IA Diamond',
+              html: htmlTeste,
+            })
+            if (resUser2 && resUser2.successful) {
+              resUser = resUser2
+            }
+          } catch (_) {}
+        }
+        if (resUser && resUser.successful === false) {
           erroTexto = formatarErro(resUser.error)
-        } else {
+        } else if (resUser && resUser.successful) {
           enviado = true
           disparadoPor = 'usuario_proprio'
           conectorExecutado = true
@@ -1146,17 +1206,31 @@ routerAdd('POST', '/backend/v1/email/teste-usuario', (e) => {
     }
 
     if (!conectorExecutado) {
-      const resOwner = $connectors.executeAsOwner('resend', 'send-email', {
-        from: remetenteCompleto,
-        to: userEmail,
-        subject: 'Teste de Envio de E-mail (Master) • Agenda IA Diamond',
-        html: htmlTeste,
-      })
-      if (resOwner && resOwner.successful === false) {
-        erroTexto = formatarErro(resOwner.error)
-      } else {
-        enviado = true
-        disparadoPor = 'owner'
+      try {
+        let resOwner = null
+        try {
+          resOwner = $connectors.executeAsOwner('RESEND_SEND_EMAIL', {
+            from: remetenteCompleto,
+            to: userEmail,
+            subject: 'Teste de Envio de E-mail (Master) • Agenda IA Diamond',
+            html: htmlTeste,
+          })
+        } catch (_) {
+          resOwner = $connectors.executeAsOwner('resend', 'send-email', {
+            from: remetenteCompleto,
+            to: userEmail,
+            subject: 'Teste de Envio de E-mail (Master) • Agenda IA Diamond',
+            html: htmlTeste,
+          })
+        }
+        if (resOwner && resOwner.successful === false) {
+          erroTexto = formatarErro(resOwner.error)
+        } else if (resOwner && resOwner.successful) {
+          enviado = true
+          disparadoPor = 'owner'
+        }
+      } catch (ownerErr) {
+        erroTexto = formatarErro(ownerErr)
       }
     }
   } catch (err) {
@@ -1224,16 +1298,51 @@ routerAdd('GET', '/backend/v1/master/status-resend', (e) => {
     }
   } catch (_) {}
 
+  // Testa se a conta do usuário master autenticado possui conector Resend ativo
+  let masterResendConectado = false
+  let detalheResendMaster = ''
+  try {
+    const resTest = $connectors.execute(authRecord, 'RESEND_LIST_DOMAINS', {})
+    if (resTest && resTest.successful) {
+      masterResendConectado = true
+      detalheResendMaster = 'Conta Resend pessoal do Master conectada e operacional'
+    } else if (resTest && resTest.error) {
+      detalheResendMaster = String(resTest.error)
+    }
+  } catch (errResendTest) {
+    detalheResendMaster = String(errResendTest.message || errResendTest)
+  }
+
+  const statusCalculado = masterResendConectado
+    ? totalFalhas === 0 && totalEnviados > 0
+      ? 'conectado'
+      : totalFalhas > 0
+        ? 'ativo_com_alertas'
+        : 'conectado'
+    : totalFalhas === 0 && totalEnviados > 0
+      ? 'conectado'
+      : totalEnviados > 0
+        ? 'ativo_com_alertas'
+        : 'pendente_teste'
+
+  const conectadoBool = masterResendConectado || (totalEnviados > 0 && totalFalhas === 0)
+
   return e.json(200, {
-    status:
-      totalFalhas === 0 && totalEnviados > 0
-        ? 'conectado'
-        : totalEnviados > 0
-          ? 'ativo_com_alertas'
-          : 'pendente_teste',
+    sucesso: true,
+    conectado: conectadoBool,
+    status: statusCalculado,
     provedor: 'Resend',
-    modo: 'Owner + Usuário Pessoal',
+    modo: 'Usuário Pessoal (Cada usuário conecta sua conta)',
+    master_conectado: masterResendConectado,
     remetente_padrao: `${remetenteNome} <${remetenteEmail}>`,
+    detalhe: masterResendConectado
+      ? 'Conexão Resend verificada e ativa.'
+      : totalEnviados > 0 && totalFalhas === 0
+        ? 'Envios anteriores realizados com sucesso.'
+        : ultimoErro
+          ? `Alerta: ${ultimoErro}`
+          : 'Aguardando conexão Resend nas Configurações.',
+    testado_em: new Date().toISOString(),
     estatisticas: {
       total_convites: totalConvites,
       total_enviados: totalEnviados,
@@ -1243,7 +1352,9 @@ routerAdd('GET', '/backend/v1/master/status-resend', (e) => {
     mensagem:
       totalFalhas > 0 && ultimoErro
         ? `Atenção: Houve falha recente de envio: "${ultimoErro}"`
-        : 'Sistema pronto para envios via Resend.',
+        : masterResendConectado
+          ? 'Conta Resend do Master conectada e pronta para envio.'
+          : 'Sistema pronto para envios via Resend.',
   })
 })
 

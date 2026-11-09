@@ -177,11 +177,11 @@ export const SecaoConfigEmailSistema: React.FC<SecaoConfigEmailSistemaProps> = (
             <span className="text-[11px] text-zinc-500 font-medium block">Modo de Operação</span>
             <span className="text-xs font-bold text-zinc-800 flex items-center gap-1 mt-0.5">
               <Sparkles className="w-3.5 h-3.5 text-[#0F766E]" />
-              Owner Mode ($connectors.executeAsOwner)
+              Conta Pessoal por Usuário (Resend)
             </span>
             <span className="text-[10px] text-zinc-500 mt-1 block">
-              Disparos centralizados do Master quando o usuário não possui conta Resend própria
-              conectada.
+              Cada usuário conecta a sua própria conta Resend em Configurações &gt; E-mail &amp;
+              Convites para disparos dedicados.
             </span>
           </div>
 
