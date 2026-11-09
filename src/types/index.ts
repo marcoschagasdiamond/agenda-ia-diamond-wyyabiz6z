@@ -411,6 +411,12 @@ export interface Demanda {
   timeline?: string
   lembrete_modo?: LembreteModo
   lembrete_antecedencias?: LembreteAntecedenciaCodigo[] | string
+  link_reuniao?: string
+  transcricao?: string
+  resumo?: string
+  decisoes?: string[] | string
+  proximos_passos?: string[] | string
+  folha_origem?: string
   created: string
   updated: string
   expand?: {
@@ -584,6 +590,12 @@ export interface EventoCalendario {
   criado_por?: string
   lembrete_modo?: LembreteModo
   lembrete_antecedencias?: LembreteAntecedenciaCodigo[] | string
+  link_reuniao?: string
+  transcricao?: string
+  resumo?: string
+  decisoes?: string[] | string
+  proximos_passos?: string[] | string
+  folha_origem?: string
   created: string
   updated: string
   expand?: {

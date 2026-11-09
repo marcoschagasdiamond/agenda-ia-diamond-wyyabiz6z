@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-09T14:57:24.082Z",
+  "generatedAt": "2026-11-09T21:01:52.429Z",
   "collections": [
     {
       "name": "users",
@@ -1665,6 +1665,43 @@
           "type": "json",
           "required": false,
           "system": false
+        },
+        {
+          "name": "link_reuniao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "transcricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "resumo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "decisoes",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "proximos_passos",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "folha_origem",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "folha_dia"
         }
       ],
       "indexes": [

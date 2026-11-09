@@ -507,6 +507,55 @@ export const diamondApi = {
     return pb.files.getURL(record as any, record.audio_gravacao)
   },
 
+  async transcreverEExtrairReuniao(dados: {
+    audio_base64?: string
+    mime_type?: string
+    nome_arquivo?: string
+    texto_transcrito?: string
+    data_referencia?: string
+    fuso_horario?: string
+  }): Promise<{
+    sucesso: boolean
+    transcricao: string
+    analise: {
+      titulo_sugerido: string
+      data_detectada: boolean
+      data_texto_original: string | null
+      data_inicio: string | null
+      data_fim: string | null
+      participantes: string[]
+      resumo: string
+      decisoes: string[]
+      proximos_passos: string[]
+      link_reuniao_sugerido: string
+      sala_jitsi: string
+      projeto_id: string | null
+      contato_id: string | null
+      urgencia: 'baixa' | 'media' | 'alta' | 'urgente'
+    }
+    codigo?: string
+    mensagem?: string
+  }> {
+    const res = await fetch(
+      `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/transcrever-reuniao`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: pb.authStore.token,
+        },
+        body: JSON.stringify(dados),
+      },
+    )
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      const err = new Error(json.mensagem || 'Falha ao processar reunião com OpenAI')
+      ;(err as any).codigo = json.codigo
+      throw err
+    }
+    return json
+  },
+
   async organizarReuniao(dados: {
     folha_id?: string
     titulo?: string

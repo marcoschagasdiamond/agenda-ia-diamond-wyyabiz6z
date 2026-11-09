@@ -50,6 +50,7 @@ import ConstrutorFormularios from '@/pages/config/ConstrutorFormularios'
 import GestaoLembretes from '@/pages/config/GestaoLembretes'
 import GestaoWhatsApp from '@/pages/config/GestaoWhatsApp'
 import GestaoEmailUsuario from '@/pages/config/GestaoEmailUsuario'
+import { GestaoOpenAIUsuario } from '@/components/config/GestaoOpenAIUsuario'
 import { Bell, FileEdit } from 'lucide-react'
 
 export default function Config() {
@@ -401,6 +402,9 @@ export default function Config() {
         {/* 3. ABA: MEMÓRIA ESTRATÉGICA & CONECTORES */}
         {/* ============================================================== */}
         <TabsContent value="preferencias" className="space-y-6 m-0">
+          {/* Conector OpenAI do Usuário (Gravação & Transcrição de Reuniões) */}
+          <GestaoOpenAIUsuario />
+
           {/* Seção 1: Status das Integrações */}
           <Card className="border-[#E5E1D8] bg-white shadow-xs">
             <CardHeader className="pb-3 border-b border-[#E5E1D8]/60">
