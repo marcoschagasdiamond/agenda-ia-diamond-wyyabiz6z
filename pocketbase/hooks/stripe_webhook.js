@@ -142,6 +142,7 @@ routerAdd('POST', '/backend/v1/stripe_webhook', (e) => {
       licenca.set('permite_convites', true)
       licenca.set('permite_relatorios_avancados', true)
       licenca.set('permite_whatsapp', true)
+      licenca.set('conta_teste', false)
       licenca.set('preco_recorrencia', 197)
       licenca.set('ciclo_cobranca', 'mensal')
       if (customerId) licenca.set('stripe_customer_id', customerId)

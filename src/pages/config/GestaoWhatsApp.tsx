@@ -503,6 +503,7 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
         motivo="O Módulo WhatsApp faz parte do plano Pro comercial (R$ 197/mês) ou de licenças modulares liberadas. Assine para sincronizar conversas para a Folha do Dia."
         stripePaymentLink={limites?.stripePaymentLink}
         precoMensalTexto={limites?.precoMensalTexto}
+        isContaTeste={limites?.isContaTeste}
       />
 
       {/* Alerta de Módulo Inativo */}

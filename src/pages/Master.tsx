@@ -26,6 +26,7 @@ import {
   Globe,
   Sliders,
   DollarSign,
+  FlaskConical,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { diamondApi } from '@/services/diamondApi'
@@ -95,6 +96,11 @@ export function Master() {
   const [modalPlanoOpen, setModalPlanoOpen] = useState(false)
   const [contaSelecionada, setContaSelecionada] = useState<ResumoContaMaster | null>(null)
   const [novoPlano, setNovoPlano] = useState<PlanoLicencaTipo>('pro')
+
+  // Modal Confirmar Modo Conta de Teste
+  const [modalTesteOpen, setModalTesteOpen] = useState(false)
+  const [contaParaTeste, setContaParaTeste] = useState<ResumoContaMaster | null>(null)
+  const [alvoContaTeste, setAlvoContaTeste] = useState<boolean>(false)
 
   // Modal Eleger / Remover Admin
   const [modalAdminsOpen, setModalAdminsOpen] = useState(false)
@@ -277,6 +283,39 @@ export function Master() {
         permite_convites: codigoModulo === 'equipe_convites' ? !jaExiste : prev.permite_convites,
       }
     })
+  }
+
+  const handleSolicitarToggleTeste = (conta: ResumoContaMaster) => {
+    const novoValor = !conta.conta_teste
+    setContaParaTeste(conta)
+    setAlvoContaTeste(novoValor)
+    setModalTesteOpen(true)
+  }
+
+  const handleConfirmarToggleTeste = async () => {
+    if (!contaParaTeste) return
+    try {
+      setCarregandoAcao(true)
+      await diamondApi.alternarContaTeste(contaParaTeste.id, alvoContaTeste)
+      toast({
+        title: alvoContaTeste ? 'Modo Conta de Teste ATIVADO' : 'Modo Conta de Teste DESLIGADO',
+        description: alvoContaTeste
+          ? `A conta "${contaParaTeste.nome_conta}" agora está em modo de teste: os recursos estão liberados para uso e os botões de pagamento estão exibidos mas desabilitados com aviso.`
+          : `A conta "${contaParaTeste.nome_conta}" retornou ao modo normal: os limites do plano vigente voltaram a ser aplicados e o checkout do Stripe foi reativado.`,
+      })
+      setModalTesteOpen(false)
+      setContaParaTeste(null)
+      await carregarDados()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha ao alterar modo Conta de Teste'
+      toast({
+        title: 'Erro ao alterar modo teste',
+        description: message,
+        variant: 'destructive',
+      })
+    } finally {
+      setCarregandoAcao(false)
+    }
   }
 
   const handleSalvarPlano = async () => {
@@ -1088,6 +1127,12 @@ export function Master() {
                             {conta.status}
                           </Badge>
                         )}
+                        {conta.conta_teste && (
+                          <Badge className="bg-amber-100 text-amber-900 border-amber-300 font-bold text-[10px] flex items-center gap-1 shadow-xs animate-pulse">
+                            <FlaskConical className="w-3 h-3 text-amber-700" />
+                            Conta de Teste
+                          </Badge>
+                        )}
                       </div>
 
                       <p className="text-xs text-zinc-500">
@@ -1226,6 +1271,20 @@ export function Master() {
                     <div className="flex flex-col sm:flex-row lg:flex-col gap-2 shrink-0 justify-end w-full sm:w-auto">
                       <Button
                         size="sm"
+                        onClick={() => handleSolicitarToggleTeste(conta)}
+                        variant={conta.conta_teste ? 'default' : 'outline'}
+                        className={`text-xs font-semibold shadow-xs ${
+                          conta.conta_teste
+                            ? 'bg-amber-600 hover:bg-amber-700 text-white border-amber-600'
+                            : 'border-amber-300 hover:bg-amber-50 text-amber-800'
+                        }`}
+                      >
+                        <FlaskConical className="w-3.5 h-3.5 mr-1.5" />
+                        {conta.conta_teste ? 'Desligar Modo Teste' : 'Ativar Conta de Teste'}
+                      </Button>
+
+                      <Button
+                        size="sm"
                         onClick={() => {
                           setContaSelecionada(conta)
                           setNovoPlano(conta.plano)
@@ -1267,6 +1326,102 @@ export function Master() {
           )}
         </CardContent>
       </Card>
+
+      {/* Modal de Confirmação: Modo Conta de Teste */}
+      <Dialog open={modalTesteOpen} onOpenChange={setModalTesteOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center mb-1">
+              <FlaskConical className="w-5 h-5" />
+            </div>
+            <DialogTitle className="text-lg font-bold text-zinc-900 flex items-center gap-2">
+              <span>
+                {alvoContaTeste
+                  ? 'Ativar Modo "Conta de Teste"?'
+                  : 'Desligar Modo "Conta de Teste"?'}
+              </span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-zinc-500">
+              Conta: <strong className="text-zinc-800">{contaParaTeste?.nome_conta}</strong>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-2 space-y-3 text-xs text-zinc-600">
+            {alvoContaTeste ? (
+              <div className="p-3 rounded-lg bg-amber-50/80 border border-amber-200 space-y-2 text-amber-900">
+                <p className="font-semibold text-amber-950 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-amber-700" />
+                  Efeitos imediatos da Conta de Teste:
+                </p>
+                <ul className="list-disc pl-4 space-y-1 text-[11px] leading-relaxed">
+                  <li>
+                    <strong>Uso gratuito liberado:</strong> A conta pode cadastrar projetos, usar
+                    dias de folha e convidar membros sem sofrer bloqueios.
+                  </li>
+                  <li>
+                    <strong>Cobrança desativada em teste:</strong> Os botões de pagamento e
+                    assinatura de R$ 197/mês continuam visíveis, porém <em>desabilitados</em> com o
+                    aviso &quot;Pagamento desativado em teste&quot;.
+                  </li>
+                  <li>
+                    <strong>Badge &quot;Conta de Teste&quot;:</strong> Exibido nos banners de
+                    consumo e painéis para clareza da equipe.
+                  </li>
+                </ul>
+              </div>
+            ) : (
+              <div className="p-3 rounded-lg bg-zinc-50 border border-zinc-200 space-y-2 text-zinc-700">
+                <p className="font-semibold text-zinc-900 flex items-center gap-1.5">
+                  <Lock className="w-4 h-4 text-zinc-700" />
+                  Efeitos ao desligar o modo de teste:
+                </p>
+                <ul className="list-disc pl-4 space-y-1 text-[11px] leading-relaxed">
+                  <li>
+                    A conta volta ao comportamento normal com os limites do plano vigente (
+                    <strong>
+                      {contaParaTeste?.plano === 'gratuito' ? 'Gratuito Prova Viva' : 'Pago'}
+                    </strong>
+                    ).
+                  </li>
+                  <li>
+                    Os botões de pagamento e checkout do Stripe são <em>reativados</em>{' '}
+                    imediatamente.
+                  </li>
+                  <li>Nenhum dado cadastrado durante o teste é perdido.</li>
+                </ul>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setModalTesteOpen(false)}
+              disabled={carregandoAcao}
+              className="text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleConfirmarToggleTeste}
+              disabled={carregandoAcao}
+              className={`text-xs font-semibold ${
+                alvoContaTeste
+                  ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                  : 'bg-[#0F766E] hover:bg-[#0D9488] text-white'
+              }`}
+            >
+              {carregandoAcao
+                ? 'Atualizando...'
+                : alvoContaTeste
+                  ? 'Confirmar Ativação de Teste'
+                  : 'Confirmar e Desligar Teste'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Alterar Plano / Licença */}
       <Dialog open={modalPlanoOpen} onOpenChange={setModalPlanoOpen}>

@@ -1723,6 +1723,7 @@ export default function Folha() {
           unidade="dias"
           bloqueado={limites.bloqueadoFolha}
           planoAtivo={limites.plano === 'pro' || limites.plano === 'diamond_executive'}
+          isContaTeste={limites.isContaTeste}
           recursoNome="dias de folha"
           onDesbloquear={() => {
             setUpgradeMotivo(
@@ -4168,6 +4169,7 @@ export default function Folha() {
           `Você atingiu o limite de ${limites?.diasFolhaMax ?? 2} dias de folha do plano gratuito (Prova Viva). Ative o plano pago para criar folhas em dias ilimitados.`
         }
         isMaster={isMaster}
+        isContaTeste={limites?.isContaTeste}
       />
     </div>
   )

@@ -165,6 +165,7 @@ Como posso ajudar sua estratégia ou demandas hoje?`,
         motivo="O Copiloto IA faz parte do plano Pro comercial (R$ 197/mês). Ative para ter consultas inteligentes ilimitadas conectadas a todas as suas notas, projetos e contatos."
         stripePaymentLink={limites?.stripePaymentLink}
         precoMensalTexto={limites?.precoMensalTexto}
+        isContaTeste={limites?.isContaTeste}
       />
 
       {moduloIaInativo && (

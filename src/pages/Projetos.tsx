@@ -235,6 +235,7 @@ export default function Projetos() {
           unidade="projetos"
           bloqueado={limites.bloqueadoProjetos}
           planoAtivo={limites.plano === 'pro' || limites.plano === 'diamond_executive'}
+          isContaTeste={limites.isContaTeste}
           recursoNome="projetos"
           onDesbloquear={() => setModalUpgradeOpen(true)}
         />
@@ -474,6 +475,7 @@ export default function Projetos() {
         recursoNome="Projetos Ilimitados"
         motivo={`Você atingiu o limite de ${limites?.projetosMax ?? 2} projetos do plano gratuito (Prova Viva). Ative o plano pago para cadastrar projetos ilimitados com cronogramas e orçamentos.`}
         isMaster={isMaster}
+        isContaTeste={limites?.isContaTeste}
       />
     </div>
   )

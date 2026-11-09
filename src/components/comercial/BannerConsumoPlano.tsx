@@ -1,4 +1,4 @@
-import { Lock, Sparkles, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { Lock, Sparkles, AlertTriangle, CheckCircle2, FlaskConical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
@@ -11,6 +11,7 @@ interface BannerConsumoPlanoProps {
   onDesbloquear: () => void
   recursoNome?: string
   planoAtivo?: boolean
+  isContaTeste?: boolean
 }
 
 export function BannerConsumoPlano({
@@ -22,7 +23,52 @@ export function BannerConsumoPlano({
   onDesbloquear,
   recursoNome,
   planoAtivo = false,
+  isContaTeste = false,
 }: BannerConsumoPlanoProps) {
+  // Se estiver em modo Conta de Teste
+  if (isContaTeste) {
+    return (
+      <div className="rounded-xl border border-amber-300 bg-gradient-to-r from-amber-50/90 via-orange-50/60 to-white p-3.5 transition-all mb-4 shadow-2xs">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-amber-500 text-white shadow-2xs">
+              <FlaskConical className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-xs text-zinc-900 tracking-tight">{titulo}</span>
+                <Badge className="bg-amber-100 text-amber-900 border-amber-300 font-bold text-[10px] h-4.5 px-2 shadow-2xs">
+                  Conta de Teste
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className="border-amber-300 text-amber-800 bg-amber-50 text-[10px] h-4.5 px-1.5 font-medium"
+                >
+                  {usado} {unidade} em uso • Liberado em Teste
+                </Badge>
+              </div>
+              <p className="text-xs text-amber-900/90 mt-0.5">
+                Modo de teste ativo: recursos ilimitados liberados para experimentação. Pagamento
+                desativado temporariamente.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              onClick={onDesbloquear}
+              className="bg-amber-600/90 hover:bg-amber-700 text-white text-xs font-semibold shadow-xs"
+            >
+              <Sparkles className="w-3.5 h-3.5 mr-1.5 text-amber-200" />
+              <span>Ver Assinatura</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // Se o plano for pago/ativo, renderiza banner verde "Plano Ativo" sem limites
   if (planoAtivo) {
     return (

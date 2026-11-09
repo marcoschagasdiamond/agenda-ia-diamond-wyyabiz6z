@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-09T01:30:03.104Z",
+  "generatedAt": "2026-11-09T01:46:38.494Z",
   "collections": [
     {
       "name": "users",
@@ -3189,6 +3189,12 @@
         {
           "name": "stripe_webhook_secret",
           "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "conta_teste",
+          "type": "bool",
           "required": false,
           "system": false
         }

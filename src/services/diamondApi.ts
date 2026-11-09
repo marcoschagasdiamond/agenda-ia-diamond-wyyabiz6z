@@ -1297,6 +1297,7 @@ export const diamondApi = {
         data_inicio: lic.data_inicio,
         data_renovacao: lic.data_renovacao,
         data_expiracao: lic.data_expiracao,
+        conta_teste: Boolean(lic.conta_teste),
         diasFolhaUsados: diasFolhaTotal,
         projetosUsados: projetosTotal,
         convitesTotal: convites.length,
@@ -1442,19 +1443,28 @@ export const diamondApi = {
         : fallbackPermiteConv
 
     const isPago = plano === 'pro' || plano === 'diamond_executive'
+    const isContaTeste = Boolean(licenca?.conta_teste)
+
+    // Se a conta estiver em teste, os recursos são liberados para testes (sem travas),
+    // mas os botões de pagamento e avisos continuam exibidos de forma desabilitada.
+    const liberadoPorTeste = isContaTeste
 
     // Checagem modular padronizada:
-    // Se a licença é paga, todos os módulos são ativos; se gratuita, checa os registros
+    // Se a licença é paga ou em teste, todos os módulos são ativos; se gratuita, checa os registros
     const moduloWhatsappAtivo =
       isPago ||
+      liberadoPorTeste ||
       modulosCodigos.includes('whatsapp') ||
       modulosCodigos.includes('whatsapp_radar') ||
       !!licenca?.permite_whatsapp
 
-    const moduloIaAtivo = isPago || modulosCodigos.includes('ia')
+    const moduloIaAtivo = isPago || liberadoPorTeste || modulosCodigos.includes('ia')
 
     const moduloFinancasAtivo =
-      isPago || modulosCodigos.includes('financas') || modulosCodigos.includes('contabilidade_5_0')
+      isPago ||
+      liberadoPorTeste ||
+      modulosCodigos.includes('financas') ||
+      modulosCodigos.includes('contabilidade_5_0')
 
     const precoNum = licenca?.preco_recorrencia || 197
     const cicloStr = licenca?.ciclo_cobranca === 'anual' ? 'ano' : 'mês'
@@ -1465,13 +1475,13 @@ export const diamondApi = {
       status,
       nome_conta: licenca?.nome_conta || 'Conta Diamond',
       diasFolhaUsados: diasFolhaCount,
-      diasFolhaMax: maxDias,
-      bloqueadoFolha: plano === 'gratuito' && diasFolhaCount >= maxDias,
+      diasFolhaMax: liberadoPorTeste ? 99999 : maxDias,
+      bloqueadoFolha: !liberadoPorTeste && plano === 'gratuito' && diasFolhaCount >= maxDias,
       projetosUsados: projetosCount,
-      projetosMax: maxProj,
-      bloqueadoProjetos: plano === 'gratuito' && projetosCount >= maxProj,
-      permiteConvites: permiteConv,
-      bloqueadoConvites: plano === 'gratuito' && !permiteConv,
+      projetosMax: liberadoPorTeste ? 99999 : maxProj,
+      bloqueadoProjetos: !liberadoPorTeste && plano === 'gratuito' && projetosCount >= maxProj,
+      permiteConvites: liberadoPorTeste ? true : permiteConv,
+      bloqueadoConvites: !liberadoPorTeste && plano === 'gratuito' && !permiteConv,
       modulosAtivos: modulosCodigos,
       moduloWhatsappAtivo,
       moduloIaAtivo,
@@ -1479,9 +1489,21 @@ export const diamondApi = {
       stripePaymentLink: licenca?.stripe_payment_link,
       precoMensal: licenca?.preco_recorrencia || 197,
       precoMensalTexto,
+      isContaTeste,
       isMaster,
       isAdmin,
     }
+  },
+
+  async alternarContaTeste(
+    licencaId: string,
+    contaTeste: boolean,
+  ): Promise<import('../types').LicencaConta> {
+    return await pb
+      .collection('licencas_conta')
+      .update<import('../types').LicencaConta>(licencaId, {
+        conta_teste: contaTeste,
+      })
   },
 
   async salvarConfiguracaoCheckoutGlobal(

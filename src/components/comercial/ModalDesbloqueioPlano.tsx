@@ -29,6 +29,7 @@ interface ModalDesbloqueioPlanoProps {
   isMaster?: boolean
   stripePaymentLink?: string
   precoMensalTexto?: string
+  isContaTeste?: boolean
 }
 
 export function ModalDesbloqueioPlano({
@@ -39,21 +40,25 @@ export function ModalDesbloqueioPlano({
   isMaster = false,
   stripePaymentLink,
   precoMensalTexto = 'R$ 197/mês',
+  isContaTeste,
 }: ModalDesbloqueioPlanoProps) {
   const [copiado, setCopiado] = useState(false)
   const [linkPagamento, setLinkPagamento] = useState<string | undefined>(stripePaymentLink)
   const [precoTexto, setPrecoTexto] = useState<string>(precoMensalTexto)
+  const [contaEmTeste, setContaEmTeste] = useState<boolean>(Boolean(isContaTeste))
 
   useEffect(() => {
+    if (typeof isContaTeste === 'boolean') {
+      setContaEmTeste(isContaTeste)
+    }
     if (stripePaymentLink) {
       setLinkPagamento(stripePaymentLink)
-      return
     }
-    // Buscar link configurado na licença do PocketBase
+    // Buscar link e flag de teste configurados na licença do PocketBase
     diamondApi
       .getLicencaConta()
       .then((lic) => {
-        if (lic?.stripe_payment_link) {
+        if (lic?.stripe_payment_link && !stripePaymentLink) {
           setLinkPagamento(lic.stripe_payment_link)
         }
         if (lic?.preco_recorrencia) {
@@ -61,9 +66,12 @@ export function ModalDesbloqueioPlano({
             `R$ ${lic.preco_recorrencia}/${lic.ciclo_cobranca === 'anual' ? 'ano' : 'mês'}`,
           )
         }
+        if (typeof isContaTeste !== 'boolean') {
+          setContaEmTeste(Boolean(lic?.conta_teste))
+        }
       })
       .catch(() => {})
-  }, [stripePaymentLink, open])
+  }, [stripePaymentLink, open, isContaTeste])
 
   const handleCopiarContato = () => {
     navigator.clipboard?.writeText('marcoschagasdiamond@icloud.com')
@@ -86,7 +94,7 @@ export function ModalDesbloqueioPlano({
       <DialogContent className="max-w-lg p-0 overflow-hidden border-amber-200">
         {/* Topo Premium */}
         <div className="bg-gradient-to-br from-[#0F766E] via-[#0D9488] to-[#115E59] text-white p-6 relative">
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400 text-[#1A1D21] text-xs font-bold uppercase tracking-wider shadow-sm">
               <Sparkles className="w-3.5 h-3.5 text-[#1A1D21]" />
               Plano Pro Comercial
@@ -94,12 +102,22 @@ export function ModalDesbloqueioPlano({
             <Badge variant="outline" className="border-white/30 text-white text-[11px]">
               {precoTexto}
             </Badge>
+            {contaEmTeste && (
+              <Badge className="bg-amber-100 text-amber-950 border-amber-300 font-bold text-[10px] shadow-xs">
+                Conta de Teste Ativa
+              </Badge>
+            )}
           </div>
           <DialogTitle className="text-2xl font-bold text-white tracking-tight">
             Desbloqueie o Ecossistema Completo
           </DialogTitle>
           <DialogDescription className="text-teal-100 text-sm mt-1">
-            {recursoNome ? (
+            {contaEmTeste ? (
+              <span>
+                Esta conta está em <strong>Modo Conta de Teste</strong>: os recursos estão liberados
+                para experimentação e a cobrança está desativada no momento.
+              </span>
+            ) : recursoNome ? (
               <span>
                 O recurso <strong>{recursoNome}</strong> faz parte do plano pago do Agenda IA
                 Diamond com ativação automática via Stripe.
@@ -114,7 +132,24 @@ export function ModalDesbloqueioPlano({
 
         {/* Conteúdo Informativo */}
         <div className="p-6 space-y-4 text-sm bg-white">
-          {motivo && (
+          {contaEmTeste && (
+            <div className="p-3.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-950 flex items-start gap-2.5 shadow-2xs">
+              <Sparkles className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <p className="font-bold text-xs text-amber-900 uppercase tracking-wide">
+                  Pagamento desativado em teste
+                </p>
+                <p className="text-xs text-amber-900 leading-relaxed">
+                  Sua conta foi colocada em <strong>modo de teste pelo Administrador Master</strong>
+                  . Os recursos do sistema estão livres para uso e avaliação, sem necessidade de
+                  pagamento no momento. O botão de assinatura abaixo é mantido apenas como
+                  demonstração e está desabilitado.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {motivo && !contaEmTeste && (
             <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 flex items-start gap-2.5">
               <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
               <div>
@@ -207,7 +242,21 @@ export function ModalDesbloqueioPlano({
               Fechar
             </Button>
 
-            {linkPagamento ? (
+            {contaEmTeste ? (
+              <Button
+                type="button"
+                size="sm"
+                disabled
+                title="O pagamento está desativado nesta conta de teste"
+                className="bg-zinc-200 text-zinc-500 cursor-not-allowed text-xs font-semibold opacity-80 gap-1.5 px-3"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Assinar plano — {precoTexto}</span>
+                <span className="text-[10px] bg-amber-200/80 text-amber-900 px-1.5 py-0.2 rounded font-bold ml-1">
+                  Pagamento desativado em teste
+                </span>
+              </Button>
+            ) : linkPagamento ? (
               <Button
                 type="button"
                 size="sm"

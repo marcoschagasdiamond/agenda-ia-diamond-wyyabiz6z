@@ -651,6 +651,7 @@ export interface LicencaConta {
   stripe_customer_id?: string
   stripe_subscription_id?: string
   stripe_webhook_secret?: string
+  conta_teste?: boolean
   created: string
   updated: string
 }
@@ -707,6 +708,8 @@ export interface LimitesConsumoConta {
   stripePaymentLink?: string
   precoMensal?: number
   precoMensalTexto: string
+  // Modo Conta de Teste
+  isContaTeste: boolean
   // Papéis
   isMaster: boolean
   isAdmin: boolean
@@ -729,6 +732,7 @@ export interface ResumoContaMaster {
   data_inicio?: string
   data_renovacao?: string
   data_expiracao?: string
+  conta_teste?: boolean
   diasFolhaUsados: number
   projetosUsados: number
   convitesTotal: number

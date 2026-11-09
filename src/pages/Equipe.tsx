@@ -945,6 +945,7 @@ export default function Equipe() {
         recursoNome="Envio de Convites de Equipe"
         motivo="O envio de convites para colaboradores e clientes é liberado mediante ativação do plano pago da conta."
         isMaster={isMaster}
+        isContaTeste={limites?.isContaTeste}
       />
 
       {/* Modal de confirmação de exclusão de convite */}

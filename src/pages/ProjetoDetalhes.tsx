@@ -1217,6 +1217,7 @@ export default function ProjetoDetalhes() {
         motivo="O controle financeiro e orçamentário detalhado por projeto faz parte do plano Pro comercial (R$ 197/mês) ou licença com Módulo Finanças ativo."
         stripePaymentLink={limites?.stripePaymentLink}
         precoMensalTexto={limites?.precoMensalTexto}
+        isContaTeste={limites?.isContaTeste}
       />
 
       {/* ========================================================== */}

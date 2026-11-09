@@ -543,6 +543,7 @@ export default function ModalConvidarEquipe({
         recursoNome="Envio de Convites de Equipe"
         motivo="O envio de convites de equipe para novos membros e convidados é um recurso exclusivo do plano pago da conta."
         isMaster={isMaster}
+        isContaTeste={limites?.isContaTeste}
       />
     </>
   )
