@@ -644,6 +644,13 @@ export interface LicencaConta {
   observacoes?: string
   data_inicio?: string
   data_expiracao?: string
+  data_renovacao?: string
+  stripe_payment_link?: string
+  preco_recorrencia?: number
+  ciclo_cobranca?: 'mensal' | 'anual' | 'vitalicio'
+  stripe_customer_id?: string
+  stripe_subscription_id?: string
+  stripe_webhook_secret?: string
   created: string
   updated: string
 }
@@ -652,6 +659,7 @@ export interface ModuloLicenca {
   id: string
   licenca: string
   codigo: string
+  slug?: string
   nome: string
   descricao?: string
   ativo: boolean
@@ -677,6 +685,13 @@ export interface LimitesConsumoConta {
   convitesAtivos?: number
   // Módulos
   modulosAtivos: string[]
+  moduloWhatsappAtivo: boolean
+  moduloIaAtivo: boolean
+  moduloFinancasAtivo: boolean
+  // Checkout / Pagamento Real
+  stripePaymentLink?: string
+  precoMensal?: number
+  precoMensalTexto: string
   // Papéis
   isMaster: boolean
   isAdmin: boolean
@@ -693,6 +708,12 @@ export interface ResumoContaMaster {
   titular_nome?: string
   titular_email?: string
   observacoes?: string
+  stripe_payment_link?: string
+  preco_recorrencia?: number
+  ciclo_cobranca?: string
+  data_inicio?: string
+  data_renovacao?: string
+  data_expiracao?: string
   diasFolhaUsados: number
   projetosUsados: number
   convitesTotal: number

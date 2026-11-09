@@ -234,6 +234,7 @@ export default function Projetos() {
           max={limites.projetosMax}
           unidade="projetos"
           bloqueado={limites.bloqueadoProjetos}
+          planoAtivo={limites.plano === 'pro' || limites.plano === 'diamond_executive'}
           recursoNome="projetos"
           onDesbloquear={() => setModalUpgradeOpen(true)}
         />

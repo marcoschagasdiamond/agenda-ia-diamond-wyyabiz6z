@@ -1722,6 +1722,7 @@ export default function Folha() {
           max={limites.diasFolhaMax}
           unidade="dias"
           bloqueado={limites.bloqueadoFolha}
+          planoAtivo={limites.plano === 'pro' || limites.plano === 'diamond_executive'}
           recursoNome="dias de folha"
           onDesbloquear={() => {
             setUpgradeMotivo(

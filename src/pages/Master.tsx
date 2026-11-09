@@ -19,13 +19,21 @@ import {
   ExternalLink,
   ChevronRight,
   TrendingUp,
+  CreditCard,
+  Link as LinkIcon,
+  Copy,
+  Check,
+  Globe,
+  Sliders,
+  DollarSign,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { diamondApi } from '@/services/diamondApi'
-import { ResumoContaMaster, PlanoLicencaTipo, MembroEquipe } from '@/types'
+import { ResumoContaMaster, PlanoLicencaTipo, MembroEquipe, ModuloLicenca } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import {
   Dialog,
   DialogContent,
@@ -41,14 +49,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { useToast } from '@/hooks/use-toast'
 
 export function Master() {
@@ -59,6 +59,12 @@ export function Master() {
   const [loading, setLoading] = useState(true)
   const [carregandoAcao, setCarregandoAcao] = useState(false)
 
+  // Configuração Comercial Global / Checkout Stripe
+  const [paymentLink, setPaymentLink] = useState('')
+  const [precoMensal, setPrecoMensal] = useState(197)
+  const [salvandoCheckout, setSalvandoCheckout] = useState(false)
+  const [copiadoWebhook, setCopiadoWebhook] = useState(false)
+
   // Modal Alterar Plano
   const [modalPlanoOpen, setModalPlanoOpen] = useState(false)
   const [contaSelecionada, setContaSelecionada] = useState<ResumoContaMaster | null>(null)
@@ -67,11 +73,31 @@ export function Master() {
   // Modal Eleger / Remover Admin
   const [modalAdminsOpen, setModalAdminsOpen] = useState(false)
 
+  // Modal Módulos da Conta
+  const [modalModulosOpen, setModalModulosOpen] = useState(false)
+  const [modulosConta, setModulosConta] = useState<ModuloLicenca[]>([])
+  const [carregandoModulos, setCarregandoModulos] = useState(false)
+
+  const backendBaseUrl = (import.meta.env.VITE_POCKETBASE_URL || window.location.origin).replace(
+    /\/$/,
+    '',
+  )
+  const webhookUrlCompleta = `${backendBaseUrl}/backend/v1/stripe_webhook`
+
   const carregarDados = async () => {
     try {
       setLoading(true)
-      const resumos = await diamondApi.getPainelMasterDados()
+      const [resumos, limites] = await Promise.all([
+        diamondApi.getPainelMasterDados(),
+        diamondApi.getLimitesConsumoConta(),
+      ])
       setContas(resumos)
+      if (limites.stripePaymentLink) {
+        setPaymentLink(limites.stripePaymentLink)
+      }
+      if (limites.precoMensal) {
+        setPrecoMensal(limites.precoMensal)
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Falha ao carregar painel master'
       toast({
@@ -121,6 +147,38 @@ export function Master() {
         </Card>
       </div>
     )
+  }
+
+  const handleSalvarCheckoutGlobal = async () => {
+    try {
+      setSalvandoCheckout(true)
+      await diamondApi.salvarConfiguracaoCheckoutGlobal(paymentLink, precoMensal)
+      toast({
+        title: 'Checkout Stripe Configurado!',
+        description:
+          'O Payment Link e o preço R$ 197/mês foram vinculados a todas as licenças da base.',
+      })
+      await carregarDados()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha ao salvar link de checkout'
+      toast({
+        title: 'Erro ao salvar Payment Link',
+        description: message,
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoCheckout(false)
+    }
+  }
+
+  const handleCopiarWebhook = () => {
+    navigator.clipboard.writeText(webhookUrlCompleta)
+    setCopiadoWebhook(true)
+    toast({
+      title: 'URL do Webhook Copiada!',
+      description: 'Cole esta URL no painel do Stripe em Desenvolvedores > Webhooks.',
+    })
+    setTimeout(() => setCopiadoWebhook(false), 3000)
   }
 
   const handleSalvarPlano = async () => {
@@ -188,6 +246,44 @@ export function Master() {
     }
   }
 
+  const handleAbrirModulos = async (conta: ResumoContaMaster) => {
+    setContaSelecionada(conta)
+    setModalModulosOpen(true)
+    try {
+      setCarregandoModulos(true)
+      const mods = await diamondApi.listModulosLicenca(conta.id)
+      setModulosConta(mods)
+    } catch {
+      toast({
+        title: 'Erro ao carregar módulos',
+        description: 'Não foi possível ler os módulos da conta selecionada.',
+        variant: 'destructive',
+      })
+    } finally {
+      setCarregandoModulos(false)
+    }
+  }
+
+  const handleToggleModulo = async (moduloId: string, ativoAtual: boolean) => {
+    try {
+      await diamondApi.toggleModuloLicenca(moduloId, !ativoAtual)
+      setModulosConta((prev) =>
+        prev.map((m) => (m.id === moduloId ? { ...m, ativo: !ativoAtual } : m)),
+      )
+      toast({
+        title: 'Módulo atualizado',
+        description: `Módulo ${!ativoAtual ? 'ativado' : 'desativado'} com sucesso.`,
+      })
+      await carregarDados()
+    } catch {
+      toast({
+        title: 'Erro ao alternar módulo',
+        description: 'Falha ao atualizar o status do módulo na licença.',
+        variant: 'destructive',
+      })
+    }
+  }
+
   const renderBadgePlano = (plano: PlanoLicencaTipo) => {
     switch (plano) {
       case 'diamond_executive':
@@ -199,11 +295,12 @@ export function Master() {
         )
       case 'pro':
         return (
-          <Badge className="bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-bold text-[11px] border-0 shadow-xs">
-            <Sparkles className="w-3 h-3 mr-1 text-amber-200" />
-            Pro Empresarial
+          <Badge className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white font-bold text-[11px] border-0 shadow-xs">
+            <Sparkles className="w-3 h-3 mr-1 text-emerald-200" />
+            Pro Comercial (R$ 197/mês)
           </Badge>
         )
+      case 'gratuito':
       default:
         return (
           <Badge
@@ -218,25 +315,23 @@ export function Master() {
   }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
-      {/* Topo do Painel Master */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-gradient-to-r from-[#1A1D21] via-[#2A3038] to-[#1A1D21] text-white p-6 rounded-2xl shadow-sm border border-zinc-800">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+      {/* Header Diamond Master */}
+      <div className="bg-gradient-to-r from-zinc-900 via-zinc-800 to-zinc-950 p-6 rounded-2xl text-white shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-zinc-700">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400 text-zinc-950 text-xs font-bold uppercase tracking-wider shadow-xs">
-              <Crown className="w-3.5 h-3.5 text-zinc-950" />
-              Painel do Administrador Master
-            </span>
-            <Badge variant="outline" className="border-white/30 text-white text-[10px]">
-              Onda Comercial 2
+            <Badge className="bg-amber-400 text-zinc-950 font-black text-xs uppercase tracking-wider px-2.5 py-0.5 border-0">
+              <Crown className="w-3.5 h-3.5 mr-1" />
+              Painel do Master
             </Badge>
+            <span className="text-xs text-zinc-400 font-mono">Hierarquia & Licenciamento</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-            Gestão Global de Contas &amp; Licenças
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white mt-1">
+            Gestão Comercial, Planos e Módulos
           </h1>
           <p className="text-xs sm:text-sm text-zinc-300 max-w-2xl">
-            Visão consolidada de todas as contas da base, limites operacionais, consumo de Folha e
-            Projetos, eleição de administradores e destravamento comercial.
+            Acompanhe o consumo das empresas, configure o Stripe Payment Link para recebimentos
+            reais e controle a ativação modular (WhatsApp, IA, Finanças e Núcleo).
           </p>
         </div>
 
@@ -261,6 +356,117 @@ export function Master() {
           </Button>
         </div>
       </div>
+
+      {/* BLOCO DE INTEGRAÇÃO STRIPE: PAYMENT LINK + WEBHOOK */}
+      <Card className="border-[#0F766E]/30 bg-gradient-to-br from-teal-50/70 via-white to-amber-50/50 shadow-xs">
+        <CardHeader className="pb-3 border-b border-[#E5E1D8]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <CardTitle className="text-base font-bold text-zinc-900 flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-[#0F766E]" />
+                <span>Configuração de Checkout Stripe & Liberação Automática</span>
+              </CardTitle>
+              <CardDescription className="text-xs text-zinc-600">
+                Cole o Stripe Payment Link do seu produto para cobrança mensal de R$ 197/mês. O
+                webhook libera automaticamente o plano e todos os módulos.
+              </CardDescription>
+            </div>
+            <Badge className="bg-[#0F766E] text-white text-[11px] font-semibold w-fit">
+              R$ 197 / mês • Plano Pro Completo
+            </Badge>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-4 sm:p-6 space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Campo do Payment Link */}
+            <div className="space-y-2 bg-white p-4 rounded-xl border border-[#E5E1D8]">
+              <label className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                <LinkIcon className="w-3.5 h-3.5 text-[#0F766E]" />
+                <span>Stripe Payment Link (URL do Checkout)</span>
+              </label>
+              <p className="text-[11px] text-zinc-500">
+                Crie um Payment Link no Stripe Dashboard (recorrência mensal de R$ 197) e cole a URL
+                abaixo:
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <Input
+                  placeholder="https://buy.stripe.com/..."
+                  value={paymentLink}
+                  onChange={(e) => setPaymentLink(e.target.value)}
+                  className="text-xs border-zinc-300 font-mono bg-zinc-50"
+                />
+                <Button
+                  size="sm"
+                  onClick={handleSalvarCheckoutGlobal}
+                  disabled={salvandoCheckout}
+                  className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs font-semibold shrink-0"
+                >
+                  {salvandoCheckout ? 'Salvando...' : 'Salvar Link'}
+                </Button>
+              </div>
+              {paymentLink ? (
+                <p className="text-[11px] text-emerald-700 font-medium flex items-center gap-1 mt-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Link configurado e ativo no Modal de Desbloqueio da aplicação.
+                </p>
+              ) : (
+                <p className="text-[11px] text-amber-700 font-medium flex items-center gap-1 mt-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  Nenhum link configurado ainda. O modal exibirá aviso ao usuário.
+                </p>
+              )}
+            </div>
+
+            {/* URL do Webhook do Stripe */}
+            <div className="space-y-2 bg-white p-4 rounded-xl border border-[#E5E1D8]">
+              <label className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-[#0F766E]" />
+                <span>URL do Webhook para o Stripe (Endpoint)</span>
+              </label>
+              <p className="text-[11px] text-zinc-500">
+                Adicione este endpoint no Stripe (evento:{' '}
+                <code className="bg-zinc-100 px-1 py-0.5 rounded text-zinc-800 font-mono">
+                  checkout.session.completed
+                </code>
+                ) para liberação instantânea:
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <Input
+                  readOnly
+                  value={webhookUrlCompleta}
+                  className="text-xs border-zinc-200 font-mono bg-zinc-100 text-zinc-700 cursor-text select-all"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCopiarWebhook}
+                  className="text-xs border-zinc-300 shrink-0 gap-1"
+                >
+                  {copiadoWebhook ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Copiado</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copiar</span>
+                    </>
+                  )}
+                </Button>
+              </div>
+              <p className="text-[11px] text-zinc-500 mt-1">
+                Segredo do Webhook (opcional): defina a variável{' '}
+                <code className="font-mono bg-zinc-100 px-1 rounded text-zinc-700">
+                  STRIPE_WEBHOOK_SECRET
+                </code>{' '}
+                para validação criptográfica estrita.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Cards de Métricas Consolidadas */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -337,11 +543,11 @@ export function Master() {
           <div>
             <CardTitle className="text-base sm:text-lg font-bold text-zinc-900 flex items-center gap-2">
               <Building2 className="w-5 h-5 text-[#0F766E]" />
-              <span>Contas da Base &amp; Consumo em Tempo Real</span>
+              <span>Contas da Base, Planos e Módulos Ativos</span>
             </CardTitle>
             <CardDescription className="text-xs text-zinc-500 mt-0.5">
-              Monitore dias de folha e projetos consumidos, e faça a gestão direta de planos e
-              administradores.
+              Monitore consumo e gerencie módulos individuais (WhatsApp, IA, Finanças) ou plano
+              completo Pro.
             </CardDescription>
           </div>
           <Badge variant="outline" className="border-zinc-300 text-zinc-700 text-xs w-fit">
@@ -357,7 +563,7 @@ export function Master() {
             </div>
           ) : contas.length === 0 ? (
             <div className="p-12 text-center text-zinc-500 text-sm">
-              Nenhuma licença de conta encontrada.
+              Nenhuma conta encontrada no banco.
             </div>
           ) : (
             <div className="divide-y divide-zinc-100">
@@ -369,79 +575,72 @@ export function Master() {
                 return (
                   <div
                     key={conta.id}
-                    className="p-5 sm:p-6 transition-colors hover:bg-zinc-50/70 flex flex-col lg:flex-row lg:items-center justify-between gap-5"
+                    className="p-4 sm:p-5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 hover:bg-zinc-50/70 transition-colors"
                   >
-                    {/* Coluna 1: Info da Conta */}
-                    <div className="space-y-2 lg:max-w-md">
-                      <div className="flex flex-wrap items-center gap-2.5">
-                        <h3 className="font-extrabold text-base text-zinc-900 tracking-tight flex items-center gap-1.5">
-                          <Building2 className="w-4 h-4 text-zinc-500" />
-                          <span>{conta.nome_conta}</span>
-                        </h3>
+                    {/* Coluna 1: Identificação da Conta */}
+                    <div className="space-y-1.5 max-w-sm">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-bold text-sm sm:text-base text-zinc-900">
+                          {conta.nome_conta}
+                        </h4>
                         {renderBadgePlano(conta.plano)}
-                        <Badge
-                          variant="outline"
-                          className={`text-[10px] font-bold ${
-                            conta.status === 'ativo'
-                              ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                              : 'border-zinc-300 bg-zinc-50 text-zinc-600'
-                          }`}
-                        >
-                          Status: {conta.status.toUpperCase()}
-                        </Badge>
+                        {conta.status === 'ativo' ? (
+                          <Badge className="bg-emerald-50 text-emerald-800 border-emerald-200 text-[10px]">
+                            Ativa
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-rose-50 text-rose-800 border-rose-200 text-[10px]">
+                            {conta.status}
+                          </Badge>
+                        )}
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-600">
-                        {conta.titular_email && (
-                          <span className="flex items-center gap-1">
-                            <Mail className="w-3.5 h-3.5 text-zinc-400" />
-                            {conta.titular_email}
+                      <p className="text-xs text-zinc-500">
+                        Workspace:{' '}
+                        <code className="bg-zinc-100 px-1 py-0.5 rounded text-[11px] font-mono text-zinc-700">
+                          {conta.nome_conta}
+                        </code>
+                      </p>
+
+                      {/* Administradores Eleitos */}
+                      <div className="pt-1 flex items-center gap-1.5 text-xs text-zinc-600">
+                        <Shield className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                        <span className="font-semibold">Admins:</span>
+                        {conta.admins.length === 0 ? (
+                          <span className="text-zinc-400 italic">Nenhum eleito</span>
+                        ) : (
+                          <span className="text-zinc-800 font-medium">
+                            {conta.admins.map((a) => a.nome || a.email).join(', ')}
                           </span>
                         )}
-                        {conta.titular_nome && (
-                          <span className="text-zinc-400">• Titular: {conta.titular_nome}</span>
-                        )}
                       </div>
 
-                      {conta.observacoes && (
-                        <p className="text-xs text-zinc-500 italic bg-zinc-50 p-2 rounded-lg border border-zinc-200">
-                          {conta.observacoes}
-                        </p>
-                      )}
-
-                      {/* Lista resumida de Admins da Conta */}
-                      <div className="pt-1">
-                        <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
-                          Administradores ({conta.admins.length}):
-                        </span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {conta.admins.length === 0 ? (
-                            <span className="text-xs text-zinc-400 italic">
-                              Nenhum admin eleito
-                            </span>
-                          ) : (
-                            conta.admins.map((admin) => (
-                              <Badge
-                                key={admin.id}
-                                variant="outline"
-                                className={`text-[11px] ${
-                                  admin.is_master
-                                    ? 'bg-amber-50 text-amber-900 border-amber-300 font-bold'
-                                    : 'bg-purple-50 text-purple-900 border-purple-200'
-                                }`}
-                              >
-                                <Shield className="w-3 h-3 mr-1 text-purple-600" />
-                                {admin.nome || admin.email}
-                                {admin.is_master && ' (Master)'}
-                              </Badge>
-                            ))
-                          )}
-                        </div>
+                      {/* Módulos Ativos */}
+                      <div className="pt-1 flex items-center gap-1.5 text-xs text-zinc-600 flex-wrap">
+                        <Sliders className="w-3.5 h-3.5 text-[#0F766E] shrink-0" />
+                        <span className="font-semibold">Módulos:</span>
+                        {conta.modulos.length === 0 ? (
+                          <span className="text-zinc-400 text-[11px]">Núcleo padrão</span>
+                        ) : (
+                          conta.modulos.map((m) => (
+                            <Badge
+                              key={m.id}
+                              variant="outline"
+                              className={`text-[10px] px-1.5 py-0 ${
+                                m.ativo
+                                  ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                                  : 'border-zinc-200 text-zinc-400 bg-zinc-50'
+                              }`}
+                            >
+                              {m.nome}
+                            </Badge>
+                          ))
+                        )}
                       </div>
                     </div>
 
-                    {/* Coluna 2: Consumo (Folha, Projetos, Convites) */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full lg:w-auto">
+                    {/* Coluna 2: Consumo e Limites */}
+                    <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full lg:w-auto">
                       {/* Dias de Folha */}
                       <div
                         className={`p-3 rounded-xl border text-center ${
@@ -529,7 +728,7 @@ export function Master() {
                     </div>
 
                     {/* Coluna 3: Ações do Master */}
-                    <div className="flex flex-col sm:flex-row lg:flex-col gap-2 shrink-0 justify-end">
+                    <div className="flex flex-col sm:flex-row lg:flex-col gap-2 shrink-0 justify-end w-full sm:w-auto">
                       <Button
                         size="sm"
                         onClick={() => {
@@ -540,7 +739,17 @@ export function Master() {
                         className="bg-[#0F766E] hover:bg-[#0D9488] text-white text-xs font-semibold shadow-xs"
                       >
                         <Sparkles className="w-3.5 h-3.5 mr-1.5 text-amber-300" />
-                        Alterar Plano / Licença
+                        Alterar Plano
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleAbrirModulos(conta)}
+                        className="text-xs border-zinc-300 hover:bg-zinc-100 text-zinc-800"
+                      >
+                        <Sliders className="w-3.5 h-3.5 mr-1.5 text-[#0F766E]" />
+                        Módulos da Licença
                       </Button>
 
                       <Button
@@ -593,7 +802,9 @@ export function Master() {
                   <SelectItem value="gratuito">
                     Prova Viva (Gratuito — limite 2 dias e 2 projetos)
                   </SelectItem>
-                  <SelectItem value="pro">Pro Empresarial (Ilimitado + Módulos Ativos)</SelectItem>
+                  <SelectItem value="pro">
+                    Pro Comercial (R$ 197/mês — Módulos Liberados)
+                  </SelectItem>
                   <SelectItem value="diamond_executive">
                     Diamond Executive (Completo sem travas)
                   </SelectItem>
@@ -613,7 +824,7 @@ export function Master() {
                 <ul className="list-disc pl-4 space-y-0.5 text-emerald-800">
                   <li>Folha do Dia ilimitada (sem bloqueios de data)</li>
                   <li>Projetos ilimitados</li>
-                  <li>Convites de equipe e módulos comerciais ativados</li>
+                  <li>Convites liberados e todos os módulos (WhatsApp, IA, Finanças) ativados</li>
                 </ul>
               )}
             </div>
@@ -636,6 +847,81 @@ export function Master() {
               className="bg-[#0F766E] hover:bg-[#0D9488] text-white text-xs font-semibold"
             >
               {carregandoAcao ? 'Salvando...' : 'Confirmar e Atualizar Licença'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Módulos da Licença */}
+      <Dialog open={modalModulosOpen} onOpenChange={setModalModulosOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+              <Sliders className="w-5 h-5 text-[#0F766E]" />
+              <span>Licenciamento Modular</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-zinc-500">
+              Ative ou desative módulos individuais para a conta{' '}
+              <strong>{contaSelecionada?.nome_conta}</strong> (estrutura replicável no Contabilidade
+              5.0).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            {carregandoModulos ? (
+              <div className="py-8 text-center text-xs text-zinc-500">
+                <RefreshCw className="w-4 h-4 animate-spin mx-auto text-[#0F766E] mb-2" />
+                Carregando módulos da licença...
+              </div>
+            ) : modulosConta.length === 0 ? (
+              <p className="text-xs text-zinc-500 text-center py-6">
+                Nenhum módulo modular configurado para esta licença.
+              </p>
+            ) : (
+              modulosConta.map((mod) => (
+                <div
+                  key={mod.id}
+                  className="p-3 rounded-xl border border-zinc-200 bg-white flex items-center justify-between gap-3 text-xs"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-zinc-900">{mod.nome}</span>
+                      <code className="text-[10px] bg-zinc-100 px-1 py-0.5 rounded text-zinc-600">
+                        {mod.codigo || mod.slug}
+                      </code>
+                    </div>
+                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                      {mod.ativo
+                        ? 'Ativo: recursos deste módulo liberados'
+                        : 'Inativo: recursos bloqueados por aviso comercial'}
+                    </p>
+                  </div>
+
+                  <Button
+                    size="sm"
+                    variant={mod.ativo ? 'default' : 'outline'}
+                    onClick={() => handleToggleModulo(mod.id, mod.ativo)}
+                    className={`text-xs font-semibold h-7 px-3 ${
+                      mod.ativo
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        : 'border-zinc-300 text-zinc-700'
+                    }`}
+                  >
+                    {mod.ativo ? 'Ativo' : 'Inativo'}
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setModalModulosOpen(false)}
+              className="text-xs"
+            >
+              Fechar
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -688,19 +974,14 @@ export function Master() {
                             Admin
                           </Badge>
                         )}
-                        {!isAdmin && !isFundadorMaster && (
-                          <Badge variant="outline" className="text-zinc-600 text-[10px]">
-                            Colaborador
-                          </Badge>
-                        )}
                       </div>
                       <p className="text-[11px] text-zinc-500 mt-0.5">{membro.email}</p>
                     </div>
 
                     <div>
                       {isFundadorMaster ? (
-                        <span className="text-[11px] text-amber-700 font-semibold italic">
-                          Titular Permanente
+                        <span className="text-[11px] text-zinc-400 font-medium italic">
+                          Fundador Master
                         </span>
                       ) : isAdmin ? (
                         <Button
@@ -708,19 +989,20 @@ export function Master() {
                           variant="outline"
                           onClick={() => handleRemoverAdmin(membro.id, membro.nome || membro.email)}
                           disabled={carregandoAcao}
-                          className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                          className="text-[11px] text-rose-700 border-rose-200 hover:bg-rose-50 h-7"
                         >
-                          <UserMinus className="w-3.5 h-3.5 mr-1" />
-                          Remover Admin
+                          <UserMinus className="w-3 h-3 mr-1" />
+                          Rebaixar
                         </Button>
                       ) : (
                         <Button
                           size="sm"
+                          variant="outline"
                           onClick={() => handleElegerAdmin(membro.id, membro.nome || membro.email)}
                           disabled={carregandoAcao}
-                          className="text-xs bg-purple-700 hover:bg-purple-800 text-white"
+                          className="text-[11px] text-purple-700 border-purple-200 hover:bg-purple-50 h-7"
                         >
-                          <UserCheck className="w-3.5 h-3.5 mr-1" />
+                          <UserCheck className="w-3 h-3 mr-1" />
                           Eleger Admin
                         </Button>
                       )}
@@ -733,11 +1015,12 @@ export function Master() {
 
           <DialogFooter>
             <Button
+              variant="outline"
               size="sm"
               onClick={() => setModalAdminsOpen(false)}
-              className="text-xs bg-zinc-900 text-white"
+              className="text-xs"
             >
-              Concluir
+              Fechar
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -745,4 +1028,5 @@ export function Master() {
     </div>
   )
 }
+
 export default Master

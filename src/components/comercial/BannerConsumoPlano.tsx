@@ -1,4 +1,4 @@
-import { Lock, Sparkles, AlertTriangle } from 'lucide-react'
+import { Lock, Sparkles, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
@@ -10,6 +10,7 @@ interface BannerConsumoPlanoProps {
   bloqueado: boolean
   onDesbloquear: () => void
   recursoNome?: string
+  planoAtivo?: boolean
 }
 
 export function BannerConsumoPlano({
@@ -20,7 +21,41 @@ export function BannerConsumoPlano({
   bloqueado,
   onDesbloquear,
   recursoNome,
+  planoAtivo = false,
 }: BannerConsumoPlanoProps) {
+  // Se o plano for pago/ativo, renderiza banner verde "Plano Ativo" sem limites
+  if (planoAtivo) {
+    return (
+      <div className="rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50/80 via-teal-50/50 to-white p-3.5 transition-all mb-4 shadow-2xs">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-emerald-600 text-white shadow-2xs">
+              <CheckCircle2 className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-xs text-zinc-900 tracking-tight">{titulo}</span>
+                <Badge className="bg-emerald-600 text-white text-[10px] h-4.5 px-2 font-bold shadow-2xs">
+                  Plano Ativo
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className="border-emerald-300 text-emerald-800 bg-emerald-100/60 text-[10px] h-4.5 px-1.5 font-medium"
+                >
+                  {usado} {unidade} cadastrados • Ilimitado
+                </Badge>
+              </div>
+              <p className="text-xs text-emerald-900/80 mt-0.5">
+                Sua conta possui acesso ilimitado com todos os módulos (WhatsApp, IA, Finanças e
+                Folha contínua) liberados.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const percentual = Math.min(100, Math.round((usado / (max || 1)) * 100))
 
   return (

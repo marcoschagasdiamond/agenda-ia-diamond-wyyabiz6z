@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { diamondApi } from '@/services/diamondApi'
 import { useAuth } from '@/hooks/use-auth'
 import { useNavegacao } from '@/contexts/NavegacaoContext'
+import { ModalDesbloqueioPlano } from '@/components/comercial/ModalDesbloqueioPlano'
+import type { LimitesConsumoConta } from '@/types'
 import type {
   Projeto,
   ProjetoFase,
@@ -85,6 +87,8 @@ export default function ProjetoDetalhes() {
   const [modalNovoInvestidor, setModalNovoInvestidor] = useState(false)
   const [modalNovoLancamento, setModalNovoLancamento] = useState(false)
   const [modalNovaDemanda, setModalNovaDemanda] = useState(false)
+  const [limites, setLimites] = useState<LimitesConsumoConta | null>(null)
+  const [modalUpgradeOpen, setModalUpgradeOpen] = useState(false)
 
   // Formulário Nova Fase
   const [novaFaseNome, setNovaFaseNome] = useState('')
@@ -168,7 +172,11 @@ export default function ProjetoDetalhes() {
 
   useEffect(() => {
     carregarDadosCompletos()
-  }, [id])
+    diamondApi
+      .getLimitesConsumoConta(user?.id, user?.email)
+      .then(setLimites)
+      .catch(() => {})
+  }, [id, user?.id, user?.email])
 
   // Métricas calculadas
   const metricas = useMemo(() => {
@@ -1202,6 +1210,15 @@ export default function ProjetoDetalhes() {
         </div>
       )}
 
+      <ModalDesbloqueioPlano
+        open={modalUpgradeOpen}
+        onOpenChange={setModalUpgradeOpen}
+        recursoNome="Módulo Finanças & Contabilidade"
+        motivo="O controle financeiro e orçamentário detalhado por projeto faz parte do plano Pro comercial (R$ 197/mês) ou licença com Módulo Finanças ativo."
+        stripePaymentLink={limites?.stripePaymentLink}
+        precoMensalTexto={limites?.precoMensalTexto}
+      />
+
       {/* ========================================================== */}
       {/* ABA 5: FINANCEIRO                                          */}
       {/* ========================================================== */}
@@ -1255,7 +1272,13 @@ export default function ProjetoDetalhes() {
               </div>
               <Button
                 size="sm"
-                onClick={() => setModalNovoLancamento(true)}
+                onClick={() => {
+                  if (limites && !limites.moduloFinancasAtivo) {
+                    setModalUpgradeOpen(true)
+                    return
+                  }
+                  setModalNovoLancamento(true)
+                }}
                 className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs gap-1 font-semibold"
               >
                 <Plus className="w-3.5 h-3.5" />

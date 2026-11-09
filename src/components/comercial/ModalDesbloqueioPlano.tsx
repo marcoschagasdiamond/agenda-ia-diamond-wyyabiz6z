@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -9,7 +9,17 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Sparkles, CheckCircle2, Lock, ArrowRight, ShieldCheck, Mail } from 'lucide-react'
+import {
+  Sparkles,
+  CheckCircle2,
+  Lock,
+  ArrowRight,
+  ShieldCheck,
+  Mail,
+  ExternalLink,
+  Crown,
+} from 'lucide-react'
+import { diamondApi } from '@/services/diamondApi'
 
 interface ModalDesbloqueioPlanoProps {
   open: boolean
@@ -17,6 +27,8 @@ interface ModalDesbloqueioPlanoProps {
   recursoNome?: string
   motivo?: string
   isMaster?: boolean
+  stripePaymentLink?: string
+  precoMensalTexto?: string
 }
 
 export function ModalDesbloqueioPlano({
@@ -25,13 +37,48 @@ export function ModalDesbloqueioPlano({
   recursoNome,
   motivo,
   isMaster = false,
+  stripePaymentLink,
+  precoMensalTexto = 'R$ 197/mês',
 }: ModalDesbloqueioPlanoProps) {
   const [copiado, setCopiado] = useState(false)
+  const [linkPagamento, setLinkPagamento] = useState<string | undefined>(stripePaymentLink)
+  const [precoTexto, setPrecoTexto] = useState<string>(precoMensalTexto)
+
+  useEffect(() => {
+    if (stripePaymentLink) {
+      setLinkPagamento(stripePaymentLink)
+      return
+    }
+    // Buscar link configurado na licença do PocketBase
+    diamondApi
+      .getLicencaConta()
+      .then((lic) => {
+        if (lic?.stripe_payment_link) {
+          setLinkPagamento(lic.stripe_payment_link)
+        }
+        if (lic?.preco_recorrencia) {
+          setPrecoTexto(
+            `R$ ${lic.preco_recorrencia}/${lic.ciclo_cobranca === 'anual' ? 'ano' : 'mês'}`,
+          )
+        }
+      })
+      .catch(() => {})
+  }, [stripePaymentLink, open])
 
   const handleCopiarContato = () => {
     navigator.clipboard?.writeText('marcoschagasdiamond@icloud.com')
     setCopiado(true)
     setTimeout(() => setCopiado(false), 2500)
+  }
+
+  const handleCheckoutReal = () => {
+    if (linkPagamento && linkPagamento.trim().startsWith('http')) {
+      window.open(linkPagamento.trim(), '_blank', 'noopener,noreferrer')
+      onOpenChange(false)
+    } else if (isMaster) {
+      onOpenChange(false)
+      window.location.href = '/master'
+    }
   }
 
   return (
@@ -42,23 +89,25 @@ export function ModalDesbloqueioPlano({
           <div className="flex items-center gap-2 mb-2">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400 text-[#1A1D21] text-xs font-bold uppercase tracking-wider shadow-sm">
               <Sparkles className="w-3.5 h-3.5 text-[#1A1D21]" />
-              Plano Comercial Diamond
+              Plano Pro Comercial
             </span>
             <Badge variant="outline" className="border-white/30 text-white text-[11px]">
-              Onda Comercial 1
+              {precoTexto}
             </Badge>
           </div>
           <DialogTitle className="text-2xl font-bold text-white tracking-tight">
-            Desbloqueie Todo o Potencial
+            Desbloqueie o Ecossistema Completo
           </DialogTitle>
           <DialogDescription className="text-teal-100 text-sm mt-1">
             {recursoNome ? (
               <span>
                 O recurso <strong>{recursoNome}</strong> faz parte do plano pago do Agenda IA
-                Diamond.
+                Diamond com ativação automática via Stripe.
               </span>
             ) : (
-              <span>Expanda os limites do plano gratuito e acesse o ecossistema completo.</span>
+              <span>
+                Libere todos os limites e ative WhatsApp, Agente IA e Finanças sem travas.
+              </span>
             )}
           </DialogDescription>
         </div>
@@ -70,7 +119,7 @@ export function ModalDesbloqueioPlano({
               <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold text-xs text-amber-800 uppercase tracking-wide">
-                  Limite do Plano Atingido
+                  Aviso de Módulo ou Limite do Plano
                 </p>
                 <p className="text-xs text-amber-900 mt-0.5">{motivo}</p>
               </div>
@@ -79,9 +128,16 @@ export function ModalDesbloqueioPlano({
 
           <div>
             <h4 className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
-              Vantagens do Plano Completo Desbloqueado
+              Incluso no Plano Pro ({precoTexto}):
             </h4>
             <ul className="space-y-2 text-xs text-zinc-700">
+              <li className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
+                <span>
+                  <strong>Todos os Módulos Ativos:</strong> Módulo WhatsApp, Agente IA e Finanças
+                  integradas.
+                </span>
+              </li>
               <li className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
                 <span>
@@ -92,22 +148,15 @@ export function ModalDesbloqueioPlano({
               <li className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
                 <span>
-                  <strong>Projetos Ilimitados:</strong> Crie fluxos, marcos, equipe e investidores
-                  em todos os seus projetos.
+                  <strong>Projetos Ilimitados:</strong> Crie fluxos, marcos, equipe e orçamentos em
+                  todos os projetos.
                 </span>
               </li>
               <li className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
                 <span>
-                  <strong>Convites de Equipe Desbloqueados:</strong> Convide sócios, consultores e
-                  clientes com escopos granulares.
-                </span>
-              </li>
-              <li className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
-                <span>
-                  <strong>Ecossistema Integrado:</strong> Módulos para Contabilidade 5.0 e radar
-                  comercial.
+                  <strong>Convites de Equipe:</strong> Convide sócios e colaboradores externos com
+                  escopos granulares.
                 </span>
               </li>
             </ul>
@@ -116,22 +165,21 @@ export function ModalDesbloqueioPlano({
           <div className="p-3.5 rounded-lg bg-zinc-50 border border-zinc-200">
             <div className="flex items-center gap-2 text-zinc-800 font-semibold text-xs mb-1">
               <ShieldCheck className="w-4 h-4 text-teal-600" />
-              <span>Como ativar o plano pago agora</span>
+              <span>Liberação imediata via Stripe</span>
             </div>
             <p className="text-xs text-zinc-600 leading-relaxed">
-              {isMaster ? (
-                <span>
-                  Como <strong>Administrador Master</strong>, você pode alterar a licença da conta
-                  no painel de <strong>Configurações &gt; Licença &amp; Comercial</strong> ou
-                  solicitar o faturamento direto via Stripe / PIX executivo.
-                </span>
-              ) : (
-                <span>
-                  Entre em contato com o <strong>Administrador Master</strong> da sua conta ou com a
-                  equipe Diamond para ativar a licença empresarial.
-                </span>
-              )}
+              O pagamento é processado com segurança pelo Stripe. Assim que confirmado, o webhook da
+              plataforma atualiza os limites na hora sem necessidade de reiniciar a sessão.
             </p>
+            {!linkPagamento && isMaster && (
+              <p className="text-xs text-amber-800 font-medium mt-1.5 flex items-center gap-1">
+                <Crown className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>
+                  Dono/Master: cole o Stripe Payment Link no Painel Master para habilitar o checkout
+                  direto.
+                </span>
+              </p>
+            )}
           </div>
         </div>
 
@@ -145,8 +193,9 @@ export function ModalDesbloqueioPlano({
             className="w-full sm:w-auto text-xs"
           >
             <Mail className="w-3.5 h-3.5 mr-1.5" />
-            {copiado ? 'E-mail copiado!' : 'Contatar Master (marcoschagasdiamond@icloud.com)'}
+            {copiado ? 'E-mail copiado!' : 'Falar com Master'}
           </Button>
+
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
             <Button
               type="button"
@@ -157,18 +206,46 @@ export function ModalDesbloqueioPlano({
             >
               Fechar
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => {
-                onOpenChange(false)
-                window.location.href = '/config?secao=licenca'
-              }}
-              className="bg-[#0F766E] hover:bg-[#0D9488] text-white text-xs font-semibold shadow-xs"
-            >
-              <span>Ver Planos &amp; Licença</span>
-              <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
-            </Button>
+
+            {linkPagamento ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleCheckoutReal}
+                className="bg-[#0F766E] hover:bg-[#0D9488] text-white text-xs font-bold shadow-md gap-1.5 px-4"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>Assinar plano — {precoTexto}</span>
+                <ExternalLink className="w-3.5 h-3.5 ml-1" />
+              </Button>
+            ) : isMaster ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  onOpenChange(false)
+                  window.location.href = '/master'
+                }}
+                className="bg-[#0F766E] hover:bg-[#0D9488] text-white text-xs font-semibold shadow-xs"
+              >
+                <Crown className="w-3.5 h-3.5 text-amber-300 mr-1" />
+                <span>Configurar Payment Link no Master</span>
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  onOpenChange(false)
+                  window.location.href =
+                    'mailto:marcoschagasdiamond@icloud.com?subject=Upgrade%20Agenda%20IA%20Diamond&body=Olá,%20gostaria%20de%20ativar%20o%20plano%20Pro%20(R$%20197/mês)%20no%20Agenda%20IA%20Diamond.'
+                }}
+                className="bg-[#0F766E] hover:bg-[#0D9488] text-white text-xs font-semibold shadow-xs"
+              >
+                <span>Solicitar ao Administrador</span>
+                <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+              </Button>
+            )}
           </div>
         </DialogFooter>
       </DialogContent>

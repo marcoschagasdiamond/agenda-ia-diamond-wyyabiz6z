@@ -16,6 +16,7 @@ import {
   ChevronDown,
   ArrowDownCircle,
   Sparkles,
+  Lock,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -27,6 +28,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/hooks/use-toast'
 import { ConnectorButton } from '@/components/skip/ConnectorButton'
+import { ModalDesbloqueioPlano } from '@/components/comercial/ModalDesbloqueioPlano'
 import { diamondApi } from '@/services/diamondApi'
 import type {
   WhatsAppConfig,
@@ -34,6 +36,7 @@ import type {
   WhatsAppGrupoItem,
   WhatsAppModoSelecao,
   WhatsAppStatusResponse,
+  LimitesConsumoConta,
 } from '@/types'
 
 const PAGE_SIZE = 100
@@ -46,6 +49,10 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
   const [carregando, setCarregando] = useState(true)
   const [salvandoConfig, setSalvandoConfig] = useState(false)
   const [sincronizando, setSincronizando] = useState(false)
+
+  // Licença e checagem do Módulo WhatsApp
+  const [limites, setLimites] = useState<LimitesConsumoConta | null>(null)
+  const [modalUpgradeOpen, setModalUpgradeOpen] = useState(false)
 
   // Status retornado pelo backend
   const [status, setStatus] = useState<WhatsAppStatusResponse | null>(null)
@@ -111,8 +118,12 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
   const carregarDados = async () => {
     try {
       setCarregando(true)
-      const resStatus = await diamondApi.getWhatsAppStatus()
+      const [resStatus, resLimites] = await Promise.all([
+        diamondApi.getWhatsAppStatus(),
+        diamondApi.getLimitesConsumoConta(),
+      ])
       setStatus(resStatus)
+      setLimites(resLimites)
 
       if (resStatus.config) {
         setModoSelecao(resStatus.config.modo_selecao || 'todos_exceto')
@@ -178,6 +189,10 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
   }
 
   const handleSincronizarAgora = async () => {
+    if (limites && !limites.moduloWhatsappAtivo) {
+      setModalUpgradeOpen(true)
+      return
+    }
     setSincronizando(true)
     try {
       const res = await diamondApi.sincronizarWhatsAppAgora()
@@ -476,8 +491,48 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
     })
   }
 
+  const moduloInativo = limites ? !limites.moduloWhatsappAtivo : false
+
   return (
     <div className="space-y-6">
+      {/* Modal de Desbloqueio de Módulo */}
+      <ModalDesbloqueioPlano
+        open={modalUpgradeOpen}
+        onOpenChange={setModalUpgradeOpen}
+        recursoNome="Módulo WhatsApp & Radar"
+        motivo="O Módulo WhatsApp faz parte do plano Pro comercial (R$ 197/mês) ou de licenças modulares liberadas. Assine para sincronizar conversas para a Folha do Dia."
+        stripePaymentLink={limites?.stripePaymentLink}
+        precoMensalTexto={limites?.precoMensalTexto}
+      />
+
+      {/* Alerta de Módulo Inativo */}
+      {moduloInativo && (
+        <div className="p-4 rounded-xl border border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 mt-0.5">
+              <Lock className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="font-bold text-xs uppercase tracking-wide text-amber-800">
+                Módulo WhatsApp Inativo no Plano Gratuito
+              </p>
+              <p className="text-xs text-amber-900 mt-0.5">
+                A sincronização de mensagens e triagem de conversas exige a ativação do Módulo
+                WhatsApp ou upgrade para o plano Pro ({limites?.precoMensalTexto || 'R$ 197/mês'}).
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => setModalUpgradeOpen(true)}
+            className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs font-semibold shrink-0 gap-1.5 shadow-xs"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+            <span>Desbloquear Módulo</span>
+          </Button>
+        </div>
+      )}
+
       {/* 1. Header do Módulo com Conexão de Conta do Próprio Usuário */}
       <Card className="border-[#E5E1D8] bg-white shadow-xs">
         <CardHeader className="pb-4 border-b border-[#E5E1D8]/70">

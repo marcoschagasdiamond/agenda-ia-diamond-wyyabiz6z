@@ -1159,6 +1159,12 @@ export const diamondApi = {
         titular_nome: lic.titular_nome,
         titular_email: lic.titular_email,
         observacoes: lic.observacoes,
+        stripe_payment_link: lic.stripe_payment_link,
+        preco_recorrencia: lic.preco_recorrencia || 197,
+        ciclo_cobranca: lic.ciclo_cobranca || 'mensal',
+        data_inicio: lic.data_inicio,
+        data_renovacao: lic.data_renovacao,
+        data_expiracao: lic.data_expiracao,
         diasFolhaUsados: diasFolhaTotal,
         projetosUsados: projetosTotal,
         convitesTotal: convites.length,
@@ -1275,6 +1281,25 @@ export const diamondApi = {
     const permiteConv =
       typeof licenca?.permite_convites === 'boolean' ? licenca.permite_convites : false
 
+    const isPago = plano === 'pro' || plano === 'diamond_executive'
+
+    // Checagem modular padronizada:
+    // Se a licença é paga, todos os módulos são ativos; se gratuita, checa os registros
+    const moduloWhatsappAtivo =
+      isPago ||
+      modulosCodigos.includes('whatsapp') ||
+      modulosCodigos.includes('whatsapp_radar') ||
+      !!licenca?.permite_whatsapp
+
+    const moduloIaAtivo = isPago || modulosCodigos.includes('ia')
+
+    const moduloFinancasAtivo =
+      isPago || modulosCodigos.includes('financas') || modulosCodigos.includes('contabilidade_5_0')
+
+    const precoNum = licenca?.preco_recorrencia || 197
+    const cicloStr = licenca?.ciclo_cobranca === 'anual' ? 'ano' : 'mês'
+    const precoMensalTexto = `R$ ${precoNum}/${cicloStr}`
+
     return {
       plano,
       status,
@@ -1288,8 +1313,33 @@ export const diamondApi = {
       permiteConvites: permiteConv,
       bloqueadoConvites: plano === 'gratuito' && !permiteConv,
       modulosAtivos: modulosCodigos,
+      moduloWhatsappAtivo,
+      moduloIaAtivo,
+      moduloFinancasAtivo,
+      stripePaymentLink: licenca?.stripe_payment_link,
+      precoMensal: licenca?.preco_recorrencia || 197,
+      precoMensalTexto,
       isMaster,
       isAdmin,
+    }
+  },
+
+  async salvarConfiguracaoCheckoutGlobal(
+    paymentLink: string,
+    precoMensal: number = 197,
+  ): Promise<void> {
+    try {
+      const licencas = await pb.collection('licencas_conta').getFullList()
+      for (const lic of licencas) {
+        await pb.collection('licencas_conta').update(lic.id, {
+          stripe_payment_link: paymentLink.trim(),
+          preco_recorrencia: precoMensal,
+          ciclo_cobranca: 'mensal',
+        })
+      }
+    } catch (err) {
+      console.error('Falha ao salvar configuração global de checkout', err)
+      throw err
     }
   },
 

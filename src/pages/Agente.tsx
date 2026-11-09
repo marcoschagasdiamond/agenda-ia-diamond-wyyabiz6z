@@ -12,12 +12,16 @@ import {
   CheckCircle2,
   Brain,
   History,
+  Lock,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
+import { ModalDesbloqueioPlano } from '@/components/comercial/ModalDesbloqueioPlano'
+import { diamondApi } from '@/services/diamondApi'
+import type { LimitesConsumoConta } from '@/types'
 
 interface Message {
   id: string
@@ -43,7 +47,16 @@ Como posso ajudar sua estratégia ou demandas hoje?`,
   const [inputText, setInputText] = useState('')
   const [loading, setLoading] = useState(false)
   const [conversationId, setConversationId] = useState<string | null>(null)
+  const [limites, setLimites] = useState<LimitesConsumoConta | null>(null)
+  const [modalUpgradeOpen, setModalUpgradeOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    diamondApi
+      .getLimitesConsumoConta(user?.id, user?.email)
+      .then(setLimites)
+      .catch(() => {})
+  }, [user?.id, user?.email])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -56,6 +69,12 @@ Como posso ajudar sua estratégia ou demandas hoje?`,
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
     if (!inputText.trim() || loading) return
+
+    // Se o módulo IA estiver inativo, abrir modal de desbloqueio
+    if (limites && !limites.moduloIaAtivo) {
+      setModalUpgradeOpen(true)
+      return
+    }
 
     const userMsgText = inputText.trim()
     setInputText('')
@@ -135,8 +154,39 @@ Como posso ajudar sua estratégia ou demandas hoje?`,
     ])
   }
 
+  const moduloIaInativo = limites ? !limites.moduloIaAtivo : false
+
   return (
     <div className="flex flex-col h-[calc(100vh-7.5rem)] max-w-4xl mx-auto bg-white rounded-xl border border-[#E5E1D8] shadow-xs overflow-hidden">
+      <ModalDesbloqueioPlano
+        open={modalUpgradeOpen}
+        onOpenChange={setModalUpgradeOpen}
+        recursoNome="Módulo Copiloto Inteligente IA"
+        motivo="O Copiloto IA faz parte do plano Pro comercial (R$ 197/mês). Ative para ter consultas inteligentes ilimitadas conectadas a todas as suas notas, projetos e contatos."
+        stripePaymentLink={limites?.stripePaymentLink}
+        precoMensalTexto={limites?.precoMensalTexto}
+      />
+
+      {moduloIaInativo && (
+        <div className="p-3 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-200 text-amber-900 flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              <strong>Módulo IA Inativo:</strong> Envio de mensagens e respostas da IA requerem
+              plano Pro ({limites?.precoMensalTexto || 'R$ 197/mês'}).
+            </span>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => setModalUpgradeOpen(true)}
+            className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-[11px] h-7 px-2.5 font-semibold shrink-0 gap-1"
+          >
+            <Sparkles className="w-3 h-3 text-amber-300" />
+            <span>Desbloquear IA</span>
+          </Button>
+        </div>
+      )}
+
       {/* Header do Chat */}
       <div className="p-4 border-b border-[#E5E1D8] flex items-center justify-between bg-[#FAFAF9]">
         <div className="flex items-center gap-3">
