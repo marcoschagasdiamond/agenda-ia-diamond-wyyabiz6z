@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { listConnectors, connect, disconnect, ConnectPopupBlockedError } from '@/lib/skipConnectors'
-import { ConnectorButton } from '@/components/skip/ConnectorButton'
 import { useToast } from '@/hooks/use-toast'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -17,8 +16,12 @@ import {
   Bot,
   Key,
   ShieldCheck,
-  CheckSquare,
 } from 'lucide-react'
+
+// URL segura de retorno no app para onde o conector deve redirecionar o usuário
+const calcularReturnUrlConfig = (): string => {
+  return `${window.location.origin}/config?aba=preferencias`
+}
 
 export function GestaoGeminiUsuario() {
   const { toast } = useToast()
@@ -28,7 +31,7 @@ export function GestaoGeminiUsuario() {
   const [preferirMesmaAba, setPreferirMesmaAba] = useState(true)
   const [blockedUrl, setBlockedUrl] = useState<string | null>(null)
 
-  const carregarStatus = async () => {
+  const carregarStatus = useCallback(async () => {
     try {
       setCarregando(true)
       const lista = await listConnectors()
@@ -40,15 +43,24 @@ export function GestaoGeminiUsuario() {
     } finally {
       setCarregando(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     carregarStatus()
-  }, [])
 
-  // Obtém a URL de autorização diretamente da API Skip Connectors
+    // Recarregar status quando a janela/aba ganhar foco (ex: usuário autorizou em popup ou voltou de outra aba)
+    const onFocus = () => {
+      carregarStatus()
+    }
+    window.addEventListener('focus', onFocus)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [carregarStatus])
+
+  // Obtém a URL de autorização diretamente da API Skip Connectors garantindo retorno em /config
   const obterUrlAutorizacao = async (): Promise<string> => {
-    const returnUrl = window.location.origin + window.location.pathname
+    const returnUrl = calcularReturnUrlConfig()
     // No Skip Cloud pb_hooks/connectors: rota POST /api/skip/connectors/gemini/connect
     const res: unknown = await pb.send(`/api/skip/connectors/gemini/connect`, {
       method: 'POST',
@@ -65,6 +77,22 @@ export function GestaoGeminiUsuario() {
     throw new Error('Não foi possível obter a URL de autorização do Gemini.')
   }
 
+  // Navegação resiliente e protegida contra SecurityError no Safari/iOS
+  const navegarComSeguranca = (url: string) => {
+    try {
+      window.location.assign(url)
+    } catch (navErr) {
+      console.warn('Bloqueio ou SecurityError na navegação direta (Safari/ITP):', navErr)
+      setBlockedUrl(url)
+      toast({
+        title: 'Autorização requer clique manual',
+        description:
+          'Seu navegador (Safari) restringiu a navegação automática. Clique no link de autorização destacado abaixo para prosseguir com segurança.',
+        variant: 'destructive',
+      })
+    }
+  }
+
   const handleConectar = async (forcarMesmaAba = preferirMesmaAba) => {
     try {
       setProcessando(true)
@@ -75,8 +103,7 @@ export function GestaoGeminiUsuario() {
         try {
           const consentUrl = await obterUrlAutorizacao()
           if (/^https?:/i.test(consentUrl)) {
-            // Navega diretamente na mesma aba sem acionar o bloqueio de popups do Safari
-            window.location.assign(consentUrl)
+            navegarComSeguranca(consentUrl)
             return
           }
         } catch (apiErr: unknown) {
@@ -84,8 +111,8 @@ export function GestaoGeminiUsuario() {
         }
       }
 
-      // Fluxo padrão com fallback de popup
-      await connect('gemini')
+      // Fluxo padrão com fallback de popup usando returnUrl canônica
+      await connect('gemini', calcularReturnUrlConfig())
       await carregarStatus()
       toast({
         title: 'Google Gemini conectado com sucesso!',
@@ -237,7 +264,7 @@ export function GestaoGeminiUsuario() {
           </div>
         </div>
 
-        {/* Ações de conexão */}
+        {/* Ações de conexão — APENAS UM BOTÃO DE AÇÃO */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 border-t border-zinc-100">
           <div className="text-xs text-zinc-600">
             {conectado ? (
@@ -266,30 +293,27 @@ export function GestaoGeminiUsuario() {
                 <span>Desconectar Gemini</span>
               </Button>
             ) : (
-              <div className="flex items-center gap-1.5">
-                <Button
-                  size="sm"
-                  onClick={() => handleConectar()}
-                  disabled={processando}
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs gap-1.5 shadow-xs"
-                >
-                  <Link2 className="w-3.5 h-3.5" />
-                  <span>{processando ? 'Abrindo conexão...' : 'Conectar Minha Conta Gemini'}</span>
-                </Button>
-                <ConnectorButton toolkit="gemini" name="Google Gemini" />
-              </div>
+              <Button
+                size="sm"
+                onClick={() => handleConectar()}
+                disabled={processando}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs gap-1.5 shadow-xs"
+              >
+                <Link2 className="w-3.5 h-3.5" />
+                <span>{processando ? 'Abrindo conexão...' : 'Conectar Minha Conta Gemini'}</span>
+              </Button>
             )}
           </div>
         </div>
 
-        {/* Fallback de Popup Bloqueado com links clicáveis e navegação na mesma aba */}
+        {/* Fallback Clicável para Popup ou Erro de Navegação do Safari */}
         {blockedUrl && (
           <div className="p-3.5 rounded-xl border border-blue-300 bg-blue-50/90 text-xs text-blue-950 space-y-2 animate-in fade-in">
             <div className="flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <p className="font-semibold text-blue-900">
-                  O navegador bloqueou a janela de autorização do Gemini
+                  O navegador restringiu a navegação automática do Gemini
                 </p>
                 <p className="text-blue-800 leading-relaxed text-[11px]">
                   Para concluir a conexão com segurança, utilize os links abaixo. Você será levado à
@@ -312,7 +336,7 @@ export function GestaoGeminiUsuario() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  window.location.assign(blockedUrl)
+                  navegarComSeguranca(blockedUrl)
                 }}
                 className="text-xs text-blue-900 hover:bg-blue-100 h-8 font-medium"
               >
@@ -340,7 +364,7 @@ export function GestaoGeminiUsuario() {
                 checked={preferirMesmaAba}
                 onChange={(e) => setPreferirMesmaAba(e.target.checked)}
                 className="rounded border-zinc-300 text-blue-600 focus:ring-blue-600"
-              ></input>
+              />
               <span>Navegar sempre na mesma aba (recomendado para Safari e mobile)</span>
             </label>
           </div>

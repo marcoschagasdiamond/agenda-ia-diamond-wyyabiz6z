@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
+import pb from '@/lib/pocketbase/client'
 import { listConnectors, connect, disconnect, ConnectPopupBlockedError } from '@/lib/skipConnectors'
-import { ConnectorButton } from '@/components/skip/ConnectorButton'
 import { useToast } from '@/hooks/use-toast'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -16,17 +16,22 @@ import {
   Mic,
   Brain,
   Calendar,
-  CheckSquare,
 } from 'lucide-react'
+
+// URL segura de retorno no app para onde o conector deve redirecionar o usuário
+const calcularReturnUrlConfig = (): string => {
+  return `${window.location.origin}/config?aba=preferencias`
+}
 
 export function GestaoOpenAIUsuario() {
   const { toast } = useToast()
   const [carregando, setCarregando] = useState(true)
   const [conectado, setConectado] = useState(false)
   const [processando, setProcessando] = useState(false)
+  const [preferirMesmaAba, setPreferirMesmaAba] = useState(true)
   const [blockedUrl, setBlockedUrl] = useState<string | null>(null)
 
-  const carregarStatus = async () => {
+  const carregarStatus = useCallback(async () => {
     try {
       setCarregando(true)
       const lista = await listConnectors()
@@ -38,17 +43,75 @@ export function GestaoOpenAIUsuario() {
     } finally {
       setCarregando(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     carregarStatus()
-  }, [])
 
-  const handleConectar = async () => {
+    // Recarregar status quando a janela/aba ganhar foco (ex: usuário autorizou em popup ou voltou de outra aba)
+    const onFocus = () => {
+      carregarStatus()
+    }
+    window.addEventListener('focus', onFocus)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [carregarStatus])
+
+  // Obtém a URL de autorização diretamente da API Skip Connectors garantindo retorno em /config
+  const obterUrlAutorizacao = async (): Promise<string> => {
+    const returnUrl = calcularReturnUrlConfig()
+    const res: unknown = await pb.send(`/api/skip/connectors/openai/connect`, {
+      method: 'POST',
+      body: { returnUrl },
+    })
+    if (
+      res &&
+      typeof res === 'object' &&
+      'url' in res &&
+      typeof (res as { url: unknown }).url === 'string'
+    ) {
+      return (res as { url: string }).url
+    }
+    throw new Error('Não foi possível obter a URL de autorização da OpenAI.')
+  }
+
+  // Navegação resiliente e protegida contra SecurityError no Safari/iOS
+  const navegarComSeguranca = (url: string) => {
+    try {
+      window.location.assign(url)
+    } catch (navErr) {
+      console.warn('Bloqueio ou SecurityError na navegação direta (Safari/ITP):', navErr)
+      setBlockedUrl(url)
+      toast({
+        title: 'Autorização requer clique manual',
+        description:
+          'Seu navegador (Safari) restringiu a navegação automática. Clique no link de autorização destacado abaixo para prosseguir com segurança.',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleConectar = async (forcarMesmaAba = preferirMesmaAba) => {
     try {
       setProcessando(true)
       setBlockedUrl(null)
-      await connect('openai')
+
+      // Se configurado para navegar na mesma aba (padrão recomendado para Safari/iOS e navegadores estritos)
+      if (forcarMesmaAba) {
+        try {
+          const consentUrl = await obterUrlAutorizacao()
+          if (/^https?:/i.test(consentUrl)) {
+            navegarComSeguranca(consentUrl)
+            return
+          }
+        } catch (apiErr: unknown) {
+          console.warn('Tentando fallback via connect() da biblioteca:', apiErr)
+        }
+      }
+
+      // Fluxo com fallback de popup usando a returnUrl canônica
+      await connect('openai', calcularReturnUrlConfig())
       await carregarStatus()
       toast({
         title: 'OpenAI conectada com sucesso!',
@@ -59,10 +122,18 @@ export function GestaoOpenAIUsuario() {
       if (err instanceof ConnectPopupBlockedError) {
         setBlockedUrl(err.url)
         toast({
-          title: 'Janela de conexão bloqueada',
-          description: 'O navegador bloqueou a janela. Utilize o botão destacado para autorizar.',
+          title: 'Janela de autorização bloqueada pelo navegador',
+          description:
+            'O navegador (Safari/Chrome) bloqueou a abertura automática. Clique no link destacado abaixo para autorizar.',
           variant: 'destructive',
         })
+      } else if (
+        err &&
+        typeof err === 'object' &&
+        'url' in err &&
+        typeof (err as { url: unknown }).url === 'string'
+      ) {
+        setBlockedUrl((err as { url: string }).url)
       } else {
         const msg = err instanceof Error ? err.message : 'Tente novamente.'
         toast({
@@ -182,7 +253,7 @@ export function GestaoOpenAIUsuario() {
           </div>
         </div>
 
-        {/* Ações de conexão */}
+        {/* Ações de conexão — APENAS UM BOTÃO DE AÇÃO */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 border-t border-zinc-100">
           <div className="text-xs text-zinc-600">
             {conectado ? (
@@ -211,34 +282,32 @@ export function GestaoOpenAIUsuario() {
                 <span>Desconectar OpenAI</span>
               </Button>
             ) : (
-              <div className="flex items-center gap-1.5">
-                <Button
-                  size="sm"
-                  onClick={handleConectar}
-                  disabled={processando}
-                  className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs gap-1.5 shadow-xs"
-                >
-                  <Link2 className="w-3.5 h-3.5" />
-                  <span>{processando ? 'Abrindo conexão...' : 'Conectar Minha Conta OpenAI'}</span>
-                </Button>
-                <ConnectorButton toolkit="openai" name="OpenAI" />
-              </div>
+              <Button
+                size="sm"
+                onClick={() => handleConectar()}
+                disabled={processando}
+                className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs gap-1.5 shadow-xs"
+              >
+                <Link2 className="w-3.5 h-3.5" />
+                <span>{processando ? 'Abrindo conexão...' : 'Conectar Minha Conta OpenAI'}</span>
+              </Button>
             )}
           </div>
         </div>
 
-        {/* Fallback de Popup Bloqueado */}
+        {/* Fallback Clicável para Popup ou Erro de Navegação do Safari */}
         {blockedUrl && (
-          <div className="p-3.5 rounded-xl border border-amber-300 bg-amber-50/90 text-xs text-amber-950 space-y-2">
+          <div className="p-3.5 rounded-xl border border-emerald-300 bg-emerald-50/90 text-xs text-emerald-950 space-y-2 animate-in fade-in">
             <div className="flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <AlertTriangle className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <p className="font-semibold text-amber-900">
-                  O navegador bloqueou a janela de autorização da OpenAI
+                <p className="font-semibold text-emerald-950">
+                  O navegador restringiu a navegação automática da OpenAI
                 </p>
-                <p className="text-amber-800 leading-relaxed text-[11px]">
-                  Clique no link abaixo para autorizar com segurança. Você será redirecionado para a
-                  OpenAI.
+                <p className="text-emerald-800 leading-relaxed text-[11px]">
+                  Para concluir a conexão com segurança, utilize o link direto abaixo. Você será
+                  levado à tela oficial de autorização da OpenAI e retornará a esta página com sua
+                  conta ativa.
                 </p>
               </div>
             </div>
@@ -247,20 +316,46 @@ export function GestaoOpenAIUsuario() {
                 href={blockedUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-medium text-xs shadow-xs"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0F766E] hover:bg-[#0D5C56] text-white font-medium text-xs shadow-xs transition-colors"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
-                <span>Clique para autorizar OpenAI</span>
+                <span>Clique aqui para autorizar a OpenAI</span>
               </a>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  navegarComSeguranca(blockedUrl)
+                }}
+                className="text-xs text-emerald-900 hover:bg-emerald-100 h-8 font-medium"
+              >
+                Navegar nesta mesma aba
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setBlockedUrl(null)}
                 className="text-xs text-zinc-500 hover:text-zinc-700 h-8"
               >
-                Dispensar
+                Dispensar aviso
               </Button>
             </div>
+          </div>
+        )}
+
+        {/* Opção de preferência de navegação (mesma aba vs popup) */}
+        {!conectado && (
+          <div className="pt-2 border-t border-zinc-100 flex items-center justify-between text-xs text-zinc-600">
+            <span className="text-[11px] text-[#5B6470]">Modo de autorização do conector:</span>
+            <label className="flex items-center gap-2 cursor-pointer text-[11px] text-[#1A1D21]">
+              <input
+                type="checkbox"
+                checked={preferirMesmaAba}
+                onChange={(e) => setPreferirMesmaAba(e.target.checked)}
+                className="rounded border-zinc-300 text-[#0F766E] focus:ring-[#0F766E]"
+              />
+              <span>Navegar sempre na mesma aba (recomendado para Safari e mobile)</span>
+            </label>
           </div>
         )}
       </CardContent>
