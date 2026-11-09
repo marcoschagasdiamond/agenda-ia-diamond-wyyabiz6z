@@ -69,6 +69,10 @@ export default function Equipe() {
   const [filtroStatusConvite, setFiltroStatusConvite] = useState<string>('todos')
   const [processandoAcao, setProcessandoAcao] = useState<string | null>(null)
   const [conviteParaExcluir, setConviteParaExcluir] = useState<ConviteEquipe | null>(null)
+  const [membroParaConfirmarAdmin, setMembroParaConfirmarAdmin] = useState<{
+    membro: MembroEquipe
+    acao: 'eleger' | 'remover'
+  } | null>(null)
 
   useEffect(() => {
     diamondApi
@@ -208,6 +212,7 @@ export default function Equipe() {
 
   // Eleger outro membro como administrador
   const handleElegerAdmin = async (membro: MembroEquipe) => {
+    setProcessandoAcao(membro.id)
     try {
       await diamondApi.elegerAdmin(membro.id)
       await recarregarDadosGlobais()
@@ -217,20 +222,27 @@ export default function Equipe() {
       })
     } catch {
       toast({ title: 'Erro ao eleger administrador', variant: 'destructive' })
+    } finally {
+      setProcessandoAcao(null)
+      setMembroParaConfirmarAdmin(null)
     }
   }
 
   // Rebaixar administrador eleito para membro comum
   const handleRemoverAdmin = async (membro: MembroEquipe) => {
+    setProcessandoAcao(membro.id)
     try {
       await diamondApi.removerAdmin(membro.id)
       await recarregarDadosGlobais()
       toast({
         title: 'Função de administrador removida',
-        description: `${membro.nome || membro.email} voltou ao papel de membro da equipe.`,
+        description: `${membro.nome || membro.email} voltou ao papel de membro comum da equipe.`,
       })
     } catch {
       toast({ title: 'Erro ao remover administrador', variant: 'destructive' })
+    } finally {
+      setProcessandoAcao(null)
+      setMembroParaConfirmarAdmin(null)
     }
   }
 
@@ -239,9 +251,29 @@ export default function Equipe() {
     membro: MembroEquipe,
     novoNivel: 'leitura' | 'edicao' | 'admin',
   ) => {
+    if (novoNivel === 'admin') {
+      if (!isMaster) {
+        toast({
+          title: 'Ação restrita ao Administrador Master',
+          description: 'Apenas o Administrador Master pode eleger administradores na conta.',
+          variant: 'destructive',
+        })
+        return
+      }
+      setMembroParaConfirmarAdmin({ membro, acao: 'eleger' })
+      return
+    }
+
+    setProcessandoAcao(membro.id)
     try {
-      if (novoNivel === 'admin') {
-        await diamondApi.elegerAdmin(membro.id)
+      if (membro.funcao === 'admin' || membro.nivel_acesso === 'admin') {
+        await diamondApi.removerAdmin(membro.id)
+        if (novoNivel === 'leitura') {
+          await diamondApi.updateMembroEquipe(membro.id, {
+            nivel_acesso: 'leitura',
+            funcao: 'membro',
+          })
+        }
       } else {
         await diamondApi.updateMembroEquipe(membro.id, {
           nivel_acesso: novoNivel,
@@ -252,6 +284,8 @@ export default function Equipe() {
       toast({ title: `Nível de acesso atualizado para ${novoNivel}` })
     } catch {
       toast({ title: 'Erro ao atualizar nível', variant: 'destructive' })
+    } finally {
+      setProcessandoAcao(null)
     }
   }
 
@@ -584,53 +618,110 @@ export default function Equipe() {
                         {membro.nivel_acesso || 'Edição'}
                       </Badge>
 
-                      {/* Dropdown de Ações */}
+                      {/* Botões Rápidos e Dropdown de Ações */}
                       {!isFundador && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0 text-[#5B6470] hover:text-[#1A1D21]"
+                        <div className="flex items-center gap-1.5">
+                          {/* Ação de Eleger / Remover Administrador (Visível para o Master) */}
+                          {isMaster &&
+                            !membro.is_master &&
+                            (membro.funcao === 'admin' || membro.nivel_acesso === 'admin' ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={processandoAcao === membro.id}
+                                onClick={() =>
+                                  setMembroParaConfirmarAdmin({ membro, acao: 'remover' })
+                                }
+                                className="h-7 px-2 text-[11px] font-medium border-purple-200 text-purple-700 hover:bg-purple-50 hover:text-purple-800 gap-1"
+                                title="Remover privilégios de administrador deste colaborador"
+                              >
+                                <Shield className="w-3 h-3" />
+                                <span className="hidden sm:inline">Remover Admin</span>
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={processandoAcao === membro.id}
+                                onClick={() =>
+                                  setMembroParaConfirmarAdmin({ membro, acao: 'eleger' })
+                                }
+                                className="h-7 px-2 text-[11px] font-medium border-[#0F766E]/30 text-[#0F766E] hover:bg-[#0F766E]/10 gap-1"
+                                title="Eleger este colaborador como Administrador da conta"
+                              >
+                                <ShieldCheck className="w-3 h-3 text-[#0F766E]" />
+                                <span className="hidden sm:inline">Eleger Admin</span>
+                              </Button>
+                            ))}
+
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 text-[#5B6470] hover:text-[#1A1D21]"
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="end"
+                              className="w-52 bg-white border-[#E5E1D8]"
                             >
-                              <MoreVertical className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent
-                            align="end"
-                            className="w-48 bg-white border-[#E5E1D8]"
-                          >
-                            <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#5B6470]">
-                              Alterar Permissão
-                            </div>
-                            <DropdownMenuItem
-                              onClick={() => handleAlterarNivelMembro(membro, 'leitura')}
-                              className="text-xs cursor-pointer"
-                            >
-                              Somente Leitura
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleAlterarNivelMembro(membro, 'edicao')}
-                              className="text-xs cursor-pointer"
-                            >
-                              Pode Editar (Padrão)
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleAlterarNivelMembro(membro, 'admin')}
-                              className="text-xs cursor-pointer"
-                            >
-                              Administrador (Eleger Admin)
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => handleRemoverMembro(membro)}
-                              className="text-xs text-red-600 focus:text-red-700 cursor-pointer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5 mr-2" />
-                              Remover da Equipe
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                              <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#5B6470]">
+                                Alterar Permissão
+                              </div>
+                              <DropdownMenuItem
+                                onClick={() => handleAlterarNivelMembro(membro, 'leitura')}
+                                className="text-xs cursor-pointer"
+                              >
+                                Somente Leitura
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleAlterarNivelMembro(membro, 'edicao')}
+                                className="text-xs cursor-pointer"
+                              >
+                                Pode Editar (Padrão)
+                              </DropdownMenuItem>
+
+                              {isMaster && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  {membro.funcao === 'admin' || membro.nivel_acesso === 'admin' ? (
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        setMembroParaConfirmarAdmin({ membro, acao: 'remover' })
+                                      }
+                                      className="text-xs text-purple-700 cursor-pointer font-medium"
+                                    >
+                                      <Shield className="w-3.5 h-3.5 mr-2" />
+                                      Remover Administrador
+                                    </DropdownMenuItem>
+                                  ) : (
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        setMembroParaConfirmarAdmin({ membro, acao: 'eleger' })
+                                      }
+                                      className="text-xs text-[#0F766E] cursor-pointer font-medium"
+                                    >
+                                      <ShieldCheck className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
+                                      Eleger Administrador
+                                    </DropdownMenuItem>
+                                  )}
+                                </>
+                              )}
+
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => handleRemoverMembro(membro)}
+                                className="text-xs text-red-600 focus:text-red-700 cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 mr-2" />
+                                Remover da Equipe
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -903,6 +994,90 @@ export default function Equipe() {
               className="text-xs h-9 bg-red-600 hover:bg-red-700 text-white font-semibold"
             >
               {processandoAcao ? 'Excluindo...' : 'Excluir convite'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Modal de confirmação para Eleger ou Remover Administrador */}
+      <AlertDialog
+        open={!!membroParaConfirmarAdmin}
+        onOpenChange={(open) => {
+          if (!open) setMembroParaConfirmarAdmin(null)
+        }}
+      >
+        <AlertDialogContent className="bg-white border-[#E5E1D8] max-w-md">
+          <AlertDialogHeader>
+            <div
+              className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 ${
+                membroParaConfirmarAdmin?.acao === 'eleger'
+                  ? 'bg-emerald-50 text-[#0F766E]'
+                  : 'bg-purple-50 text-purple-700'
+              }`}
+            >
+              {membroParaConfirmarAdmin?.acao === 'eleger' ? (
+                <ShieldCheck className="w-5 h-5" />
+              ) : (
+                <Shield className="w-5 h-5" />
+              )}
+            </div>
+            <AlertDialogTitle className="text-base font-bold text-[#1A1D21]">
+              {membroParaConfirmarAdmin?.acao === 'eleger'
+                ? 'Eleger como Administrador?'
+                : 'Remover função de Administrador?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-[#5B6470] space-y-1.5">
+              {membroParaConfirmarAdmin?.acao === 'eleger' ? (
+                <span>
+                  Você está elegendo{' '}
+                  <strong className="text-[#1A1D21] font-semibold">
+                    {membroParaConfirmarAdmin.membro.nome || membroParaConfirmarAdmin.membro.email}
+                  </strong>{' '}
+                  como Administrador. Este usuário poderá visualizar todos os módulos e gerenciar
+                  recursos da conta conforme permissões administrativas delegadas pelo Master.
+                </span>
+              ) : (
+                <span>
+                  Você está rebaixando{' '}
+                  <strong className="text-[#1A1D21] font-semibold">
+                    {membroParaConfirmarAdmin?.membro.nome ||
+                      membroParaConfirmarAdmin?.membro.email}
+                  </strong>{' '}
+                  para membro comum da equipe. Seus privilégios administrativos serão revogados
+                  imediatamente.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel
+              disabled={!!processandoAcao}
+              className="text-xs h-9 border-[#E5E1D8] hover:bg-[#F4F2EE]"
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!!processandoAcao}
+              onClick={(e) => {
+                e.preventDefault()
+                if (!membroParaConfirmarAdmin) return
+                if (membroParaConfirmarAdmin.acao === 'eleger') {
+                  handleElegerAdmin(membroParaConfirmarAdmin.membro)
+                } else {
+                  handleRemoverAdmin(membroParaConfirmarAdmin.membro)
+                }
+              }}
+              className={`text-xs h-9 text-white font-semibold ${
+                membroParaConfirmarAdmin?.acao === 'eleger'
+                  ? 'bg-[#0F766E] hover:bg-[#0D5C56]'
+                  : 'bg-purple-700 hover:bg-purple-800'
+              }`}
+            >
+              {processandoAcao
+                ? 'Processando...'
+                : membroParaConfirmarAdmin?.acao === 'eleger'
+                  ? 'Confirmar Eleição'
+                  : 'Remover Função Admin'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

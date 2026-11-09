@@ -1013,18 +1013,28 @@ export const diamondApi = {
     return await pb.collection('membros_equipe').delete(id)
   },
 
-  async promoverParaAdmin(id: string): Promise<MembroEquipe> {
+  async elegerAdmin(id: string): Promise<MembroEquipe> {
     return await pb.collection('membros_equipe').update<MembroEquipe>(id, {
       funcao: 'admin',
       nivel_acesso: 'admin',
+      is_master: false,
     })
   },
 
-  async rebaixarDeAdmin(id: string): Promise<MembroEquipe> {
+  async removerAdmin(id: string): Promise<MembroEquipe> {
     return await pb.collection('membros_equipe').update<MembroEquipe>(id, {
       funcao: 'membro',
       nivel_acesso: 'edicao',
+      is_master: false,
     })
+  },
+
+  async promoverParaAdmin(id: string): Promise<MembroEquipe> {
+    return await this.elegerAdmin(id)
+  },
+
+  async rebaixarDeAdmin(id: string): Promise<MembroEquipe> {
+    return await this.removerAdmin(id)
   },
 
   // Licença Comercial da Conta & Limites
