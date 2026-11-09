@@ -674,11 +674,33 @@ export interface LimitesConsumoConta {
   // Convites
   permiteConvites: boolean
   bloqueadoConvites: boolean
+  convitesAtivos?: number
   // Módulos
   modulosAtivos: string[]
   // Papéis
   isMaster: boolean
   isAdmin: boolean
+}
+
+export interface ResumoContaMaster {
+  id: string
+  nome_conta: string
+  plano: PlanoLicencaTipo
+  status: StatusLicencaTipo
+  max_dias_folha: number
+  max_projetos: number
+  permite_convites: boolean
+  titular_nome?: string
+  titular_email?: string
+  observacoes?: string
+  diasFolhaUsados: number
+  projetosUsados: number
+  convitesTotal: number
+  admins: MembroEquipe[]
+  membros: MembroEquipe[]
+  modulos: ModuloLicenca[]
+  created: string
+  updated: string
 }
 
 export interface ConviteEquipe {

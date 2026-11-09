@@ -24,6 +24,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ChevronRight,
+  Crown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -38,7 +39,15 @@ interface LayoutProps {
 }
 
 export default function Layout({ children }: LayoutProps) {
-  const { user, clienteProfile, isClientPortal, signOut } = useAuth()
+  const {
+    user,
+    clienteProfile,
+    isClientPortal,
+    isMaster,
+    isConvidadoExterno,
+    meusEscopos,
+    signOut,
+  } = useAuth()
   const {
     colunaSecundariaAberta,
     setColunaSecundariaAberta,
@@ -99,6 +108,48 @@ export default function Layout({ children }: LayoutProps) {
     { name: 'Configurações', path: '/config', icon: Settings },
   ]
 
+  // Se for Administrador Master, injeta no menu o atalho exclusivo do Painel Master
+  if (isMaster) {
+    navItemsInternal.push({
+      name: 'Master',
+      path: '/master',
+      icon: Crown,
+      highlight: true,
+    })
+  }
+
+  // Se for Convidado Externo, o menu lateral do rail filtra APENAS o recurso do escopo dele
+  const escopoPrincipal = isConvidadoExterno ? meusEscopos[0] : null
+  const navItemsConvidado: NavRailItem[] = []
+
+  if (isConvidadoExterno && escopoPrincipal) {
+    if (escopoPrincipal.tipo === 'projeto') {
+      navItemsConvidado.push({
+        name: 'Meu Projeto',
+        path: escopoPrincipal.id ? `/projetos/${escopoPrincipal.id}` : '/projetos',
+        icon: FolderKanban,
+      })
+    } else if (escopoPrincipal.tipo === 'fluxo' || escopoPrincipal.tipo === 'categoria') {
+      navItemsConvidado.push({
+        name: 'Meu Fluxo',
+        path: escopoPrincipal.id ? `/fluxo?id=${escopoPrincipal.id}` : '/fluxo',
+        icon: KanbanSquare,
+      })
+    } else if (escopoPrincipal.tipo === 'demanda') {
+      navItemsConvidado.push({
+        name: 'Minha Demanda',
+        path: escopoPrincipal.id ? `/folha?demanda=${escopoPrincipal.id}` : '/folha',
+        icon: FileEdit,
+      })
+    } else if (escopoPrincipal.tipo === 'cliente') {
+      navItemsConvidado.push({
+        name: 'Meu Cliente',
+        path: escopoPrincipal.id ? `/clientes/${escopoPrincipal.id}` : '/clientes',
+        icon: UserCheck,
+      })
+    }
+  }
+
   // Navegação Portal do Cliente
   const navItemsClient: NavRailItem[] = [
     { name: 'Meus Projetos', path: '/portal', icon: FolderKanban },
@@ -106,7 +157,11 @@ export default function Layout({ children }: LayoutProps) {
     { name: 'Resumos & Estado', path: '/resumos', icon: History },
   ]
 
-  const currentNavItems = isClientPortal ? navItemsClient : navItemsInternal
+  const currentNavItems = isClientPortal
+    ? navItemsClient
+    : isConvidadoExterno
+      ? navItemsConvidado
+      : navItemsInternal
 
   const isAuthRoute =
     [

@@ -1054,11 +1054,123 @@ export const diamondApi = {
     }
   },
 
+  async listTodasLicencas(): Promise<import('../types').LicencaConta[]> {
+    try {
+      return await pb.collection('licencas_conta').getFullList<import('../types').LicencaConta>({
+        sort: 'created',
+      })
+    } catch {
+      return []
+    }
+  },
+
   async updateLicencaConta(
     id: string,
     data: Partial<import('../types').LicencaConta>,
   ): Promise<import('../types').LicencaConta> {
     return await pb.collection('licencas_conta').update<import('../types').LicencaConta>(id, data)
+  },
+
+  async alterarPlanoConta(
+    licencaId: string,
+    plano: import('../types').PlanoLicencaTipo,
+    status: import('../types').StatusLicencaTipo = 'ativo',
+  ): Promise<import('../types').LicencaConta> {
+    const isPago = plano === 'pro' || plano === 'diamond_executive'
+    const payload: Partial<import('../types').LicencaConta> = {
+      plano,
+      status,
+      max_dias_folha: isPago ? 99999 : 2,
+      max_projetos: isPago ? 99999 : 2,
+      permite_convites: isPago,
+      permite_whatsapp: isPago,
+      permite_relatorios_avancados: isPago,
+      observacoes: isPago
+        ? `Plano ${plano === 'diamond_executive' ? 'Diamond Executive Ilimitado' : 'Pro Empresarial'} ativado pelo Master`
+        : 'Plano Gratuito Prova Viva: 2 dias de folha, 2 projetos e convites bloqueados',
+    }
+    const updated = await pb
+      .collection('licencas_conta')
+      .update<import('../types').LicencaConta>(licencaId, payload)
+
+    // Ativar módulos básicos quando plano for pago
+    if (isPago) {
+      try {
+        const modulos = await this.listModulosLicenca(licencaId)
+        for (const m of modulos) {
+          if (!m.ativo) {
+            await this.toggleModuloLicenca(m.id, true).catch(() => null)
+          }
+        }
+      } catch {
+        /* best-effort */
+      }
+    }
+    return updated
+  },
+
+  async getPainelMasterDados(): Promise<import('../types').ResumoContaMaster[]> {
+    const [licencas, membros, convites, itensFolha, proj] = await Promise.all([
+      this.listTodasLicencas(),
+      this.listMembrosEquipe(),
+      this.listConvitesEquipe('todos'),
+      pb
+        .collection('folha_dia')
+        .getFullList<{ data?: string; data_hora?: string; created?: string }>({
+          fields: 'data,data_hora,created',
+        })
+        .catch(() => []),
+      pb
+        .collection('projetos')
+        .getList(1, 1, { fields: 'id' })
+        .catch(() => ({ totalItems: 0 })),
+    ])
+
+    // Dias distintos na folha
+    const diasSet = new Set<string>()
+    itensFolha.forEach((i) => {
+      const d =
+        (i.data_hora
+          ? i.data_hora.slice(0, 10)
+          : i.data
+            ? i.data.slice(0, 10)
+            : i.created?.slice(0, 10)) || ''
+      if (d) diasSet.add(d)
+    })
+    const diasFolhaTotal = diasSet.size
+    const projetosTotal = proj.totalItems
+
+    const resumos: import('../types').ResumoContaMaster[] = []
+
+    for (const lic of licencas) {
+      const modulos = await this.listModulosLicenca(lic.id).catch(() => [])
+      const admins = membros.filter(
+        (m) => m.funcao === 'admin' || m.nivel_acesso === 'admin' || m.is_master,
+      )
+
+      resumos.push({
+        id: lic.id,
+        nome_conta: lic.nome_conta || 'Conta Diamond',
+        plano: lic.plano,
+        status: lic.status,
+        max_dias_folha: lic.max_dias_folha,
+        max_projetos: lic.max_projetos,
+        permite_convites: lic.permite_convites,
+        titular_nome: lic.titular_nome,
+        titular_email: lic.titular_email,
+        observacoes: lic.observacoes,
+        diasFolhaUsados: diasFolhaTotal,
+        projetosUsados: projetosTotal,
+        convitesTotal: convites.length,
+        admins,
+        membros,
+        modulos,
+        created: lic.created,
+        updated: lic.updated,
+      })
+    }
+
+    return resumos
   },
 
   async listModulosLicenca(licencaId?: string): Promise<import('../types').ModuloLicenca[]> {

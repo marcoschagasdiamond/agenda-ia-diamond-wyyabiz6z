@@ -31,12 +31,36 @@ import Agente from '@/pages/Agente'
 import Resumos from '@/pages/Resumos'
 import Config from '@/pages/Config'
 import Equipe from '@/pages/Equipe'
+import Master from '@/pages/Master'
 import AceitarConvite from '@/pages/AceitarConvite'
 import PortalCliente from '@/pages/PortalCliente'
 import NotFound from '@/pages/NotFound'
+import { TelaAcessoRestrito } from '@/components/comercial/TelaAcessoRestrito'
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth()
+function ProtectedRoute({
+  children,
+  somenteMaster = false,
+  recursoTipo,
+}: {
+  children: React.ReactNode
+  somenteMaster?: boolean
+  recursoTipo?:
+    | 'folha'
+    | 'calendario'
+    | 'fluxo'
+    | 'projetos'
+    | 'contatos'
+    | 'arquivos'
+    | 'listas'
+    | 'clientes'
+    | 'equipe'
+    | 'agente'
+    | 'resumos'
+    | 'config'
+    | 'dashboard'
+}) {
+  const { user, loading, isMaster, isConvidadoExterno, meusEscopos } = useAuth()
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F4F2EE] text-xs text-[#5B6470]">
@@ -47,6 +71,49 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!user) {
     return <Navigate to="/login" replace />
   }
+
+  // Trava de Administrador Master
+  if (somenteMaster && !isMaster) {
+    return (
+      <TelaAcessoRestrito
+        escopos={meusEscopos}
+        rotaTentada="Painel do Administrador Master"
+        userEmail={user.email}
+      />
+    )
+  }
+
+  // Cerco do Convidado Externo:
+  // Se o usuário é convidado externo com escopo restrito (ex.: projeto ou fluxo específico),
+  // e tentar acessar rotas fora do seu escopo (ex.: equipe, config, contatos, financeiro, listas), bloqueia!
+  if (isConvidadoExterno && recursoTipo) {
+    const escopoPrincipal = meusEscopos[0]
+    let permitido = false
+
+    if (recursoTipo === 'projetos' && escopoPrincipal?.tipo === 'projeto') {
+      permitido = true
+    } else if (
+      recursoTipo === 'fluxo' &&
+      (escopoPrincipal?.tipo === 'fluxo' || escopoPrincipal?.tipo === 'categoria')
+    ) {
+      permitido = true
+    } else if (recursoTipo === 'folha' && escopoPrincipal?.tipo === 'demanda') {
+      permitido = true
+    } else if (recursoTipo === 'clientes' && escopoPrincipal?.tipo === 'cliente') {
+      permitido = true
+    }
+
+    if (!permitido) {
+      return (
+        <TelaAcessoRestrito
+          escopos={meusEscopos}
+          rotaTentada={recursoTipo.toUpperCase()}
+          userEmail={user.email}
+        />
+      )
+    }
+  }
+
   return <>{children}</>
 }
 
@@ -80,7 +147,7 @@ export default function App() {
               <Route
                 path="/"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute recursoTipo="dashboard">
                     <Dashboard />
                   </ProtectedRoute>
                 }
@@ -88,7 +155,7 @@ export default function App() {
               <Route
                 path="/folha"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute recursoTipo="folha">
                     <Folha />
                   </ProtectedRoute>
                 }
@@ -96,7 +163,7 @@ export default function App() {
               <Route
                 path="/calendario"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute recursoTipo="calendario">
                     <Calendario />
                   </ProtectedRoute>
                 }
@@ -104,7 +171,7 @@ export default function App() {
               <Route
                 path="/fluxo"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute recursoTipo="fluxo">
                     <Fluxo />
                   </ProtectedRoute>
                 }
@@ -112,7 +179,7 @@ export default function App() {
               <Route
                 path="/card/:id"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute recursoTipo="fluxo">
                     <CardDetalhes />
                   </ProtectedRoute>
                 }
@@ -120,7 +187,7 @@ export default function App() {
               <Route
                 path="/projetos"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute recursoTipo="projetos">
                     <Projetos />
                   </ProtectedRoute>
                 }
@@ -128,7 +195,7 @@ export default function App() {
               <Route
                 path="/projetos/:id"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute recursoTipo="projetos">
                     <ProjetoDetalhes />
                   </ProtectedRoute>
                 }
@@ -136,7 +203,7 @@ export default function App() {
               <Route
                 path="/contatos"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute recursoTipo="contatos">
                     <Contatos />
                   </ProtectedRoute>
                 }
@@ -144,7 +211,7 @@ export default function App() {
               <Route
                 path="/contatos/:id"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute recursoTipo="contatos">
                     <ContatoDetalhes />
                   </ProtectedRoute>
                 }
@@ -152,7 +219,7 @@ export default function App() {
               <Route
                 path="/arquivos"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute recursoTipo="arquivos">
                     <Arquivos />
                   </ProtectedRoute>
                 }
@@ -160,7 +227,7 @@ export default function App() {
               <Route
                 path="/listas"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute recursoTipo="listas">
                     <Listas />
                   </ProtectedRoute>
                 }
@@ -168,7 +235,7 @@ export default function App() {
               <Route
                 path="/clientes"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute recursoTipo="clientes">
                     <Clientes />
                   </ProtectedRoute>
                 }
@@ -176,15 +243,23 @@ export default function App() {
               <Route
                 path="/equipe"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute recursoTipo="equipe">
                     <Equipe />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/master"
+                element={
+                  <ProtectedRoute somenteMaster>
+                    <Master />
                   </ProtectedRoute>
                 }
               />
               <Route
                 path="/agente"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute recursoTipo="agente">
                     <Agente />
                   </ProtectedRoute>
                 }
@@ -192,7 +267,7 @@ export default function App() {
               <Route
                 path="/resumos"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute recursoTipo="resumos">
                     <Resumos />
                   </ProtectedRoute>
                 }
@@ -200,7 +275,7 @@ export default function App() {
               <Route
                 path="/config"
                 element={
-                  <ProtectedRoute>
+                  <ProtectedRoute recursoTipo="config">
                     <Config />
                   </ProtectedRoute>
                 }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useNavegacao } from '@/contexts/NavegacaoContext'
+import { useAuth } from '@/hooks/use-auth'
 import {
   ChevronRight,
   ChevronDown,
@@ -59,6 +60,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
   const navigate = useNavigate()
   const location = useLocation()
   const pathname = location.pathname
+  const { isConvidadoExterno, meusEscopos } = useAuth()
 
   const {
     categoriaAtivaId,
@@ -110,6 +112,58 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
   const irPara = (path: string) => {
     navigate(path)
     if (onCloseMobile) onCloseMobile()
+  }
+
+  // Se o usuário é convidado externo, renderiza uma coluna contextual restrita ao escopo liberado
+  if (isConvidadoExterno) {
+    const escopoPrincipal = meusEscopos[0]
+    return (
+      <div className="flex flex-col h-full bg-white text-[#1A1D21] select-none border-r border-[#E5E1D8]">
+        <div className="p-3 border-b border-[#E5E1D8] bg-[#FAFAF9]">
+          <div className="flex items-center gap-1.5 text-amber-700">
+            <ShieldCheck className="w-4 h-4 text-amber-600" />
+            <span className="font-bold text-[11px] uppercase tracking-wider">
+              Acesso por Convite
+            </span>
+          </div>
+          <p className="text-[11px] text-[#5B6470] mt-1 leading-tight">
+            Você possui acesso restrito ao item abaixo compartilhado pelo seu anfitrião.
+          </p>
+        </div>
+
+        <div className="flex-1 p-3 space-y-3 overflow-y-auto">
+          <div className="p-3 rounded-xl border border-teal-200 bg-teal-50/50 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-[#0F766E] uppercase tracking-wider">
+                Escopo Ativo
+              </span>
+              <Badge className="bg-[#0F766E] text-white text-[9px]">
+                {escopoPrincipal?.nivel || 'Convidado'}
+              </Badge>
+            </div>
+            <div className="pt-1">
+              <p className="font-extrabold text-xs text-zinc-900 leading-snug">
+                {escopoPrincipal?.nome || 'Item Compartilhado'}
+              </p>
+              <p className="text-[10px] text-zinc-500 capitalize mt-0.5">
+                Tipo: {escopoPrincipal?.tipo || 'Projeto / Fluxo'}
+              </p>
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200 space-y-2">
+            <div className="flex items-center gap-1.5 text-zinc-800 font-bold text-xs">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Plano Prova Viva</span>
+            </div>
+            <p className="text-[11px] text-zinc-600 leading-relaxed">
+              O restante do sistema é reservado a membros licenciados. Para criar projetos
+              ilimitados e acessar a Folha Diária, contate o Administrador Master.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // Identifica a seção ativa

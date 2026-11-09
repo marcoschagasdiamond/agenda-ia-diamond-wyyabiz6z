@@ -8,6 +8,8 @@ interface AuthContextType {
   clienteProfile: Cliente | null
   membroEquipe: MembroEquipe | null
   meusEscopos: EscopoItem[]
+  isConvidadoExterno: boolean
+  escopoPrincipal: EscopoItem | null
   isClientPortal: boolean
   isMaster: boolean
   isAdmin: boolean
@@ -206,6 +208,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ? (membroEquipe.escopos as EscopoItem[])
       : []
 
+  // Convidado externo: quem entrou por convite e NÃO é Master nem Admin geral.
+  // Possui escopo restrito (ex.: projeto, fluxo, demanda, cliente, categoria)
+  const temEscopoGeral = meusEscopos.some((e) => e.tipo === 'geral')
+  const isConvidadoExterno = Boolean(
+    !isMaster && !isAdmin && meusEscopos.length > 0 && !temEscopoGeral,
+  )
+  const escopoPrincipal = isConvidadoExterno ? meusEscopos[0] || null : null
+
   return (
     <AuthContext.Provider
       value={{
@@ -214,6 +224,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clienteProfile,
         membroEquipe,
         meusEscopos,
+        isConvidadoExterno,
+        escopoPrincipal,
         isClientPortal,
         isMaster,
         isAdmin,
