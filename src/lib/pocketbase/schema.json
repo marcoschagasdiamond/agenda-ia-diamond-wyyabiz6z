@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-09T01:57:39.010Z",
+  "generatedAt": "2026-11-09T02:12:37.527Z",
   "collections": [
     {
       "name": "users",
@@ -1918,6 +1918,18 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "email_enviado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "erro_envio",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

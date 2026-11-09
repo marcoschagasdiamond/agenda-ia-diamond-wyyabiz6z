@@ -93,6 +93,15 @@ export function Master() {
   })
   const [salvandoConfigGratuito, setSalvandoConfigGratuito] = useState(false)
 
+  // Status da Conexão Resend (Owner mode)
+  const [statusResend, setStatusResend] = useState<{
+    conectado: boolean
+    detalhe: string
+    remetente_padrao?: string
+    testado_em?: string
+  } | null>(null)
+  const [testandoResend, setTestandoResend] = useState(false)
+
   // Modal Alterar Plano
   const [modalPlanoOpen, setModalPlanoOpen] = useState(false)
   const [contaSelecionada, setContaSelecionada] = useState<ResumoContaMaster | null>(null)
@@ -116,6 +125,27 @@ export function Master() {
     '',
   )
   const webhookUrlCompleta = `${backendBaseUrl}/backend/v1/stripe_webhook`
+
+  const checarStatusResend = async () => {
+    try {
+      setTestandoResend(true)
+      const res = await diamondApi.getStatusResend()
+      setStatusResend({
+        conectado: res.conectado,
+        detalhe: res.detalhe,
+        remetente_padrao: res.remetente_padrao,
+        testado_em: res.testado_em,
+      })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha ao checar status do Resend'
+      setStatusResend({
+        conectado: false,
+        detalhe: message,
+      })
+    } finally {
+      setTestandoResend(false)
+    }
+  }
 
   const carregarDados = async () => {
     try {
@@ -146,6 +176,8 @@ export function Master() {
           descricao: cfgGratuito.descricao || '',
         })
       }
+      // Carregar status do conector de e-mail Resend em segundo plano
+      checarStatusResend()
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Falha ao carregar painel master'
       toast({
@@ -494,6 +526,102 @@ export function Master() {
           </Button>
         </div>
       </div>
+
+      {/* BLOCO DE INTEGRAÇÃO RESEND (CONVITES POR E-MAIL EM MODO OWNER) */}
+      <Card className="border-[#0F766E]/30 bg-white shadow-xs">
+        <CardHeader className="pb-3 border-b border-[#E5E1D8]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <CardTitle className="text-base font-bold text-zinc-900 flex items-center gap-2">
+                <Mail className="w-5 h-5 text-[#0F766E]" />
+                <span>Envio de Convites por E-mail (Resend Conectado)</span>
+              </CardTitle>
+              <CardDescription className="text-xs text-zinc-600">
+                Convites para tarefas, fluxos e projetos saem automaticamente por e-mail
+                profissional em pt-BR com link de aceite único.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              {testandoResend ? (
+                <Badge
+                  variant="outline"
+                  className="bg-zinc-50 text-zinc-600 border-zinc-300 text-[11px] gap-1.5 py-1"
+                >
+                  <RefreshCw className="w-3 h-3 animate-spin text-[#0F766E]" />
+                  <span>Verificando conexão...</span>
+                </Badge>
+              ) : statusResend?.conectado ? (
+                <Badge className="bg-emerald-600 text-white text-[11px] font-semibold gap-1.5 py-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Resend Conectado (Ativo)</span>
+                </Badge>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="bg-amber-50 text-amber-800 border-amber-300 text-[11px] font-semibold gap-1.5 py-1"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Resend Pendente de Conexão</span>
+                </Badge>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={checarStatusResend}
+                disabled={testandoResend}
+                className="text-xs h-7 px-2.5 border-zinc-300 gap-1 text-zinc-700"
+                title="Atualizar status da conexão"
+              >
+                <RefreshCw className={`w-3 h-3 ${testandoResend ? 'animate-spin' : ''}`} />
+                <span>Testar</span>
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-4 sm:p-6 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-[#FAF8F5] p-3 rounded-lg border border-[#E5E1D8]">
+              <span className="text-[11px] text-zinc-500 font-medium block">Modo de Operação</span>
+              <span className="text-xs font-bold text-zinc-800 flex items-center gap-1 mt-0.5">
+                <Sparkles className="w-3.5 h-3.5 text-[#0F766E]" />
+                Owner Mode ($connectors.executeAsOwner)
+              </span>
+              <span className="text-[10px] text-zinc-500 mt-1 block">
+                Conta centralizada do Administrador Master para disparos de sistema.
+              </span>
+            </div>
+
+            <div className="bg-[#FAF8F5] p-3 rounded-lg border border-[#E5E1D8]">
+              <span className="text-[11px] text-zinc-500 font-medium block">Remetente Padrão</span>
+              <span
+                className="text-xs font-bold text-zinc-800 truncate block mt-0.5"
+                title={statusResend?.remetente_padrao}
+              >
+                {statusResend?.remetente_padrao || 'Agenda IA Diamond <onboarding@resend.dev>'}
+              </span>
+              <span className="text-[10px] text-zinc-500 mt-1 block">
+                Nome amigável exibido na caixa de entrada dos convidados.
+              </span>
+            </div>
+
+            <div className="bg-[#FAF8F5] p-3 rounded-lg border border-[#E5E1D8]">
+              <span className="text-[11px] text-zinc-500 font-medium block">
+                Diagnóstico de Envio
+              </span>
+              <span
+                className={`text-xs font-semibold block mt-0.5 truncate ${statusResend?.conectado ? 'text-emerald-700' : 'text-amber-800'}`}
+              >
+                {statusResend?.detalhe || 'Pronto para envio'}
+              </span>
+              <span className="text-[10px] text-zinc-500 mt-1 block">
+                {statusResend?.testado_em
+                  ? `Último teste: ${new Date(statusResend.testado_em).toLocaleTimeString('pt-BR')}`
+                  : 'Caso falhe, o convite é criado e o app oferece reenvio.'}
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* BLOCO DE INTEGRAÇÃO STRIPE: PAYMENT LINK + WEBHOOK */}
       <Card className="border-[#0F766E]/30 bg-gradient-to-br from-teal-50/70 via-white to-amber-50/50 shadow-xs">

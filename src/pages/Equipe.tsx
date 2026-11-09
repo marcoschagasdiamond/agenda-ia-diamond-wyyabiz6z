@@ -126,12 +126,22 @@ export default function Equipe() {
   const handleReenviarConvite = async (convite: ConviteEquipe) => {
     setProcessandoAcao(convite.id)
     try {
-      await diamondApi.reenviarConvite(convite.id)
+      const resp = await diamondApi.reenviarConvite(convite.id)
       await recarregarDadosGlobais()
-      toast({
-        title: 'Convite reenviado por e-mail!',
-        description: `Enviamos novamente o link de aceite para ${convite.email}.`,
-      })
+      if (resp.sucesso && resp.email_enviado !== false) {
+        toast({
+          title: 'Convite reenviado por e-mail!',
+          description: `Enviamos novamente o convite profissional para ${convite.email}.`,
+        })
+      } else {
+        toast({
+          title: 'Convite renovado com aviso de envio',
+          description:
+            resp.mensagem ||
+            'O convite foi revalidado, mas o envio de e-mail falhou via Resend. Você pode copiar o link ou tentar novamente.',
+          variant: 'default',
+        })
+      }
     } catch (err: unknown) {
       toast({
         title: 'Erro ao reenviar',
@@ -783,6 +793,26 @@ export default function Equipe() {
                         >
                           {convite.status}
                         </Badge>
+                        {convite.email_enviado === true && (
+                          <Badge
+                            variant="secondary"
+                            className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] py-0 px-1.5 h-4 gap-1"
+                            title="E-mail de convite entregue via Resend"
+                          >
+                            <Mail className="w-2.5 h-2.5" />
+                            <span>E-mail enviado</span>
+                          </Badge>
+                        )}
+                        {convite.email_enviado === false && (
+                          <Badge
+                            variant="secondary"
+                            className="bg-amber-50 text-amber-700 border border-amber-200 text-[9px] py-0 px-1.5 h-4 gap-1"
+                            title={convite.erro_envio || 'Falha no envio de e-mail'}
+                          >
+                            <Mail className="w-2.5 h-2.5" />
+                            <span>Falha no e-mail</span>
+                          </Badge>
+                        )}
                       </div>
                       <span className="text-[11px] text-[#5B6470] mt-0.5 block">
                         Enviado em:{' '}
@@ -795,6 +825,14 @@ export default function Equipe() {
                             &bull; Expira em:{' '}
                             {new Date(convite.expira_em).toLocaleDateString('pt-BR')}
                           </>
+                        )}
+                        {convite.erro_envio && (
+                          <span
+                            className="text-amber-700 block text-[10px] truncate max-w-sm"
+                            title={convite.erro_envio}
+                          >
+                            Aviso: {convite.erro_envio}
+                          </span>
                         )}
                       </span>
                     </div>

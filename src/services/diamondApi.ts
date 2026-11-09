@@ -1600,7 +1600,9 @@ export const diamondApi = {
     return await pb.collection('convites_equipe').create<ConviteEquipe>(payload)
   },
 
-  async reenviarConvite(conviteId: string): Promise<{ sucesso: boolean; mensagem: string }> {
+  async reenviarConvite(
+    conviteId: string,
+  ): Promise<{ sucesso: boolean; email_enviado?: boolean; mensagem: string; erro?: string }> {
     const res = await fetch(
       `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/equipe/reenviar-convite`,
       {
@@ -1615,6 +1617,30 @@ export const diamondApi = {
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
       throw new Error(err.error || 'Falha ao reenviar convite')
+    }
+    return await res.json()
+  },
+
+  async getStatusResend(): Promise<{
+    sucesso: boolean
+    conectado: boolean
+    detalhe: string
+    remetente_padrao?: string
+    uso?: any
+    testado_em?: string
+  }> {
+    const res = await fetch(
+      `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/master/status-resend`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: pb.authStore.token,
+        },
+      },
+    )
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Falha ao verificar status do Resend')
     }
     return await res.json()
   },

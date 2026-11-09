@@ -755,6 +755,8 @@ export interface ConviteEquipe {
   mensagem?: string
   expira_em?: string
   enviado_em?: string
+  email_enviado?: boolean
+  erro_envio?: string
   aceito_em?: string
   convidado_por?: string
   usuario_aceitou?: string

@@ -206,13 +206,15 @@ export default function ModalConvidarEquipe({
     }
 
     setEnviando(true)
-    let sucessos = 0
-    let falhas = 0
+    let criados = 0
+    let emailsEnviados = 0
+    let falhasCriacao = 0
+    let falhasEnvioEmail = 0
 
     try {
       for (const email of listaFinal) {
         try {
-          await diamondApi.criarConvite({
+          const conviteCriado = await diamondApi.criarConvite({
             email,
             escopo_tipo: escopoTipo,
             escopo_id: escopoItemId,
@@ -221,25 +223,38 @@ export default function ModalConvidarEquipe({
             mensagem: mensagem.trim(),
             convidado_por: user?.id,
           })
-          sucessos++
+          criados++
+          if (conviteCriado.email_enviado !== false) {
+            emailsEnviados++
+          } else {
+            falhasEnvioEmail++
+          }
         } catch (err) {
           console.error(`Falha ao convidar ${email}:`, err)
-          falhas++
+          falhasCriacao++
         }
       }
 
       await recarregarDadosGlobais()
 
-      if (sucessos > 0) {
-        toast({
-          title: `${sucessos} convite(s) enviado(s) com sucesso!`,
-          description: `Os destinatários receberão um e-mail com instruções e link de aceite direto.`,
-        })
+      if (criados > 0) {
+        if (falhasEnvioEmail > 0) {
+          toast({
+            title: `${criados} convite(s) gerado(s)`,
+            description: `Atenção: o e-mail não pôde ser entregue automaticamente via Resend em ${falhasEnvioEmail} convite(s). Você pode copiar o link ou reenviar na aba Convites.`,
+            variant: 'default',
+          })
+        } else {
+          toast({
+            title: `${criados} convite(s) enviado(s) por e-mail com sucesso!`,
+            description: `Os destinatários receberão o convite profissional da Agenda IA Diamond com link direto de aceite.`,
+          })
+        }
         onOpenChange(false)
       } else {
         toast({
-          title: 'Erro ao enviar convites',
-          description: 'Não foi possível disparar os e-mails de convite.',
+          title: 'Erro ao criar convites',
+          description: 'Não foi possível cadastrar os convites da equipe.',
           variant: 'destructive',
         })
       }
