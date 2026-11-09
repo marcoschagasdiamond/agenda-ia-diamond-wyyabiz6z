@@ -757,6 +757,9 @@ export interface ConviteEquipe {
   enviado_em?: string
   email_enviado?: boolean
   erro_envio?: string
+  telefone?: string
+  whatsapp_enviado?: boolean
+  whatsapp_erro?: string
   aceito_em?: string
   convidado_por?: string
   usuario_aceitou?: string

@@ -1557,6 +1557,7 @@ export const diamondApi = {
 
   async criarConvite(data: {
     email: string
+    telefone?: string
     escopo_tipo: string
     escopo_id?: string
     escopo_nome?: string
@@ -1574,6 +1575,7 @@ export const diamondApi = {
 
     const payload: Record<string, unknown> = {
       email: data.email.trim().toLowerCase(),
+      telefone: data.telefone ? data.telefone.trim() : '',
       token,
       escopo_tipo: data.escopo_tipo,
       escopo_id: data.escopo_id || '',
@@ -1602,18 +1604,62 @@ export const diamondApi = {
 
   async reenviarConvite(
     conviteId: string,
-  ): Promise<{ sucesso: boolean; email_enviado?: boolean; mensagem: string; erro?: string }> {
+    canal?: 'email' | 'whatsapp' | 'ambos',
+  ): Promise<{
+    sucesso: boolean
+    canal?: string
+    email_processado?: boolean
+    email_enviado?: boolean
+    email_erro?: string
+    whatsapp_processado?: boolean
+    whatsapp_enviado?: boolean
+    whatsapp_erro?: string
+    mensagem: string
+    erro?: string
+  }> {
     const res = await fetch(`${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/convites/reenviar`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: pb.authStore.token,
       },
-      body: JSON.stringify({ convite_id: conviteId }),
+      body: JSON.stringify({ convite_id: conviteId, canal: canal || 'ambos' }),
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
       throw new Error(err.error || err.erro || 'Falha ao reenviar convite')
+    }
+    return await res.json()
+  },
+
+  async getStatusWhatsAppMaster(): Promise<{
+    status: 'conectado' | 'desconectado' | 'ativo_com_alertas'
+    provedor: string
+    modo: string
+    master_conectado: boolean
+    numero_master?: string
+    erro_master?: string
+    estatisticas: {
+      total_convites: number
+      total_com_telefone: number
+      total_enviados: number
+      total_falhas: number
+      ultimo_erro: string
+    }
+    mensagem: string
+  }> {
+    const res = await fetch(
+      `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/master/status-whatsapp`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: pb.authStore.token,
+        },
+      },
+    )
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Falha ao verificar status do WhatsApp')
     }
     return await res.json()
   },

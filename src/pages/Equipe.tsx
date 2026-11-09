@@ -26,6 +26,9 @@ import {
   KanbanSquare,
   UserCheck,
   ListTodo,
+  Phone,
+  MessageSquare,
+  Copy,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -122,23 +125,58 @@ export default function Equipe() {
   const totalConvitesPendentes = convitesEquipe.filter((c) => c.status === 'pendente').length
   const totalConvitesExpirados = convitesEquipe.filter((c) => c.status === 'expirado').length
 
-  // Reenviar convite
-  const handleReenviarConvite = async (convite: ConviteEquipe) => {
+  // Copiar link de aceite direto
+  const handleCopiarLinkConvite = (convite: ConviteEquipe) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    const link = `${origin}/aceitar-convite?token=${convite.token}`
+    navigator.clipboard
+      .writeText(link)
+      .then(() => {
+        toast({
+          title: 'Link de convite copiado!',
+          description: 'O link direto de aceite foi copiado para sua área de transferência.',
+        })
+      })
+      .catch(() => {
+        toast({
+          title: 'Link do convite',
+          description: link,
+        })
+      })
+  }
+
+  // Reenviar convite por canal específico
+  const handleReenviarConvite = async (
+    convite: ConviteEquipe,
+    canal: 'email' | 'whatsapp' | 'ambos' = 'ambos',
+  ) => {
     setProcessandoAcao(convite.id)
     try {
-      const resp = await diamondApi.reenviarConvite(convite.id)
+      const resp = await diamondApi.reenviarConvite(convite.id, canal)
       await recarregarDadosGlobais()
-      if (resp.sucesso && resp.email_enviado !== false) {
+
+      const avisos: string[] = []
+      if (resp.whatsapp_enviado) {
+        avisos.push('WhatsApp entregue com sucesso')
+      } else if (resp.whatsapp_erro) {
+        avisos.push(`WhatsApp falhou: ${resp.whatsapp_erro}`)
+      }
+
+      if (resp.email_enviado) {
+        avisos.push('E-mail entregue via Resend')
+      } else if (resp.email_erro) {
+        avisos.push(`E-mail falhou: ${resp.email_erro}`)
+      }
+
+      if (resp.sucesso) {
         toast({
-          title: 'Convite reenviado por e-mail!',
-          description: `Enviamos novamente o convite profissional para ${convite.email}.`,
+          title: `Convite reenviado (${canal === 'ambos' ? 'E-mail & WhatsApp' : canal === 'whatsapp' ? 'WhatsApp' : 'E-mail'})!`,
+          description: avisos.length > 0 ? avisos.join(' • ') : resp.mensagem,
         })
       } else {
         toast({
-          title: 'Convite renovado com aviso de envio',
-          description:
-            resp.mensagem ||
-            'O convite foi revalidado, mas o envio de e-mail falhou via Resend. Você pode copiar o link ou tentar novamente.',
+          title: 'Aviso no reenvio do convite',
+          description: resp.mensagem || resp.erro || 'Verifique o status do canal.',
           variant: 'default',
         })
       }
@@ -779,6 +817,12 @@ export default function Equipe() {
                     <div className="min-w-[220px]">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-[#1A1D21]">{convite.email}</span>
+                        {convite.telefone && (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-[#0F766E] font-mono bg-[#0F766E]/5 px-1.5 py-0.5 rounded border border-[#0F766E]/20">
+                            <Phone className="w-2.5 h-2.5" />
+                            {convite.telefone}
+                          </span>
+                        )}
                         <Badge
                           variant="outline"
                           className={`text-[9px] font-bold uppercase py-0 px-1.5 h-4 ${
@@ -793,6 +837,8 @@ export default function Equipe() {
                         >
                           {convite.status}
                         </Badge>
+
+                        {/* Badge do canal E-mail */}
                         {convite.email_enviado === true && (
                           <Badge
                             variant="secondary"
@@ -800,7 +846,7 @@ export default function Equipe() {
                             title="E-mail de convite entregue via Resend"
                           >
                             <Mail className="w-2.5 h-2.5" />
-                            <span>E-mail enviado</span>
+                            <span>E-mail</span>
                           </Badge>
                         )}
                         {convite.email_enviado === false && (
@@ -810,7 +856,29 @@ export default function Equipe() {
                             title={convite.erro_envio || 'Falha no envio de e-mail'}
                           >
                             <Mail className="w-2.5 h-2.5" />
-                            <span>Falha no e-mail</span>
+                            <span>E-mail falhou</span>
+                          </Badge>
+                        )}
+
+                        {/* Badge do canal WhatsApp */}
+                        {convite.telefone && convite.whatsapp_enviado === true && (
+                          <Badge
+                            variant="secondary"
+                            className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] py-0 px-1.5 h-4 gap-1"
+                            title="Mensagem de WhatsApp enviada pelo número pessoal conectado"
+                          >
+                            <MessageSquare className="w-2.5 h-2.5" />
+                            <span>WhatsApp</span>
+                          </Badge>
+                        )}
+                        {convite.telefone && convite.whatsapp_enviado === false && (
+                          <Badge
+                            variant="secondary"
+                            className="bg-rose-50 text-rose-700 border border-rose-200 text-[9px] py-0 px-1.5 h-4 gap-1"
+                            title={convite.whatsapp_erro || 'Falha no envio via WhatsApp'}
+                          >
+                            <MessageSquare className="w-2.5 h-2.5" />
+                            <span>WhatsApp falhou</span>
                           </Badge>
                         )}
                       </div>
@@ -831,7 +899,15 @@ export default function Equipe() {
                             className="text-amber-700 block text-[10px] truncate max-w-sm"
                             title={convite.erro_envio}
                           >
-                            Aviso: {convite.erro_envio}
+                            E-mail: {convite.erro_envio}
+                          </span>
+                        )}
+                        {convite.whatsapp_erro && (
+                          <span
+                            className="text-rose-700 block text-[10px] truncate max-w-sm"
+                            title={convite.whatsapp_erro}
+                          >
+                            WhatsApp: {convite.whatsapp_erro}
                           </span>
                         )}
                       </span>
@@ -869,14 +945,68 @@ export default function Equipe() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            disabled={processandoAcao === convite.id}
-                            onClick={() => handleReenviarConvite(convite)}
-                            className="text-xs h-7 px-2 text-[#0F766E] border-[#E5E1D8] hover:bg-[#0F766E]/10 gap-1 font-medium"
-                            title="Reenviar e-mail de convite"
+                            onClick={() => handleCopiarLinkConvite(convite)}
+                            className="text-xs h-7 px-2 text-[#1A1D21] border-[#E5E1D8] hover:bg-[#F4F2EE] gap-1 font-medium"
+                            title="Copiar link direto de aceite"
                           >
-                            <RotateCcw className="w-3 h-3" />
-                            <span>Reenviar</span>
+                            <Copy className="w-3 h-3 text-[#0F766E]" />
+                            <span className="hidden sm:inline">Copiar Link</span>
                           </Button>
+
+                          {/* Se tem telefone, permite escolher canal ou reenviar ambos */}
+                          {convite.telefone ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={processandoAcao === convite.id}
+                                  className="text-xs h-7 px-2 text-[#0F766E] border-[#E5E1D8] hover:bg-[#0F766E]/10 gap-1 font-medium"
+                                  title="Reenviar convite por canal"
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                  <span>Reenviar</span>
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="text-xs">
+                                <DropdownMenuItem
+                                  onClick={() => handleReenviarConvite(convite, 'ambos')}
+                                  className="gap-2 cursor-pointer"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5 text-[#0F766E]" />
+                                  <span>Reenviar Ambos (E-mail + WhatsApp)</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleReenviarConvite(convite, 'whatsapp')}
+                                  className="gap-2 cursor-pointer"
+                                >
+                                  <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>Apenas WhatsApp</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleReenviarConvite(convite, 'email')}
+                                  className="gap-2 cursor-pointer"
+                                >
+                                  <Mail className="w-3.5 h-3.5 text-blue-600" />
+                                  <span>Apenas E-mail</span>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={processandoAcao === convite.id}
+                              onClick={() => handleReenviarConvite(convite, 'email')}
+                              className="text-xs h-7 px-2 text-[#0F766E] border-[#E5E1D8] hover:bg-[#0F766E]/10 gap-1 font-medium"
+                              title="Reenviar e-mail de convite"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              <span>Reenviar E-mail</span>
+                            </Button>
+                          )}
 
                           <Button
                             type="button"
@@ -912,8 +1042,20 @@ export default function Equipe() {
                             type="button"
                             variant="outline"
                             size="sm"
+                            onClick={() => handleCopiarLinkConvite(convite)}
+                            className="text-xs h-7 px-2 text-[#1A1D21] border-[#E5E1D8] hover:bg-[#F4F2EE] gap-1 font-medium"
+                            title="Copiar link direto de aceite"
+                          >
+                            <Copy className="w-3 h-3 text-[#0F766E]" />
+                            <span className="hidden sm:inline">Copiar Link</span>
+                          </Button>
+
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
                             disabled={processandoAcao === convite.id}
-                            onClick={() => handleReenviarConvite(convite)}
+                            onClick={() => handleReenviarConvite(convite, 'ambos')}
                             className="text-xs h-7 px-2 text-[#0F766E] border-[#E5E1D8] hover:bg-[#0F766E]/10 gap-1 font-medium"
                           >
                             <RotateCcw className="w-3 h-3" />

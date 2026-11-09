@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-09T02:23:36.806Z",
+  "generatedAt": "2026-11-09T11:43:31.784Z",
   "collections": [
     {
       "name": "users",
@@ -1927,6 +1927,24 @@
         },
         {
           "name": "erro_envio",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "telefone",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "whatsapp_enviado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "whatsapp_erro",
           "type": "text",
           "required": false,
           "system": false

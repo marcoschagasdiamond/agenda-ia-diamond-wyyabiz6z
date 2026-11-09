@@ -26,6 +26,7 @@ import { useToast } from '@/hooks/use-toast'
 import {
   Users,
   Mail,
+  Phone,
   Send,
   Shield,
   FolderKanban,
@@ -37,6 +38,8 @@ import {
   Plus,
   Trash2,
   CheckCircle2,
+  AlertCircle,
+  MessageSquare,
   Info,
 } from 'lucide-react'
 import { ModalDesbloqueioPlano } from '@/components/comercial/ModalDesbloqueioPlano'
@@ -73,9 +76,11 @@ export default function ModalConvidarEquipe({
 
   const convitesBloqueados = Boolean(limites?.bloqueadoConvites)
 
-  // Lista de e-mails para envio (suporta múltiplos)
+  // Lista de destinatários para envio (com telefone opcional)
   const [emailsInput, setEmailsInput] = useState('')
+  const [telefoneInput, setTelefoneInput] = useState('')
   const [emailsLista, setEmailsLista] = useState<string[]>([])
+  const [telefonesPorEmail, setTelefonesPorEmail] = useState<Record<string, string>>({})
 
   // Escopo do convite
   const [escopoTipo, setEscopoTipo] = useState<EscopoTipo>('geral')
@@ -100,7 +105,9 @@ export default function ModalConvidarEquipe({
         setEscopoItemNome('Workspace Completo')
       }
       setEmailsInput('')
+      setTelefoneInput('')
       setEmailsLista([])
+      setTelefonesPorEmail({})
       setMensagem('')
       setNivelAcesso('edicao')
     }
@@ -148,12 +155,28 @@ export default function ModalConvidarEquipe({
 
     if (partes.length > 0) {
       setEmailsLista((prev) => [...prev, ...partes])
+      if (telefoneInput.trim() && partes.length === 1) {
+        setTelefonesPorEmail((prev) => ({ ...prev, [partes[0]]: telefoneInput.trim() }))
+        setTelefoneInput('')
+      }
       setEmailsInput('')
     }
   }
 
   const removerEmail = (emailRemover: string) => {
     setEmailsLista((prev) => prev.filter((e) => e !== emailRemover))
+    setTelefonesPorEmail((prev) => {
+      const clone = { ...prev }
+      delete clone[emailRemover]
+      return clone
+    })
+  }
+
+  const atualizarTelefoneDoEmail = (emailItem: string, tel: string) => {
+    setTelefonesPorEmail((prev) => ({
+      ...prev,
+      [emailItem]: tel,
+    }))
   }
 
   const handleKeyDownEmail = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -210,12 +233,19 @@ export default function ModalConvidarEquipe({
     let emailsEnviados = 0
     let falhasCriacao = 0
     let falhasEnvioEmail = 0
+    let whatsAppEnviados = 0
+    let falhasEnvioWhatsApp = 0
 
     try {
       for (const email of listaFinal) {
         try {
+          const telDestinatario =
+            telefonesPorEmail[email] ||
+            (listaFinal.length === 1 && telefoneInput.trim() ? telefoneInput.trim() : undefined)
+
           const conviteCriado = await diamondApi.criarConvite({
             email,
+            telefone: telDestinatario,
             escopo_tipo: escopoTipo,
             escopo_id: escopoItemId,
             escopo_nome: escopoItemNome || 'Workspace',
@@ -229,6 +259,14 @@ export default function ModalConvidarEquipe({
           } else {
             falhasEnvioEmail++
           }
+
+          if (telDestinatario) {
+            if (conviteCriado.whatsapp_enviado) {
+              whatsAppEnviados++
+            } else if (conviteCriado.whatsapp_erro) {
+              falhasEnvioWhatsApp++
+            }
+          }
         } catch (err) {
           console.error(`Falha ao convidar ${email}:`, err)
           falhasCriacao++
@@ -238,18 +276,24 @@ export default function ModalConvidarEquipe({
       await recarregarDadosGlobais()
 
       if (criados > 0) {
-        if (falhasEnvioEmail > 0) {
-          toast({
-            title: `${criados} convite(s) gerado(s)`,
-            description: `Atenção: o e-mail não pôde ser entregue automaticamente via Resend em ${falhasEnvioEmail} convite(s). Você pode copiar o link ou reenviar na aba Convites.`,
-            variant: 'default',
-          })
-        } else {
-          toast({
-            title: `${criados} convite(s) enviado(s) por e-mail com sucesso!`,
-            description: `Os destinatários receberão o convite profissional da Agenda IA Diamond com link direto de aceite.`,
-          })
+        const avisos: string[] = []
+        if (whatsAppEnviados > 0) {
+          avisos.push(`${whatsAppEnviados} via WhatsApp`)
         }
+        if (emailsEnviados > 0) {
+          avisos.push(`${emailsEnviados} via E-mail`)
+        }
+        if (falhasEnvioWhatsApp > 0) {
+          avisos.push(`${falhasEnvioWhatsApp} WhatsApp com falha de envio`)
+        }
+        if (falhasEnvioEmail > 0) {
+          avisos.push(`${falhasEnvioEmail} E-mail com falha`)
+        }
+
+        toast({
+          title: `${criados} convite(s) gerado(s)`,
+          description: avisos.length > 0 ? avisos.join(' • ') : 'Convite salvo no sistema.',
+        })
         onOpenChange(false)
       } else {
         toast({
@@ -287,59 +331,97 @@ export default function ModalConvidarEquipe({
 
           {/* Formulário */}
           <form onSubmit={handleEnviarConvites} className="p-5 space-y-4">
-            {/* 1. Destinatários de E-mail */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#1A1D21] flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
+            {/* 1. Destinatários: E-mail e WhatsApp (Opcional) */}
+            <div className="space-y-2 p-3 rounded-lg border border-[#E5E1D8] bg-[#FAFAF9]">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-[#1A1D21] flex items-center gap-1.5">
                   <Mail className="w-3.5 h-3.5 text-[#0F766E]" />
-                  E-mail do(s) Convidado(s) *
+                  Destinatários do Convite *
+                </label>
+                <span className="text-[10px] text-[#5B6470]">
+                  E-mail + WhatsApp automático (opcional)
                 </span>
-                <span className="text-[10px] text-[#5B6470] font-normal">
-                  Pressione Enter ou vírgula para múltiplos
-                </span>
-              </label>
-
-              <div className="flex gap-2">
-                <Input
-                  type="email"
-                  placeholder="ex: colaborador@empresa.com"
-                  value={emailsInput}
-                  onChange={(e) => setEmailsInput(e.target.value)}
-                  onKeyDown={handleKeyDownEmail}
-                  onBlur={adicionarEmailsDoInput}
-                  className="text-xs border-[#E5E1D8] focus-visible:ring-[#0F766E]"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={adicionarEmailsDoInput}
-                  className="text-xs border-[#E5E1D8] shrink-0"
-                >
-                  <Plus className="w-3.5 h-3.5 mr-1" />
-                  Adicionar
-                </Button>
               </div>
 
-              {/* Chips de e-mails adicionados */}
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                <div className="sm:col-span-7">
+                  <Input
+                    type="email"
+                    placeholder="E-mail: colaborador@empresa.com"
+                    value={emailsInput}
+                    onChange={(e) => setEmailsInput(e.target.value)}
+                    onKeyDown={handleKeyDownEmail}
+                    className="text-xs border-[#E5E1D8] bg-white focus-visible:ring-[#0F766E]"
+                  />
+                </div>
+                <div className="sm:col-span-4">
+                  <Input
+                    type="tel"
+                    placeholder="WhatsApp: (11) 99999-9999"
+                    value={telefoneInput}
+                    onChange={(e) => setTelefoneInput(e.target.value)}
+                    className="text-xs border-[#E5E1D8] bg-white focus-visible:ring-[#0F766E]"
+                  />
+                </div>
+                <div className="sm:col-span-1 flex items-stretch">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={adicionarEmailsDoInput}
+                    className="w-full text-xs border-[#E5E1D8] bg-white hover:bg-[#F4F2EE] px-2"
+                    title="Adicionar à lista"
+                  >
+                    <Plus className="w-4 h-4 text-[#0F766E]" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Chips de e-mails adicionados com telefone editável */}
               {emailsLista.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-1.5">
-                  {emailsLista.map((em) => (
-                    <Badge
-                      key={em}
-                      variant="secondary"
-                      className="bg-[#F4F2EE] text-[#1A1D21] border border-[#E5E1D8] text-[11px] py-1 px-2.5 gap-1.5"
-                    >
-                      <span>{em}</span>
-                      <button
-                        type="button"
-                        onClick={() => removerEmail(em)}
-                        className="text-[#5B6470] hover:text-red-600 ml-1"
+                <div className="space-y-1.5 pt-1">
+                  <div className="text-[10px] font-semibold text-[#5B6470]">
+                    Destinatários a convidar ({emailsLista.length}):
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    {emailsLista.map((em) => (
+                      <div
+                        key={em}
+                        className="flex items-center justify-between gap-2 p-2 bg-white rounded border border-[#E5E1D8] text-xs"
                       >
-                        &times;
-                      </button>
-                    </Badge>
-                  ))}
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-medium text-[#1A1D21] truncate">{em}</span>
+                          {telefonesPorEmail[em] ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-[#0F766E] bg-[#0F766E]/10 px-1.5 py-0.5 rounded font-mono">
+                              <MessageSquare className="w-3 h-3" />
+                              {telefonesPorEmail[em]}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-[#8C95A0] italic">
+                              Sem WhatsApp (somente e-mail)
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Input
+                            type="tel"
+                            placeholder="WhatsApp..."
+                            value={telefonesPorEmail[em] || ''}
+                            onChange={(e) => atualizarTelefoneDoEmail(em, e.target.value)}
+                            className="h-7 w-32 text-[11px] border-[#E5E1D8]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removerEmail(em)}
+                            className="p-1 text-[#8C95A0] hover:text-red-600 rounded"
+                            title="Remover"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -544,7 +626,7 @@ export default function ModalConvidarEquipe({
                   className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs gap-1.5 font-semibold px-4 shadow-xs"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  {enviando ? 'Enviando Convite...' : 'Enviar Convite por E-mail'}
+                  {enviando ? 'Enviando Convite...' : 'Disparar Convite (E-mail & WhatsApp)'}
                 </Button>
               </div>
             </div>
