@@ -3,13 +3,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
 import { diamondApi } from '@/services/diamondApi'
 import { ConfigEmailUsuario, ConfigEmailSistema } from '@/types'
-import {
-  listConnectors,
-  connect,
-  disconnect,
-  getConsentUrl,
-  ConnectPopupBlockedError,
-} from '@/lib/skipConnectors'
+import { listConnectors, connect, disconnect, ConnectPopupBlockedError } from '@/lib/skipConnectors'
 import { ConnectorButton } from '@/components/skip/ConnectorButton'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -126,14 +120,12 @@ export default function GestaoEmailUsuario({ onRecarregarGlobal }: GestaoEmailUs
     carregarDados()
   }, [user?.id])
 
-  const handleConectarResend = async (opts?: { mesmaAba?: boolean }) => {
+  const handleConectarResend = async () => {
     try {
       setConectandoPopup(true)
       setBlockedConsentUrl(null)
 
-      const usarMesmaAba = opts?.mesmaAba ?? preferirMesmaAba
-
-      await connect('resend', { preferSameTab: usarMesmaAba })
+      await connect('resend')
       await verificarConector()
       toast({
         title: 'Conta Resend conectada!',
@@ -158,13 +150,6 @@ export default function GestaoEmailUsuario({ onRecarregarGlobal }: GestaoEmailUs
         setBlockedConsentUrl((err as { url: string }).url)
       } else {
         const msg = err instanceof Error ? err.message : 'Tente novamente.'
-        // Tenta obter a URL de consentimento para fornecer como fallback imediato
-        try {
-          const consentUrl = await getConsentUrl('resend')
-          setBlockedConsentUrl(consentUrl)
-        } catch {
-          // Mantém mensagem padrão
-        }
         toast({
           title: 'Atenção ao autorizar Resend',
           description:
@@ -437,12 +422,12 @@ export default function GestaoEmailUsuario({ onRecarregarGlobal }: GestaoEmailUs
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleConectarResend({ mesmaAba: true })}
+                        onClick={() => handleConectarResend()}
                         disabled={conectandoPopup}
-                        title="Abre a autorização diretamente nesta aba, evitando bloqueio de popup"
+                        title="Conectar com o Resend"
                         className="text-xs border-zinc-300 text-zinc-700 hover:bg-zinc-100 gap-1"
                       >
-                        <span>Mesma aba</span>
+                        <span>Conectar</span>
                       </Button>
                     </div>
                   )}
@@ -516,17 +501,7 @@ export default function GestaoEmailUsuario({ onRecarregarGlobal }: GestaoEmailUs
                   <span className="text-[11px] text-zinc-500">
                     Ou utilize o botão oficial do conector do app:
                   </span>
-                  <ConnectorButton
-                    toolkit="resend"
-                    name="Resend"
-                    preferSameTab={preferirMesmaAba}
-                    onStatusChange={(st) => {
-                      setConectorConectado(st === 'connected')
-                      if (st === 'connected') {
-                        setConfig((prev) => ({ ...prev, usar_resend_proprio: true }))
-                      }
-                    }}
-                  />
+                  <ConnectorButton toolkit="resend" name="Resend" />
                 </div>
               </div>
 

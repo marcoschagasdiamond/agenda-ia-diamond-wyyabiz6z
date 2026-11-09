@@ -398,20 +398,32 @@ onRecordAfterCreateSuccess((e) => {
         linkConvite,
       })
 
-      // Obter phone_number_id do usuário que convida se configurado
-      let phoneNumberId = ''
+      // Obter ou inicializar configuracoes_whatsapp do usuário que convida
+      let configRec = null
       try {
-        const cfgZap = app.findFirstRecordByData(
+        configRec = app.findFirstRecordByData(
           'configuracoes_whatsapp',
           'usuario',
           convidadorRecord.id,
         )
-        if (cfgZap) {
-          phoneNumberId = cfgZap.getString('phone_number_id') || ''
-        }
-      } catch (_) {}
+      } catch (_) {
+        try {
+          const colZap = app.findCollectionByNameOrId('configuracoes_whatsapp')
+          const recZap = new Record(colZap)
+          recZap.set('usuario', convidadorRecord.id)
+          recZap.set('modo_selecao', 'todos_exceto')
+          recZap.set('contatos_escolhidos', '[]')
+          recZap.set('contatos_ignorados', '[]')
+          recZap.set('grupos_escolhidos', '[]')
+          recZap.set('ultima_sincronizacao', '')
+          app.save(recZap)
+          configRec = recZap
+        } catch (_) {}
+      }
 
-      // Se não tiver gravado na config, tenta obter via WHATSAPP_GET_PHONE_NUMBERS
+      let phoneNumberId = configRec ? configRec.getString('phone_number_id') : ''
+
+      // Se phone_number_id não estiver gravado na config, busca via WHATSAPP_GET_PHONE_NUMBERS e salva
       if (!phoneNumberId) {
         try {
           const resPhones = $connectors.execute(convidadorRecord, 'WHATSAPP_GET_PHONE_NUMBERS', {})
@@ -424,60 +436,53 @@ onRecordAfterCreateSuccess((e) => {
 
             if (list.length > 0 && list[0]?.id) {
               phoneNumberId = String(list[0].id)
+              if (configRec) {
+                configRec.set('phone_number_id', phoneNumberId)
+                app.save(configRec)
+              }
             }
+          } else if (resPhones && !resPhones.successful && resPhones.error) {
+            erroWhatsAppTexto = formatarErro(resPhones.error, 'whatsapp')
           }
-        } catch (_) {}
+        } catch (errPhones) {
+          erroWhatsAppTexto = formatarErro(errPhones, 'whatsapp')
+        }
       }
 
-      // Tenta enviar mensagem de texto pelo WhatsApp pessoal
+      // Se ainda não tivermos phone_number_id, não adianta tentar WHATSAPP_SEND_MESSAGE sem o identificador
+      if (!phoneNumberId) {
+        if (!erroWhatsAppTexto) {
+          erroWhatsAppTexto = formatarErro(
+            'Número WhatsApp Business não configurado ou sem phone_number_id. Conecte sua conta em Configurações → WhatsApp.',
+            'whatsapp',
+          )
+        }
+      }
+
+      // Tenta enviar mensagem de texto pelo WhatsApp pessoal com o formato exato esperado:
+      // WHATSAPP_SEND_MESSAGE({ text: string, to_number: string, phone_number_id: string })
       let envioZapOk = false
       let erroZapCapturado = ''
 
-      // Tentativa 1: WHATSAPP_SEND_MESSAGE (Composio padrão)
-      try {
-        const payloadZap = {
-          recipient: telFormatado,
-          to: telFormatado,
-          type: 'text',
-          text: { body: textoMsg },
-          message: textoMsg,
-        }
-        if (phoneNumberId) {
-          payloadZap.phone_number_id = phoneNumberId
-        }
-
-        const resZap = $connectors.execute(convidadorRecord, 'WHATSAPP_SEND_MESSAGE', payloadZap)
-        if (resZap && resZap.successful) {
-          envioZapOk = true
-        } else if (resZap && (resZap.error || resZap.successful === false)) {
-          erroZapCapturado = formatarErro(resZap.error || 'Falha no conector WhatsApp', 'whatsapp')
-        }
-      } catch (zErr1) {
-        erroZapCapturado = formatarErro(zErr1, 'whatsapp')
-      }
-
-      // Tentativa 2: fallback com toolkit 'whatsapp' e slug 'send-message'
-      if (!envioZapOk) {
+      if (phoneNumberId) {
         try {
-          const resZap2 = $connectors.execute(convidadorRecord, 'whatsapp', 'send-message', {
-            to: telFormatado,
-            recipient: telFormatado,
-            phone_number_id: phoneNumberId || undefined,
-            message: textoMsg,
+          const payloadZap = {
+            to_number: telFormatado,
+            phone_number_id: phoneNumberId,
             text: textoMsg,
-          })
-          if (resZap2 && resZap2.successful) {
-            envioZapOk = true
-            erroZapCapturado = ''
-          } else if (
-            resZap2 &&
-            (resZap2.error || resZap2.successful === false) &&
-            !erroZapCapturado
-          ) {
-            erroZapCapturado = formatarErro(resZap2.error, 'whatsapp')
           }
-        } catch (zErr2) {
-          if (!erroZapCapturado) erroZapCapturado = formatarErro(zErr2, 'whatsapp')
+
+          const resZap = $connectors.execute(convidadorRecord, 'WHATSAPP_SEND_MESSAGE', payloadZap)
+          if (resZap && resZap.successful) {
+            envioZapOk = true
+          } else if (resZap && (resZap.error || resZap.successful === false)) {
+            erroZapCapturado = formatarErro(
+              resZap.error || 'Falha no conector WhatsApp',
+              'whatsapp',
+            )
+          }
+        } catch (zErr1) {
+          erroZapCapturado = formatarErro(zErr1, 'whatsapp')
         }
       }
 
@@ -907,18 +912,32 @@ routerAdd('POST', '/backend/v1/convites/reenviar', (e) => {
             linkConvite,
           })
 
-          let phoneNumberId = ''
+          // Obter ou inicializar configuracoes_whatsapp do usuário que convida
+          let configRec = null
           try {
-            const cfgZap = app.findFirstRecordByData(
+            configRec = app.findFirstRecordByData(
               'configuracoes_whatsapp',
               'usuario',
               convidadorRecord.id,
             )
-            if (cfgZap) {
-              phoneNumberId = cfgZap.getString('phone_number_id') || ''
-            }
-          } catch (_) {}
+          } catch (_) {
+            try {
+              const colZap = app.findCollectionByNameOrId('configuracoes_whatsapp')
+              const recZap = new Record(colZap)
+              recZap.set('usuario', convidadorRecord.id)
+              recZap.set('modo_selecao', 'todos_exceto')
+              recZap.set('contatos_escolhidos', '[]')
+              recZap.set('contatos_ignorados', '[]')
+              recZap.set('grupos_escolhidos', '[]')
+              recZap.set('ultima_sincronizacao', '')
+              app.save(recZap)
+              configRec = recZap
+            } catch (_) {}
+          }
 
+          let phoneNumberId = configRec ? configRec.getString('phone_number_id') : ''
+
+          // Se phone_number_id não estiver gravado na config, busca via WHATSAPP_GET_PHONE_NUMBERS e salva
           if (!phoneNumberId) {
             try {
               const resPhones = $connectors.execute(
@@ -935,64 +954,52 @@ routerAdd('POST', '/backend/v1/convites/reenviar', (e) => {
 
                 if (list.length > 0 && list[0]?.id) {
                   phoneNumberId = String(list[0].id)
+                  if (configRec) {
+                    configRec.set('phone_number_id', phoneNumberId)
+                    app.save(configRec)
+                  }
                 }
+              } else if (resPhones && !resPhones.successful && resPhones.error) {
+                erroWhatsAppTexto = formatarErro(resPhones.error, 'whatsapp')
               }
-            } catch (_) {}
+            } catch (errPhones) {
+              erroWhatsAppTexto = formatarErro(errPhones, 'whatsapp')
+            }
+          }
+
+          if (!phoneNumberId && !erroWhatsAppTexto) {
+            erroWhatsAppTexto = formatarErro(
+              'Número WhatsApp Business não configurado ou sem phone_number_id. Conecte sua conta em Configurações → WhatsApp.',
+              'whatsapp',
+            )
           }
 
           let envioZapOk = false
           let erroZapCapturado = ''
 
-          try {
-            const payloadZap = {
-              recipient: telFormatado,
-              to: telFormatado,
-              type: 'text',
-              text: { body: textoMsg },
-              message: textoMsg,
-            }
-            if (phoneNumberId) {
-              payloadZap.phone_number_id = phoneNumberId
-            }
-
-            const resZap = $connectors.execute(
-              convidadorRecord,
-              'WHATSAPP_SEND_MESSAGE',
-              payloadZap,
-            )
-            if (resZap && resZap.successful) {
-              envioZapOk = true
-            } else if (resZap && (resZap.error || resZap.successful === false)) {
-              erroZapCapturado = formatarErro(
-                resZap.error || 'Falha no conector WhatsApp',
-                'whatsapp',
-              )
-            }
-          } catch (zErr1) {
-            erroZapCapturado = formatarErro(zErr1, 'whatsapp')
-          }
-
-          if (!envioZapOk) {
+          if (phoneNumberId) {
             try {
-              const resZap2 = $connectors.execute(convidadorRecord, 'whatsapp', 'send-message', {
-                to: telFormatado,
-                recipient: telFormatado,
-                phone_number_id: phoneNumberId || undefined,
-                message: textoMsg,
+              const payloadZap = {
+                to_number: telFormatado,
+                phone_number_id: phoneNumberId,
                 text: textoMsg,
-              })
-              if (resZap2 && resZap2.successful) {
-                envioZapOk = true
-                erroZapCapturado = ''
-              } else if (
-                resZap2 &&
-                (resZap2.error || resZap2.successful === false) &&
-                !erroZapCapturado
-              ) {
-                erroZapCapturado = formatarErro(resZap2.error, 'whatsapp')
               }
-            } catch (zErr2) {
-              if (!erroZapCapturado) erroZapCapturado = formatarErro(zErr2, 'whatsapp')
+
+              const resZap = $connectors.execute(
+                convidadorRecord,
+                'WHATSAPP_SEND_MESSAGE',
+                payloadZap,
+              )
+              if (resZap && resZap.successful) {
+                envioZapOk = true
+              } else if (resZap && (resZap.error || resZap.successful === false)) {
+                erroZapCapturado = formatarErro(
+                  resZap.error || 'Falha no conector WhatsApp',
+                  'whatsapp',
+                )
+              }
+            } catch (zErr1) {
+              erroZapCapturado = formatarErro(zErr1, 'whatsapp')
             }
           }
 
