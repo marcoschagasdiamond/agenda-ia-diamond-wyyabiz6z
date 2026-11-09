@@ -9,6 +9,8 @@ interface AuthContextType {
   membroEquipe: MembroEquipe | null
   meusEscopos: EscopoItem[]
   isClientPortal: boolean
+  isMaster: boolean
+  isAdmin: boolean
   loading: boolean
   signIn: (email: string, pass: string) => Promise<{ error: Error | null }>
   signUp: (email: string, pass: string, name?: string) => Promise<{ error: Error | null }>
@@ -191,8 +193,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Se o usuário tiver registro de cliente e não tiver perfil admin/interno completo
   const isClientPortal = Boolean(clienteProfile && (!profile || !profile.respostas_onboarding))
 
-  // Escopos do usuário logado
+  // Escopos e Papéis do usuário logado (Master / Admin)
   const isOwner = user?.email === 'marcoschagasdiamond@icloud.com'
+  const isMaster = Boolean(isOwner || membroEquipe?.is_master)
+  const isAdmin = Boolean(
+    isMaster || membroEquipe?.funcao === 'admin' || membroEquipe?.nivel_acesso === 'admin',
+  )
+
   const meusEscopos: EscopoItem[] = isOwner
     ? [{ tipo: 'geral', nome: 'Acesso Geral Diamond', nivel: 'admin' }]
     : Array.isArray(membroEquipe?.escopos)
@@ -208,6 +215,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         membroEquipe,
         meusEscopos,
         isClientPortal,
+        isMaster,
+        isAdmin,
         loading,
         signIn,
         signUp,

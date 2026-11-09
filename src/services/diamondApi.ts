@@ -1013,6 +1013,164 @@ export const diamondApi = {
     return await pb.collection('membros_equipe').delete(id)
   },
 
+  async promoverParaAdmin(id: string): Promise<MembroEquipe> {
+    return await pb.collection('membros_equipe').update<MembroEquipe>(id, {
+      funcao: 'admin',
+      nivel_acesso: 'admin',
+    })
+  },
+
+  async rebaixarDeAdmin(id: string): Promise<MembroEquipe> {
+    return await pb.collection('membros_equipe').update<MembroEquipe>(id, {
+      funcao: 'membro',
+      nivel_acesso: 'edicao',
+    })
+  },
+
+  // Licença Comercial da Conta & Limites
+  async getLicencaConta(): Promise<import('../types').LicencaConta | null> {
+    try {
+      const records = await pb
+        .collection('licencas_conta')
+        .getList<import('../types').LicencaConta>(1, 1, {
+          sort: 'created',
+        })
+      if (records.items && records.items.length > 0) {
+        return records.items[0]
+      }
+      return null
+    } catch {
+      return null
+    }
+  },
+
+  async updateLicencaConta(
+    id: string,
+    data: Partial<import('../types').LicencaConta>,
+  ): Promise<import('../types').LicencaConta> {
+    return await pb.collection('licencas_conta').update<import('../types').LicencaConta>(id, data)
+  },
+
+  async listModulosLicenca(licencaId?: string): Promise<import('../types').ModuloLicenca[]> {
+    try {
+      const filter = licencaId ? `licenca = "${licencaId}"` : ''
+      return await pb.collection('modulos_licenca').getFullList<import('../types').ModuloLicenca>({
+        filter,
+        sort: 'codigo',
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async toggleModuloLicenca(id: string, ativo: boolean): Promise<import('../types').ModuloLicenca> {
+    return await pb
+      .collection('modulos_licenca')
+      .update<import('../types').ModuloLicenca>(id, { ativo })
+  },
+
+  /**
+   * Calcula o consumo da conta contra os limites do plano
+   * - Dias distintos na Folha do Dia
+   * - Total de projetos cadastrados
+   * - Permissão de convite
+   */
+  async getLimitesConsumoConta(
+    usuarioAtualId?: string,
+    usuarioEmail?: string,
+  ): Promise<import('../types').LimitesConsumoConta> {
+    const licenca = await this.getLicencaConta()
+
+    // 1. Contar dias distintos na Folha do Dia
+    let diasFolhaCount = 0
+    try {
+      const itensFolha = await pb
+        .collection('folha_dia')
+        .getFullList<{ data?: string; data_hora?: string; created?: string }>({
+          fields: 'data,data_hora,created',
+        })
+      const diasSet = new Set<string>()
+      itensFolha.forEach((i) => {
+        const d =
+          (i.data_hora
+            ? i.data_hora.slice(0, 10)
+            : i.data
+              ? i.data.slice(0, 10)
+              : i.created?.slice(0, 10)) || ''
+        if (d) diasSet.add(d)
+      })
+      diasFolhaCount = diasSet.size
+    } catch {
+      diasFolhaCount = 0
+    }
+
+    // 2. Contar projetos cadastrados
+    let projetosCount = 0
+    try {
+      const proj = await pb.collection('projetos').getList(1, 1, { fields: 'id' })
+      projetosCount = proj.totalItems
+    } catch {
+      projetosCount = 0
+    }
+
+    // 3. Obter módulos
+    let modulosCodigos: string[] = []
+    try {
+      const modulos = await this.listModulosLicenca(licenca?.id)
+      modulosCodigos = modulos.filter((m) => m.ativo).map((m) => m.codigo)
+    } catch {
+      modulosCodigos = []
+    }
+
+    // 4. Checar se usuário logado é Master ou Admin
+    let isMaster = false
+    let isAdmin = false
+
+    if (usuarioEmail === 'marcoschagasdiamond@icloud.com') {
+      isMaster = true
+      isAdmin = true
+    } else if (usuarioAtualId || usuarioEmail) {
+      try {
+        const conds: string[] = []
+        if (usuarioAtualId) conds.push(`usuario = "${usuarioAtualId}"`)
+        if (usuarioEmail) conds.push(`email = "${usuarioEmail}"`)
+        const m = await pb
+          .collection('membros_equipe')
+          .getFirstListItem<import('../types').MembroEquipe>(conds.join(' || '))
+        if (m) {
+          if (m.is_master) isMaster = true
+          if (m.funcao === 'admin' || m.nivel_acesso === 'admin' || m.is_master) isAdmin = true
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    const plano = licenca?.plano || 'gratuito'
+    const status = licenca?.status || 'ativo'
+    const maxDias = typeof licenca?.max_dias_folha === 'number' ? licenca.max_dias_folha : 2
+    const maxProj = typeof licenca?.max_projetos === 'number' ? licenca.max_projetos : 2
+    const permiteConv =
+      typeof licenca?.permite_convites === 'boolean' ? licenca.permite_convites : false
+
+    return {
+      plano,
+      status,
+      nome_conta: licenca?.nome_conta || 'Conta Diamond',
+      diasFolhaUsados: diasFolhaCount,
+      diasFolhaMax: maxDias,
+      bloqueadoFolha: plano === 'gratuito' && diasFolhaCount >= maxDias,
+      projetosUsados: projetosCount,
+      projetosMax: maxProj,
+      bloqueadoProjetos: plano === 'gratuito' && projetosCount >= maxProj,
+      permiteConvites: permiteConv,
+      bloqueadoConvites: plano === 'gratuito' && !permiteConv,
+      modulosAtivos: modulosCodigos,
+      isMaster,
+      isAdmin,
+    }
+  },
+
   // Convites de Equipe
   async listConvitesEquipe(statusFiltro?: string): Promise<ConviteEquipe[]> {
     try {

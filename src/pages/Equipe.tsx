@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { diamondApi } from '@/services/diamondApi'
+import { ModalDesbloqueioPlano } from '@/components/comercial/ModalDesbloqueioPlano'
 import { useAuth } from '@/hooks/use-auth'
 import { useNavegacao } from '@/contexts/NavegacaoContext'
-import type { MembroEquipe, ConviteEquipe, EscopoItem } from '@/types'
+import type { MembroEquipe, ConviteEquipe, EscopoItem, LimitesConsumoConta } from '@/types'
 import {
   Users,
   UserPlus,
@@ -51,7 +52,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 
 export default function Equipe() {
-  const { user } = useAuth()
+  const { user, isMaster } = useAuth()
   const { toast } = useToast()
   const {
     membrosEquipe,
@@ -61,11 +62,31 @@ export default function Equipe() {
     recarregarDadosGlobais,
   } = useNavegacao()
 
+  const [limites, setLimites] = useState<LimitesConsumoConta | null>(null)
+  const [modalUpgradeOpen, setModalUpgradeOpen] = useState(false)
   const [busca, setBusca] = useState('')
   const [tabAtiva, setTabAtiva] = useState<'membros' | 'convites' | 'todos'>('membros')
   const [filtroStatusConvite, setFiltroStatusConvite] = useState<string>('todos')
   const [processandoAcao, setProcessandoAcao] = useState<string | null>(null)
   const [conviteParaExcluir, setConviteParaExcluir] = useState<ConviteEquipe | null>(null)
+
+  useEffect(() => {
+    diamondApi
+      .getLimitesConsumoConta(user?.id, user?.email)
+      .then(setLimites)
+      .catch(() => {})
+  }, [user])
+
+  const convitesBloqueados = Boolean(limites?.bloqueadoConvites)
+
+  const handleTentarConvidar = () => {
+    if (convitesBloqueados) {
+      setModalUpgradeOpen(true)
+      return
+    }
+    setModalConvidarEscopoPadrao({ tipo: 'geral', nome: 'Workspace Completo' })
+    setModalConvidarEquipeOpen(true)
+  }
 
   // Membros filtrados
   const membrosFiltrados = membrosEquipe.filter((m) => {
@@ -242,17 +263,60 @@ export default function Equipe() {
         <div className="flex items-center gap-2">
           <Button
             size="sm"
-            onClick={() => {
-              setModalConvidarEscopoPadrao({ tipo: 'geral', nome: 'Workspace Completo' })
-              setModalConvidarEquipeOpen(true)
-            }}
-            className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs gap-1.5 font-semibold shadow-xs h-9 px-3.5"
+            onClick={handleTentarConvidar}
+            className={`text-xs gap-1.5 font-semibold shadow-xs h-9 px-3.5 ${
+              convitesBloqueados
+                ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                : 'bg-[#0F766E] hover:bg-[#0D5C56] text-white'
+            }`}
           >
-            <UserPlus className="w-4 h-4" />
-            <span>Convidar Membro</span>
+            {convitesBloqueados ? (
+              <>
+                <Ban className="w-4 h-4 text-amber-200" />
+                <span>Convidar Membro (Bloqueado)</span>
+              </>
+            ) : (
+              <>
+                <UserPlus className="w-4 h-4" />
+                <span>Convidar Membro</span>
+              </>
+            )}
           </Button>
         </div>
       </div>
+
+      {/* Aviso de bloqueio visível quando plano gratuito */}
+      {convitesBloqueados && (
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 mt-0.5">
+              <Ban className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-xs text-amber-950 uppercase tracking-wide">
+                  Envio de Convites Bloqueado no Plano Prova Viva
+                </h3>
+                <Badge className="bg-amber-600 text-white text-[10px] h-4.5 px-1.5 font-bold">
+                  Recurso Pago
+                </Badge>
+              </div>
+              <p className="text-xs text-amber-900 mt-0.5">
+                O envio de novos convites de equipe para sócios e colaboradores é restrito ao plano
+                pago. Desbloqueie o plano para liberar convites ilimitados por escopo.
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => setModalUpgradeOpen(true)}
+            className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shrink-0 shadow-xs"
+          >
+            <Sparkles className="w-3.5 h-3.5 mr-1.5 text-amber-200" />
+            Desbloquear Convites
+          </Button>
+        </div>
+      )}
 
       {/* Cards de Métricas */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -434,11 +498,15 @@ export default function Equipe() {
                           <span className="text-xs font-bold text-[#1A1D21]">
                             {membro.nome || membro.email.split('@')[0]}
                           </span>
-                          {isFundador && (
-                            <Badge className="bg-[#0F766E] text-white text-[9px] px-1.5 py-0 h-4">
-                              Fundador
+                          {membro.is_master || isFundador ? (
+                            <Badge className="bg-amber-500 hover:bg-amber-600 text-zinc-950 text-[9px] px-1.5 py-0 h-4 font-bold tracking-tight">
+                              Admin Master
                             </Badge>
-                          )}
+                          ) : membro.funcao === 'admin' ? (
+                            <Badge className="bg-purple-100 text-purple-800 text-[9px] px-1.5 py-0 h-4 font-bold">
+                              Admin Eleito
+                            </Badge>
+                          ) : null}
                         </div>
                         <span className="text-[11px] text-[#5B6470] flex items-center gap-1 mt-0.5">
                           <Mail className="w-3 h-3" />
@@ -519,7 +587,7 @@ export default function Equipe() {
                               onClick={() => handleAlterarNivelMembro(membro, 'admin')}
                               className="text-xs cursor-pointer"
                             >
-                              Administrador
+                              Administrador (Eleger Admin)
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
@@ -746,6 +814,15 @@ export default function Equipe() {
           </CardContent>
         </Card>
       )}
+
+      {/* Modal de Desbloqueio Comercial */}
+      <ModalDesbloqueioPlano
+        open={modalUpgradeOpen}
+        onOpenChange={setModalUpgradeOpen}
+        recursoNome="Envio de Convites de Equipe"
+        motivo="O envio de convites para colaboradores e clientes é liberado mediante ativação do plano pago da conta."
+        isMaster={isMaster}
+      />
 
       {/* Modal de confirmação de exclusão de convite */}
       <AlertDialog

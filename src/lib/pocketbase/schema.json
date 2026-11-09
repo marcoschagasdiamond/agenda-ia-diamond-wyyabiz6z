@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-08T23:42:42.846Z",
+  "generatedAt": "2026-11-09T00:15:16.280Z",
   "collections": [
     {
       "name": "users",
@@ -1761,12 +1761,19 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "is_master",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
         "CREATE INDEX idx_membros_email ON membros_equipe (email)",
         "CREATE INDEX idx_membros_status ON membros_equipe (status)",
-        "CREATE INDEX idx_membros_usuario ON membros_equipe (usuario)"
+        "CREATE INDEX idx_membros_usuario ON membros_equipe (usuario)",
+        "CREATE INDEX `idx_membros_is_master` ON `membros_equipe` (is_master)"
       ]
     },
     {
@@ -3035,6 +3042,179 @@
       "indexes": [
         "CREATE INDEX idx_teses_sementes_nome ON teses_sementes (nome)",
         "CREATE INDEX idx_teses_sementes_ordem ON teses_sementes (ordem)"
+      ]
+    },
+    {
+      "name": "licencas_conta",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "nome_conta",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "plano",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["gratuito", "pro", "diamond_executive"]
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["ativo", "trial", "suspenso", "cancelado"]
+        },
+        {
+          "name": "max_dias_folha",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "max_projetos",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "permite_convites",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "permite_whatsapp",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "permite_relatorios_avancados",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "titular_email",
+          "type": "email",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "titular_nome",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacoes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_inicio",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_expiracao",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_licencas_plano ON licencas_conta (plano)",
+        "CREATE INDEX idx_licencas_status ON licencas_conta (status)"
+      ]
+    },
+    {
+      "name": "modulos_licenca",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "licenca",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "licencas_conta"
+        },
+        {
+          "name": "codigo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_modulos_licenca_ref ON modulos_licenca (licenca)",
+        "CREATE INDEX idx_modulos_licenca_cod ON modulos_licenca (codigo)"
       ]
     }
   ]

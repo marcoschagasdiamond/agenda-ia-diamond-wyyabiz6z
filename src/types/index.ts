@@ -617,12 +617,68 @@ export interface MembroEquipe {
   adicionado_por?: string
   ultimo_acesso?: string
   observacoes?: string
+  is_master?: boolean
   created: string
   updated: string
   expand?: {
     usuario?: User
     adicionado_por?: User
   }
+}
+
+export type PlanoLicencaTipo = 'gratuito' | 'pro' | 'diamond_executive'
+export type StatusLicencaTipo = 'ativo' | 'trial' | 'suspenso' | 'cancelado'
+
+export interface LicencaConta {
+  id: string
+  nome_conta: string
+  plano: PlanoLicencaTipo
+  status: StatusLicencaTipo
+  max_dias_folha: number
+  max_projetos: number
+  permite_convites: boolean
+  permite_whatsapp: boolean
+  permite_relatorios_avancados: boolean
+  titular_email?: string
+  titular_nome?: string
+  observacoes?: string
+  data_inicio?: string
+  data_expiracao?: string
+  created: string
+  updated: string
+}
+
+export interface ModuloLicenca {
+  id: string
+  licenca: string
+  codigo: string
+  nome: string
+  descricao?: string
+  ativo: boolean
+  created: string
+  updated: string
+}
+
+export interface LimitesConsumoConta {
+  plano: PlanoLicencaTipo
+  status: StatusLicencaTipo
+  nome_conta: string
+  // Folha
+  diasFolhaUsados: number
+  diasFolhaMax: number
+  bloqueadoFolha: boolean
+  // Projetos
+  projetosUsados: number
+  projetosMax: number
+  bloqueadoProjetos: boolean
+  // Convites
+  permiteConvites: boolean
+  bloqueadoConvites: boolean
+  // Módulos
+  modulosAtivos: string[]
+  // Papéis
+  isMaster: boolean
+  isAdmin: boolean
 }
 
 export interface ConviteEquipe {

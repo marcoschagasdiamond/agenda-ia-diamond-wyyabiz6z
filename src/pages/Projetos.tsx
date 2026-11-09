@@ -1,7 +1,10 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { diamondApi } from '@/services/diamondApi'
+import { useAuth } from '@/hooks/use-auth'
 import { useNavegacao } from '@/contexts/NavegacaoContext'
+import { BannerConsumoPlano } from '@/components/comercial/BannerConsumoPlano'
+import { ModalDesbloqueioPlano } from '@/components/comercial/ModalDesbloqueioPlano'
 import type {
   Projeto,
   ProjetoTipo,
@@ -9,6 +12,7 @@ import type {
   ProjetoEquipeMembro,
   ProjetoFinanceiroLancamento,
   Demanda,
+  LimitesConsumoConta,
 } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -36,8 +40,11 @@ import ModalNovoProjeto from '@/components/ModalNovoProjeto'
 
 export default function Projetos() {
   const navigate = useNavigate()
+  const { user, isMaster } = useAuth()
   const { projetos, recarregarDadosGlobais } = useNavegacao()
 
+  const [limites, setLimites] = useState<LimitesConsumoConta | null>(null)
+  const [modalUpgradeOpen, setModalUpgradeOpen] = useState(false)
   const [busca, setBusca] = useState('')
   const [tipoFiltro, setTipoFiltro] = useState<string>('todos')
   const [modalNovoAberto, setModalNovoAberto] = useState(false)
@@ -72,7 +79,21 @@ export default function Projetos() {
 
   useEffect(() => {
     carregarMetricasProjetos()
-  }, [projetos])
+    diamondApi
+      .getLimitesConsumoConta(user?.id, user?.email)
+      .then(setLimites)
+      .catch(() => {})
+  }, [projetos, user])
+
+  const atingiuLimiteProjetos = Boolean(limites?.atingiuLimiteProjetos)
+
+  const handleTentarCriarProjeto = () => {
+    if (atingiuLimiteProjetos) {
+      setModalUpgradeOpen(true)
+      return
+    }
+    setModalNovoAberto(true)
+  }
 
   // Projetos filtrados
   const projetosFiltrados = useMemo(() => {
@@ -183,14 +204,39 @@ export default function Projetos() {
 
         <div className="flex items-center gap-2.5">
           <Button
-            onClick={() => setModalNovoAberto(true)}
-            className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs font-semibold h-9 gap-1.5 shadow-xs"
+            onClick={handleTentarCriarProjeto}
+            className={`text-xs font-semibold h-9 gap-1.5 shadow-xs ${
+              atingiuLimiteProjetos
+                ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                : 'bg-[#0F766E] hover:bg-[#0D5C56] text-white'
+            }`}
           >
-            <Plus className="w-4 h-4" />
-            Novo Projeto
+            {atingiuLimiteProjetos ? (
+              <>
+                <Sparkles className="w-4 h-4 text-amber-200" />
+                Novo Projeto (Limite Atingido)
+              </>
+            ) : (
+              <>
+                <Plus className="w-4 h-4" />
+                Novo Projeto
+              </>
+            )}
           </Button>
         </div>
       </div>
+
+      {/* Banner de Consumo e Limite do Plano */}
+      {limites && (
+        <BannerConsumoPlano
+          tipo="projetos"
+          atual={limites.projetosCadastrados}
+          limite={limites.limiteProjetos}
+          bloqueado={limites.atingiuLimiteProjetos}
+          nomePlano={limites.plano}
+          onDesbloquear={() => setModalUpgradeOpen(true)}
+        />
+      )}
 
       {/* Cards de Resumo Global / Indicadores Diamond */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -285,7 +331,7 @@ export default function Projetos() {
               : 'Você ainda não possui projetos configurados. Comece criando o primeiro!'}
           </p>
           <Button
-            onClick={() => setModalNovoAberto(true)}
+            onClick={handleTentarCriarProjeto}
             className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs font-semibold h-8 gap-1.5"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -401,12 +447,31 @@ export default function Projetos() {
       {/* Modal Wizard Novo Projeto */}
       <ModalNovoProjeto
         open={modalNovoAberto}
-        onOpenChange={setModalNovoAberto}
+        onOpenChange={(aberto) => {
+          if (aberto && atingiuLimiteProjetos) {
+            setModalUpgradeOpen(true)
+            return
+          }
+          setModalNovoAberto(aberto)
+        }}
         onProjetoCriado={(novoId) => {
           recarregarDadosGlobais()
           carregarMetricasProjetos()
+          diamondApi
+            .getLimitesConsumoConta(user?.id, user?.email)
+            .then(setLimites)
+            .catch(() => {})
           navigate(`/projetos/${novoId}`)
         }}
+      />
+
+      {/* Modal de Desbloqueio Comercial */}
+      <ModalDesbloqueioPlano
+        open={modalUpgradeOpen}
+        onOpenChange={setModalUpgradeOpen}
+        recursoNome="Projetos Ilimitados"
+        motivo={`Você atingiu o limite de ${limites?.limiteProjetos ?? 2} projetos do plano gratuito (Prova Viva). Ative o plano pago para cadastrar projetos ilimitados com cronogramas e orçamentos.`}
+        isMaster={isMaster}
       />
     </div>
   )
