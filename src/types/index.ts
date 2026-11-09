@@ -667,6 +667,21 @@ export interface ModuloLicenca {
   updated: string
 }
 
+export interface ConfigPlanoGratuito {
+  id: string
+  max_dias_folha: number
+  max_projetos: number
+  permite_convites: boolean
+  permite_whatsapp: boolean
+  permite_ia: boolean
+  permite_financas: boolean
+  modulos_inclusos: string[]
+  nome_exibicao?: string
+  descricao?: string
+  created?: string
+  updated?: string
+}
+
 export interface LimitesConsumoConta {
   plano: PlanoLicencaTipo
   status: StatusLicencaTipo

@@ -65,6 +65,32 @@ export function Master() {
   const [salvandoCheckout, setSalvandoCheckout] = useState(false)
   const [copiadoWebhook, setCopiadoWebhook] = useState(false)
 
+  // Configuração do Plano Gratuito Inicial (Prova Viva)
+  const [configGratuito, setConfigGratuito] = useState<{
+    id: string
+    max_dias_folha: number
+    max_projetos: number
+    permite_convites: boolean
+    permite_whatsapp: boolean
+    permite_ia: boolean
+    permite_financas: boolean
+    modulos_inclusos: string[]
+    nome_exibicao: string
+    descricao: string
+  }>({
+    id: '',
+    max_dias_folha: 2,
+    max_projetos: 2,
+    permite_convites: false,
+    permite_whatsapp: false,
+    permite_ia: false,
+    permite_financas: false,
+    modulos_inclusos: ['nucleo', 'folha_dia', 'projetos'],
+    nome_exibicao: 'Prova Viva',
+    descricao: 'Plano gratuito inicial concedido a novos usuários.',
+  })
+  const [salvandoConfigGratuito, setSalvandoConfigGratuito] = useState(false)
+
   // Modal Alterar Plano
   const [modalPlanoOpen, setModalPlanoOpen] = useState(false)
   const [contaSelecionada, setContaSelecionada] = useState<ResumoContaMaster | null>(null)
@@ -87,9 +113,10 @@ export function Master() {
   const carregarDados = async () => {
     try {
       setLoading(true)
-      const [resumos, limites] = await Promise.all([
+      const [resumos, limites, cfgGratuito] = await Promise.all([
         diamondApi.getPainelMasterDados(),
         diamondApi.getLimitesConsumoConta(),
+        diamondApi.getConfigPlanoGratuito(),
       ])
       setContas(resumos)
       if (limites.stripePaymentLink) {
@@ -97,6 +124,20 @@ export function Master() {
       }
       if (limites.precoMensal) {
         setPrecoMensal(limites.precoMensal)
+      }
+      if (cfgGratuito) {
+        setConfigGratuito({
+          id: cfgGratuito.id || '',
+          max_dias_folha: cfgGratuito.max_dias_folha,
+          max_projetos: cfgGratuito.max_projetos,
+          permite_convites: cfgGratuito.permite_convites,
+          permite_whatsapp: cfgGratuito.permite_whatsapp,
+          permite_ia: cfgGratuito.permite_ia,
+          permite_financas: cfgGratuito.permite_financas,
+          modulos_inclusos: cfgGratuito.modulos_inclusos || ['nucleo', 'folha_dia', 'projetos'],
+          nome_exibicao: cfgGratuito.nome_exibicao || 'Prova Viva',
+          descricao: cfgGratuito.descricao || '',
+        })
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Falha ao carregar painel master'
@@ -179,6 +220,63 @@ export function Master() {
       description: 'Cole esta URL no painel do Stripe em Desenvolvedores > Webhooks.',
     })
     setTimeout(() => setCopiadoWebhook(false), 3000)
+  }
+
+  const handleSalvarPlanoGratuito = async () => {
+    try {
+      setSalvandoConfigGratuito(true)
+      await diamondApi.salvarConfigPlanoGratuito({
+        max_dias_folha: Number(configGratuito.max_dias_folha),
+        max_projetos: Number(configGratuito.max_projetos),
+        permite_convites: Boolean(configGratuito.permite_convites),
+        permite_whatsapp: Boolean(configGratuito.permite_whatsapp),
+        permite_ia: Boolean(configGratuito.permite_ia),
+        permite_financas: Boolean(configGratuito.permite_financas),
+        modulos_inclusos: configGratuito.modulos_inclusos,
+        nome_exibicao: configGratuito.nome_exibicao,
+        descricao: configGratuito.descricao,
+      })
+      toast({
+        title: 'Plano Gratuito Configurado!',
+        description:
+          'Os novos limites e módulos do plano gratuito foram salvos e aplicados às contas da base.',
+      })
+      await carregarDados()
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : 'Falha ao salvar configuração do plano gratuito'
+      toast({
+        title: 'Erro ao salvar plano gratuito',
+        description: message,
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoConfigGratuito(false)
+    }
+  }
+
+  const handleToggleModuloGratuito = (codigoModulo: string) => {
+    setConfigGratuito((prev) => {
+      const jaExiste = prev.modulos_inclusos.includes(codigoModulo)
+      const novaLista = jaExiste
+        ? prev.modulos_inclusos.filter((c) => c !== codigoModulo)
+        : [...prev.modulos_inclusos, codigoModulo]
+
+      return {
+        ...prev,
+        modulos_inclusos: novaLista,
+        permite_whatsapp:
+          codigoModulo === 'whatsapp' || codigoModulo === 'whatsapp_radar'
+            ? !jaExiste
+            : prev.permite_whatsapp,
+        permite_ia: codigoModulo === 'ia' ? !jaExiste : prev.permite_ia,
+        permite_financas:
+          codigoModulo === 'financas' || codigoModulo === 'contabilidade_5_0'
+            ? !jaExiste
+            : prev.permite_financas,
+        permite_convites: codigoModulo === 'equipe_convites' ? !jaExiste : prev.permite_convites,
+      }
+    })
   }
 
   const handleSalvarPlano = async () => {
@@ -468,6 +566,401 @@ export function Master() {
         </CardContent>
       </Card>
 
+      {/* SEÇÃO: CONFIGURAÇÃO DO PLANO GRATUITO INICIAL (PROVA VIVA) */}
+      <Card className="border-amber-300/80 bg-gradient-to-br from-amber-50/60 via-white to-orange-50/40 shadow-xs">
+        <CardHeader className="pb-3 border-b border-amber-200/60">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <CardTitle className="text-base font-bold text-zinc-900 flex items-center gap-2">
+                <Sliders className="w-5 h-5 text-amber-700" />
+                <span>Configuração do Plano Gratuito Inicial (Prova Viva)</span>
+              </CardTitle>
+              <CardDescription className="text-xs text-zinc-600">
+                Defina os limites comerciais e módulos concedidos a todo novo comprador ou usuário
+                que ingressa na plataforma.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className="border-amber-400 bg-amber-100/70 text-amber-900 font-bold text-xs"
+              >
+                <Lock className="w-3 h-3 mr-1 text-amber-700" />
+                Regra Padrão de Entrada
+              </Badge>
+              <Button
+                size="sm"
+                onClick={handleSalvarPlanoGratuito}
+                disabled={salvandoConfigGratuito}
+                className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold text-xs shadow-xs"
+              >
+                <CheckCircle2
+                  className={`w-3.5 h-3.5 mr-1.5 ${salvandoConfigGratuito ? 'animate-spin' : ''}`}
+                />
+                {salvandoConfigGratuito ? 'Salvando...' : 'Salvar Configuração do Plano'}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-4 sm:p-6 space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Limite de Dias na Folha */}
+            <div className="bg-white p-4 rounded-xl border border-amber-200/80 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Limite de Dias na Folha</span>
+                </label>
+                <Badge variant="outline" className="border-amber-300 text-amber-800 text-[10px]">
+                  Atual: {configGratuito.max_dias_folha} dias
+                </Badge>
+              </div>
+              <p className="text-[11px] text-zinc-500">
+                Quantidade máxima de datas distintas que o usuário gratuito pode registrar na Folha
+                do Dia.
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <Input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={configGratuito.max_dias_folha}
+                  onChange={(e) =>
+                    setConfigGratuito((prev) => ({
+                      ...prev,
+                      max_dias_folha: Math.max(1, parseInt(e.target.value) || 1),
+                    }))
+                  }
+                  className="text-xs font-bold border-zinc-200"
+                />
+                <span className="text-xs text-zinc-500 font-medium">dias</span>
+              </div>
+            </div>
+
+            {/* Limite de Projetos Ativos */}
+            <div className="bg-white p-4 rounded-xl border border-amber-200/80 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                  <FolderKanban className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Limite de Projetos</span>
+                </label>
+                <Badge variant="outline" className="border-amber-300 text-amber-800 text-[10px]">
+                  Atual: {configGratuito.max_projetos} projetos
+                </Badge>
+              </div>
+              <p className="text-[11px] text-zinc-500">
+                Número máximo de projetos permitidos simultaneamente antes do bloqueio do modal.
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <Input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={configGratuito.max_projetos}
+                  onChange={(e) =>
+                    setConfigGratuito((prev) => ({
+                      ...prev,
+                      max_projetos: Math.max(1, parseInt(e.target.value) || 1),
+                    }))
+                  }
+                  className="text-xs font-bold border-zinc-200"
+                />
+                <span className="text-xs text-zinc-500 font-medium">projetos</span>
+              </div>
+            </div>
+
+            {/* Permissão de Convites de Equipe */}
+            <div className="bg-white p-4 rounded-xl border border-amber-200/80 shadow-2xs space-y-2 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Envio de Convites</span>
+                  </label>
+                  <Badge
+                    variant="outline"
+                    className={`text-[10px] font-bold ${
+                      configGratuito.permite_convites
+                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                        : 'border-amber-300 bg-amber-50 text-amber-800'
+                    }`}
+                  >
+                    {configGratuito.permite_convites ? 'Liberado' : 'Bloqueado'}
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-zinc-500 mt-1">
+                  Se ativado, contas gratuitas poderão disparar convites com escopo externo.
+                </p>
+              </div>
+              <div className="pt-2 flex items-center justify-between">
+                <span className="text-xs font-semibold text-zinc-700">
+                  {configGratuito.permite_convites
+                    ? 'Convites liberados no gratuito'
+                    : 'Convites bloqueados (exige plano Pro)'}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setConfigGratuito((prev) => ({
+                      ...prev,
+                      permite_convites: !prev.permite_convites,
+                    }))
+                  }
+                  className={`text-xs font-bold ${
+                    configGratuito.permite_convites
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                      : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100'
+                  }`}
+                >
+                  {configGratuito.permite_convites ? (
+                    <>
+                      <Unlock className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                      Liberado
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-3.5 h-3.5 mr-1 text-amber-600" />
+                      Bloqueado
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Seleção de Módulos Inclusos no Plano Gratuito */}
+          <div className="bg-white p-4 rounded-xl border border-amber-200/80 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+              <div>
+                <h4 className="text-xs font-bold text-zinc-900 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Módulos Ativos no Plano Gratuito</span>
+                </h4>
+                <p className="text-[11px] text-zinc-500">
+                  Selecione quais recursos adicionais acompanham o plano gratuito inicial (o Núcleo
+                  é sempre obrigatório).
+                </p>
+              </div>
+              <span className="text-[11px] font-mono text-zinc-500">
+                {configGratuito.modulos_inclusos.length} selecionados
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
+              {/* Núcleo - Fixo */}
+              <div className="p-3 rounded-lg border border-emerald-300 bg-emerald-50/60 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold text-zinc-900">Núcleo Essencial</p>
+                  <p className="text-[10px] text-zinc-500">Navegação e base</p>
+                </div>
+                <Badge className="bg-emerald-600 text-white text-[10px] border-0">
+                  Obrigatório
+                </Badge>
+              </div>
+
+              {/* Folha do Dia */}
+              <button
+                type="button"
+                onClick={() => handleToggleModuloGratuito('folha_dia')}
+                className={`p-3 rounded-lg border text-left transition-all flex items-center justify-between ${
+                  configGratuito.modulos_inclusos.includes('folha_dia')
+                    ? 'border-emerald-400 bg-emerald-50/80 shadow-2xs'
+                    : 'border-zinc-200 bg-zinc-50/60 opacity-80 hover:opacity-100'
+                }`}
+              >
+                <div>
+                  <p className="text-xs font-bold text-zinc-900">Folha do Dia</p>
+                  <p className="text-[10px] text-zinc-500">Demandas diárias</p>
+                </div>
+                <Badge
+                  variant={
+                    configGratuito.modulos_inclusos.includes('folha_dia') ? 'default' : 'outline'
+                  }
+                  className={
+                    configGratuito.modulos_inclusos.includes('folha_dia')
+                      ? 'bg-emerald-600 text-white text-[10px]'
+                      : 'border-zinc-300 text-zinc-600 text-[10px]'
+                  }
+                >
+                  {configGratuito.modulos_inclusos.includes('folha_dia') ? 'Incluso' : 'Inativo'}
+                </Badge>
+              </button>
+
+              {/* Projetos */}
+              <button
+                type="button"
+                onClick={() => handleToggleModuloGratuito('projetos')}
+                className={`p-3 rounded-lg border text-left transition-all flex items-center justify-between ${
+                  configGratuito.modulos_inclusos.includes('projetos')
+                    ? 'border-emerald-400 bg-emerald-50/80 shadow-2xs'
+                    : 'border-zinc-200 bg-zinc-50/60 opacity-80 hover:opacity-100'
+                }`}
+              >
+                <div>
+                  <p className="text-xs font-bold text-zinc-900">Projetos & Kanban</p>
+                  <p className="text-[10px] text-zinc-500">Marcos e entregas</p>
+                </div>
+                <Badge
+                  variant={
+                    configGratuito.modulos_inclusos.includes('projetos') ? 'default' : 'outline'
+                  }
+                  className={
+                    configGratuito.modulos_inclusos.includes('projetos')
+                      ? 'bg-emerald-600 text-white text-[10px]'
+                      : 'border-zinc-300 text-zinc-600 text-[10px]'
+                  }
+                >
+                  {configGratuito.modulos_inclusos.includes('projetos') ? 'Incluso' : 'Inativo'}
+                </Badge>
+              </button>
+
+              {/* WhatsApp Radar */}
+              <button
+                type="button"
+                onClick={() => handleToggleModuloGratuito('whatsapp')}
+                className={`p-3 rounded-lg border text-left transition-all flex items-center justify-between ${
+                  configGratuito.modulos_inclusos.includes('whatsapp') ||
+                  configGratuito.permite_whatsapp
+                    ? 'border-emerald-400 bg-emerald-50/80 shadow-2xs'
+                    : 'border-zinc-200 bg-zinc-50/60 opacity-80 hover:opacity-100'
+                }`}
+              >
+                <div>
+                  <p className="text-xs font-bold text-zinc-900">Radar WhatsApp</p>
+                  <p className="text-[10px] text-zinc-500">Conexão & Sementes</p>
+                </div>
+                <Badge
+                  variant={
+                    configGratuito.modulos_inclusos.includes('whatsapp') ||
+                    configGratuito.permite_whatsapp
+                      ? 'default'
+                      : 'outline'
+                  }
+                  className={
+                    configGratuito.modulos_inclusos.includes('whatsapp') ||
+                    configGratuito.permite_whatsapp
+                      ? 'bg-emerald-600 text-white text-[10px]'
+                      : 'border-zinc-300 text-zinc-600 text-[10px]'
+                  }
+                >
+                  {configGratuito.modulos_inclusos.includes('whatsapp') ||
+                  configGratuito.permite_whatsapp
+                    ? 'Incluso'
+                    : 'Exige Pro'}
+                </Badge>
+              </button>
+
+              {/* Agente IA */}
+              <button
+                type="button"
+                onClick={() => handleToggleModuloGratuito('ia')}
+                className={`p-3 rounded-lg border text-left transition-all flex items-center justify-between ${
+                  configGratuito.modulos_inclusos.includes('ia') || configGratuito.permite_ia
+                    ? 'border-emerald-400 bg-emerald-50/80 shadow-2xs'
+                    : 'border-zinc-200 bg-zinc-50/60 opacity-80 hover:opacity-100'
+                }`}
+              >
+                <div>
+                  <p className="text-xs font-bold text-zinc-900">Agente Executivo IA</p>
+                  <p className="text-[10px] text-zinc-500">Segundo cérebro</p>
+                </div>
+                <Badge
+                  variant={
+                    configGratuito.modulos_inclusos.includes('ia') || configGratuito.permite_ia
+                      ? 'default'
+                      : 'outline'
+                  }
+                  className={
+                    configGratuito.modulos_inclusos.includes('ia') || configGratuito.permite_ia
+                      ? 'bg-emerald-600 text-white text-[10px]'
+                      : 'border-zinc-300 text-zinc-600 text-[10px]'
+                  }
+                >
+                  {configGratuito.modulos_inclusos.includes('ia') || configGratuito.permite_ia
+                    ? 'Incluso'
+                    : 'Exige Pro'}
+                </Badge>
+              </button>
+
+              {/* Módulo Finanças */}
+              <button
+                type="button"
+                onClick={() => handleToggleModuloGratuito('financas')}
+                className={`p-3 rounded-lg border text-left transition-all flex items-center justify-between ${
+                  configGratuito.modulos_inclusos.includes('financas') ||
+                  configGratuito.permite_financas
+                    ? 'border-emerald-400 bg-emerald-50/80 shadow-2xs'
+                    : 'border-zinc-200 bg-zinc-50/60 opacity-80 hover:opacity-100'
+                }`}
+              >
+                <div>
+                  <p className="text-xs font-bold text-zinc-900">Módulo Finanças</p>
+                  <p className="text-[10px] text-zinc-500">Contabilidade 5.0</p>
+                </div>
+                <Badge
+                  variant={
+                    configGratuito.modulos_inclusos.includes('financas') ||
+                    configGratuito.permite_financas
+                      ? 'default'
+                      : 'outline'
+                  }
+                  className={
+                    configGratuito.modulos_inclusos.includes('financas') ||
+                    configGratuito.permite_financas
+                      ? 'bg-emerald-600 text-white text-[10px]'
+                      : 'border-zinc-300 text-zinc-600 text-[10px]'
+                  }
+                >
+                  {configGratuito.modulos_inclusos.includes('financas') ||
+                  configGratuito.permite_financas
+                    ? 'Incluso'
+                    : 'Exige Pro'}
+                </Badge>
+              </button>
+
+              {/* Convites de Equipe */}
+              <button
+                type="button"
+                onClick={() => handleToggleModuloGratuito('equipe_convites')}
+                className={`p-3 rounded-lg border text-left transition-all flex items-center justify-between ${
+                  configGratuito.modulos_inclusos.includes('equipe_convites') ||
+                  configGratuito.permite_convites
+                    ? 'border-emerald-400 bg-emerald-50/80 shadow-2xs'
+                    : 'border-zinc-200 bg-zinc-50/60 opacity-80 hover:opacity-100'
+                }`}
+              >
+                <div>
+                  <p className="text-xs font-bold text-zinc-900">Convites Granulares</p>
+                  <p className="text-[10px] text-zinc-500">Convidados externos</p>
+                </div>
+                <Badge
+                  variant={
+                    configGratuito.modulos_inclusos.includes('equipe_convites') ||
+                    configGratuito.permite_convites
+                      ? 'default'
+                      : 'outline'
+                  }
+                  className={
+                    configGratuito.modulos_inclusos.includes('equipe_convites') ||
+                    configGratuito.permite_convites
+                      ? 'bg-emerald-600 text-white text-[10px]'
+                      : 'border-zinc-300 text-zinc-600 text-[10px]'
+                  }
+                >
+                  {configGratuito.modulos_inclusos.includes('equipe_convites') ||
+                  configGratuito.permite_convites
+                    ? 'Incluso'
+                    : 'Bloqueado'}
+                </Badge>
+              </button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Cards de Métricas Consolidadas */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-[#E5E1D8] bg-white shadow-xs">
@@ -511,7 +1004,9 @@ export function Master() {
               <h3 className="text-2xl font-black text-amber-700 mt-1">
                 {contas.filter((c) => c.plano === 'gratuito').length}
               </h3>
-              <p className="text-[10px] text-zinc-500 mt-0.5">Trava 2 dias / 2 projetos</p>
+              <p className="text-[10px] text-zinc-500 mt-0.5">
+                Trava {configGratuito.max_dias_folha}d / {configGratuito.max_projetos}p
+              </p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700">
               <Lock className="w-5 h-5" />

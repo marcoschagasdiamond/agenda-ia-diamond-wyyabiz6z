@@ -1071,41 +1071,173 @@ export const diamondApi = {
     return await pb.collection('licencas_conta').update<import('../types').LicencaConta>(id, data)
   },
 
-  async alterarPlanoConta(
-    licencaId: string,
-    plano: import('../types').PlanoLicencaTipo,
-    status: import('../types').StatusLicencaTipo = 'ativo',
-  ): Promise<import('../types').LicencaConta> {
-    const isPago = plano === 'pro' || plano === 'diamond_executive'
-    const payload: Partial<import('../types').LicencaConta> = {
-      plano,
-      status,
-      max_dias_folha: isPago ? 99999 : 2,
-      max_projetos: isPago ? 99999 : 2,
-      permite_convites: isPago,
-      permite_whatsapp: isPago,
-      permite_relatorios_avancados: isPago,
-      observacoes: isPago
-        ? `Plano ${plano === 'diamond_executive' ? 'Diamond Executive Ilimitado' : 'Pro Empresarial'} ativado pelo Master`
-        : 'Plano Gratuito Prova Viva: 2 dias de folha, 2 projetos e convites bloqueados',
+  async getConfigPlanoGratuito(): Promise<import('../types').ConfigPlanoGratuito> {
+    try {
+      const records = await pb
+        .collection('config_plano_gratuito')
+        .getList<import('../types').ConfigPlanoGratuito>(1, 1, {
+          sort: '-created',
+        })
+      if (records.items.length > 0) {
+        const item = records.items[0]
+        let modulos = item.modulos_inclusos
+        if (typeof modulos === 'string') {
+          try {
+            modulos = JSON.parse(modulos)
+          } catch {
+            modulos = ['nucleo', 'folha_dia', 'projetos']
+          }
+        }
+        return {
+          id: item.id,
+          max_dias_folha: Number(item.max_dias_folha) || 2,
+          max_projetos: Number(item.max_projetos) || 2,
+          permite_convites: Boolean(item.permite_convites),
+          permite_whatsapp: Boolean(item.permite_whatsapp),
+          permite_ia: Boolean(item.permite_ia),
+          permite_financas: Boolean(item.permite_financas),
+          modulos_inclusos: Array.isArray(modulos) ? modulos : ['nucleo', 'folha_dia', 'projetos'],
+          nome_exibicao: item.nome_exibicao || 'Prova Viva',
+          descricao: item.descricao || '',
+          created: item.created,
+          updated: item.updated,
+        }
+      }
+    } catch {
+      /* fallback se não existir registro */
     }
-    const updated = await pb
-      .collection('licencas_conta')
-      .update<import('../types').LicencaConta>(licencaId, payload)
 
-    // Ativar módulos básicos quando plano for pago
-    if (isPago) {
+    return {
+      id: '',
+      max_dias_folha: 2,
+      max_projetos: 2,
+      permite_convites: false,
+      permite_whatsapp: false,
+      permite_ia: false,
+      permite_financas: false,
+      modulos_inclusos: ['nucleo', 'folha_dia', 'projetos'],
+      nome_exibicao: 'Prova Viva',
+      descricao: 'Plano gratuito inicial com limites configuráveis pelo Master.',
+    }
+  },
+
+  async salvarConfigPlanoGratuito(
+    dados: Partial<import('../types').ConfigPlanoGratuito>,
+    aplicarNasContasGratuitasExistentes: boolean = true,
+  ): Promise<import('../types').ConfigPlanoGratuito> {
+    const atual = await this.getConfigPlanoGratuito()
+    const payload = {
+      max_dias_folha:
+        typeof dados.max_dias_folha === 'number' ? dados.max_dias_folha : atual.max_dias_folha,
+      max_projetos:
+        typeof dados.max_projetos === 'number' ? dados.max_projetos : atual.max_projetos,
+      permite_convites:
+        typeof dados.permite_convites === 'boolean'
+          ? dados.permite_convites
+          : atual.permite_convites,
+      permite_whatsapp:
+        typeof dados.permite_whatsapp === 'boolean'
+          ? dados.permite_whatsapp
+          : atual.permite_whatsapp,
+      permite_ia: typeof dados.permite_ia === 'boolean' ? dados.permite_ia : atual.permite_ia,
+      permite_financas:
+        typeof dados.permite_financas === 'boolean'
+          ? dados.permite_financas
+          : atual.permite_financas,
+      modulos_inclusos: dados.modulos_inclusos || atual.modulos_inclusos,
+      nome_exibicao: dados.nome_exibicao || atual.nome_exibicao || 'Prova Viva',
+      descricao: dados.descricao !== undefined ? dados.descricao : atual.descricao,
+    }
+
+    let savedItem: import('../types').ConfigPlanoGratuito
+    if (atual.id) {
+      savedItem = await pb
+        .collection('config_plano_gratuito')
+        .update<import('../types').ConfigPlanoGratuito>(atual.id, payload)
+    } else {
+      savedItem = await pb
+        .collection('config_plano_gratuito')
+        .create<import('../types').ConfigPlanoGratuito>(payload)
+    }
+
+    // Se solicitado, sincroniza também os limites nas licenças atualmente gratuitas para efeito imediato
+    if (aplicarNasContasGratuitasExistentes) {
       try {
-        const modulos = await this.listModulosLicenca(licencaId)
-        for (const m of modulos) {
-          if (!m.ativo) {
-            await this.toggleModuloLicenca(m.id, true).catch(() => null)
+        const licencas = await pb
+          .collection('licencas_conta')
+          .getFullList<import('../types').LicencaConta>({
+            filter: 'plano = "gratuito"',
+          })
+        for (const lic of licencas) {
+          await pb
+            .collection('licencas_conta')
+            .update(lic.id, {
+              max_dias_folha: payload.max_dias_folha,
+              max_projetos: payload.max_projetos,
+              permite_convites: payload.permite_convites,
+              permite_whatsapp: payload.permite_whatsapp,
+              observacoes: `Plano Gratuito Prova Viva: ${payload.max_dias_folha} dias de folha, ${payload.max_projetos} projetos e convites ${payload.permite_convites ? 'liberados' : 'bloqueados'} (configurado pelo Master)`,
+            })
+            .catch(() => null)
+
+          // Sincronizar módulos da licença gratuita
+          const modulos = await this.listModulosLicenca(lic.id).catch(() => [])
+          for (const m of modulos) {
+            const deveEstarAtivo =
+              m.codigo === 'nucleo' || payload.modulos_inclusos.includes(m.codigo)
+            if (m.ativo !== deveEstarAtivo) {
+              await this.toggleModuloLicenca(m.id, deveEstarAtivo).catch(() => null)
+            }
           }
         }
       } catch {
         /* best-effort */
       }
     }
+
+    return savedItem
+  },
+
+  async alterarPlanoConta(
+    licencaId: string,
+    plano: import('../types').PlanoLicencaTipo,
+    status: import('../types').StatusLicencaTipo = 'ativo',
+  ): Promise<import('../types').LicencaConta> {
+    const isPago = plano === 'pro' || plano === 'diamond_executive'
+    const configGratuito = !isPago ? await this.getConfigPlanoGratuito() : null
+
+    const payload: Partial<import('../types').LicencaConta> = {
+      plano,
+      status,
+      max_dias_folha: isPago ? 99999 : (configGratuito?.max_dias_folha ?? 2),
+      max_projetos: isPago ? 99999 : (configGratuito?.max_projetos ?? 2),
+      permite_convites: isPago ? true : (configGratuito?.permite_convites ?? false),
+      permite_whatsapp: isPago ? true : (configGratuito?.permite_whatsapp ?? false),
+      permite_relatorios_avancados: isPago,
+      observacoes: isPago
+        ? `Plano ${plano === 'diamond_executive' ? 'Diamond Executive Ilimitado' : 'Pro Empresarial'} ativado pelo Master`
+        : `Plano Gratuito Prova Viva: ${configGratuito?.max_dias_folha ?? 2} dias de folha, ${configGratuito?.max_projetos ?? 2} projetos e convites ${configGratuito?.permite_convites ? 'liberados' : 'bloqueados'}`,
+    }
+    const updated = await pb
+      .collection('licencas_conta')
+      .update<import('../types').LicencaConta>(licencaId, payload)
+
+    // Ajustar módulos da conta
+    try {
+      const modulos = await this.listModulosLicenca(licencaId)
+      for (const m of modulos) {
+        const deveAtivo =
+          isPago ||
+          m.codigo === 'nucleo' ||
+          (configGratuito?.modulos_inclusos || []).includes(m.codigo)
+        if (m.ativo !== deveAtivo) {
+          await this.toggleModuloLicenca(m.id, deveAtivo).catch(() => null)
+        }
+      }
+    } catch {
+      /* best-effort */
+    }
+
     return updated
   },
 
@@ -1276,10 +1408,38 @@ export const diamondApi = {
 
     const plano = licenca?.plano || 'gratuito'
     const status = licenca?.status || 'ativo'
-    const maxDias = typeof licenca?.max_dias_folha === 'number' ? licenca.max_dias_folha : 2
-    const maxProj = typeof licenca?.max_projetos === 'number' ? licenca.max_projetos : 2
+
+    // Se a licença não possuir valores definidos ou for gratuita, carrega da configuração do plano gratuito vigente
+    let fallbackDias = 2
+    let fallbackProj = 2
+    let fallbackPermiteConv = false
+    let fallbackPermiteWhats = false
+    if (plano === 'gratuito') {
+      try {
+        const cfg = await this.getConfigPlanoGratuito()
+        if (cfg) {
+          fallbackDias = cfg.max_dias_folha
+          fallbackProj = cfg.max_projetos
+          fallbackPermiteConv = cfg.permite_convites
+          fallbackPermiteWhats = cfg.permite_whatsapp
+        }
+      } catch {
+        /* fallback silencioso */
+      }
+    }
+
+    const maxDias =
+      typeof licenca?.max_dias_folha === 'number' && licenca.max_dias_folha > 0
+        ? licenca.max_dias_folha
+        : fallbackDias
+    const maxProj =
+      typeof licenca?.max_projetos === 'number' && licenca.max_projetos > 0
+        ? licenca.max_projetos
+        : fallbackProj
     const permiteConv =
-      typeof licenca?.permite_convites === 'boolean' ? licenca.permite_convites : false
+      typeof licenca?.permite_convites === 'boolean'
+        ? licenca.permite_convites
+        : fallbackPermiteConv
 
     const isPago = plano === 'pro' || plano === 'diamond_executive'
 

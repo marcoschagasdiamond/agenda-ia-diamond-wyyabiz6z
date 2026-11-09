@@ -200,23 +200,54 @@ routerAdd('POST', '/backend/v1/stripe_webhook', (e) => {
       (eventType === 'customer.subscription.updated' &&
         (dataObj.status === 'canceled' || dataObj.status === 'unpaid'))
     ) {
+      // Obter configuração vigente do plano gratuito cadastrada no banco pelo Master
+      let cfgMaxDias = 2
+      let cfgMaxProj = 2
+      let cfgPermiteConvites = false
+      let cfgPermiteWhatsapp = false
+      let cfgModulosInclusos = ['nucleo', 'folha_dia', 'projetos']
+
+      try {
+        const configs = $app.findRecordsByFilter('config_plano_gratuito', '1 = 1', 'created', 1, 0)
+        if (configs && configs.length > 0) {
+          const cfg = configs[0]
+          const dias = cfg.getInt('max_dias_folha')
+          const proj = cfg.getInt('max_projetos')
+          if (dias > 0) cfgMaxDias = dias
+          if (proj > 0) cfgMaxProj = proj
+          cfgPermiteConvites = cfg.getBool('permite_convites')
+          cfgPermiteWhatsapp = cfg.getBool('permite_whatsapp')
+          const rawMod = cfg.getString('modulos_inclusos')
+          if (rawMod) {
+            try {
+              const parsed = JSON.parse(rawMod)
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                cfgModulosInclusos = parsed
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (cfgErr) {
+        console.log('[Stripe Webhook] Aviso ao carregar config_plano_gratuito:', cfgErr)
+      }
+
       licenca.set('plano', 'gratuito')
       licenca.set('status', 'expirado')
-      licenca.set('max_dias_folha', 2)
-      licenca.set('max_projetos', 2)
-      licenca.set('permite_convites', false)
+      licenca.set('max_dias_folha', cfgMaxDias)
+      licenca.set('max_projetos', cfgMaxProj)
+      licenca.set('permite_convites', cfgPermiteConvites)
       licenca.set('permite_relatorios_avancados', false)
-      licenca.set('permite_whatsapp', false)
+      licenca.set('permite_whatsapp', cfgPermiteWhatsapp)
       licenca.set('data_expiracao', agora.toISOString())
       licenca.set(
         'observacoes',
-        'Assinatura cancelada no Stripe. Conta revertida para o plano Prova Viva em ' +
+        `Assinatura cancelada no Stripe. Conta revertida para o plano gratuito Prova Viva (limites vigentes: ${cfgMaxDias} dias, ${cfgMaxProj} projetos) em ` +
           agora.toLocaleDateString('pt-BR'),
       )
 
       $app.save(licenca)
 
-      // Desativar módulos opcionais pagos, preservando núcleo
+      // Atualizar módulos conforme a configuração vigente do plano gratuito
       try {
         const modulos = $app.findRecordsByFilter(
           'modulos_licenca',
@@ -228,8 +259,10 @@ routerAdd('POST', '/backend/v1/stripe_webhook', (e) => {
         for (let i = 0; i < modulos.length; i++) {
           const mod = modulos[i]
           const cod = mod.getString('codigo')
-          if (cod !== 'nucleo') {
-            mod.set('ativo', false)
+          // Ativa se estiver incluso no plano gratuito configurado ou se for nucleo
+          const deveAtivar = cod === 'nucleo' || cfgModulosInclusos.includes(cod)
+          if (mod.getBool('ativo') !== deveAtivar) {
+            mod.set('ativo', deveAtivar)
             $app.save(mod)
           }
         }
