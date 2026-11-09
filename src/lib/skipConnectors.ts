@@ -72,10 +72,44 @@ if (new URLSearchParams(window.location.search).has(RETURN_MARKER)) {
 export class ConnectPopupBlockedError extends Error {
   readonly url: string
   constructor(url: string) {
-    super('The browser blocked the connection window')
+    super(
+      'O navegador bloqueou a janela de autorização. Clique no link de autorização para continuar.',
+    )
     this.name = 'ConnectPopupBlockedError'
     this.url = url
   }
+}
+
+export interface ConnectOptions {
+  /** Explicit returnUrl if different from the current page */
+  returnUrl?: string
+  /**
+   * When true, redirects the current tab directly to the consent screen via window.location.assign,
+   * completely avoiding popup blocking. The user will be redirected back after authorizing.
+   */
+  preferSameTab?: boolean
+}
+
+/**
+ * Fetches the provider's consent URL without automatically opening windows or navigating.
+ * Useful when offering direct <a> links or custom handling.
+ */
+export const getConsentUrl = async (
+  toolkit: string,
+  options?: { returnUrl?: string; framed?: boolean },
+): Promise<string> => {
+  const isFramed = options?.framed ?? inFrame()
+  const defaultReturn = window.location.origin + window.location.pathname
+  const baseReturn = options?.returnUrl || defaultReturn
+  const returnUrl = isFramed ? withReturnMarker(baseReturn) : baseReturn
+
+  const res: unknown = await pb.send(
+    `/api/skip/connectors/${encodeURIComponent(toolkit)}/connect`,
+    { method: 'POST', body: { returnUrl } },
+  )
+  const url = isRecord(res) && typeof res.url === 'string' ? res.url : unexpected('consent URL')
+  if (!/^https?:/i.test(url)) return unexpected('consent URL')
+  return url
 }
 
 /**
@@ -84,27 +118,44 @@ export class ConnectPopupBlockedError extends Error {
  * them in a new window once the link arrives. Browsers allow that for a few seconds after the
  * click; past it (or in a strict browser) they block it, and ConnectPopupBlockedError carries the
  * URL so the app can offer it as a link.
+ *
+ * Supports `preferSameTab: true` to navigate directly in the current window when requested.
  */
 export const connect = async (
   toolkit: string,
   // No query or hash: they can carry secrets (a reset token) the provider must not see.
-  returnUrl = window.location.origin + window.location.pathname,
+  returnUrlOrOptions?: string | ConnectOptions,
 ): Promise<void> => {
+  const options: ConnectOptions =
+    typeof returnUrlOrOptions === 'string'
+      ? { returnUrl: returnUrlOrOptions }
+      : returnUrlOrOptions || {}
+
   const framed = inFrame()
-  const res: unknown = await pb.send(
-    `/api/skip/connectors/${encodeURIComponent(toolkit)}/connect`,
-    { method: 'POST', body: { returnUrl: framed ? withReturnMarker(returnUrl) : returnUrl } },
-  )
-  const url = isRecord(res) && typeof res.url === 'string' ? res.url : unexpected('consent URL')
-  // Only ever navigate to an http(s) consent page.
-  if (!/^https?:/i.test(url)) return unexpected('consent URL')
-  if (!framed) return window.location.assign(url)
-  // Opened blank and pointed right away (no visible blank page): the opener is
-  // cut while the window is still same-origin, which a cross-origin one forbids.
-  const popup = window.open('', '_blank')
-  if (!popup) throw new ConnectPopupBlockedError(url)
-  popup.opener = null
-  popup.location.href = url
+  const defaultReturn = window.location.origin + window.location.pathname
+  const returnUrl = options.returnUrl || defaultReturn
+
+  const url = await getConsentUrl(toolkit, { returnUrl, framed })
+
+  // Se o usuário optou por mesma aba OU a aplicação não estiver em iframe,
+  // navega diretamente sem correr risco de popup bloqueado
+  if (options.preferSameTab || !framed) {
+    window.location.assign(url)
+    return
+  }
+
+  // Se estiver em iframe (Skip preview / embed), tenta abrir nova janela.
+  // Se o popup for bloqueado pelo navegador, lança ConnectPopupBlockedError com a URL.
+  try {
+    const popup = window.open('', '_blank')
+    if (!popup) {
+      throw new ConnectPopupBlockedError(url)
+    }
+    popup.opener = null
+    popup.location.href = url
+  } catch {
+    throw new ConnectPopupBlockedError(url)
+  }
 }
 
 export const disconnect = async (toolkit: string): Promise<void> => {

@@ -3,7 +3,13 @@ import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
 import { diamondApi } from '@/services/diamondApi'
 import { ConfigEmailUsuario, ConfigEmailSistema } from '@/types'
-import { listConnectors, connect, disconnect } from '@/lib/skipConnectors'
+import {
+  listConnectors,
+  connect,
+  disconnect,
+  getConsentUrl,
+  ConnectPopupBlockedError,
+} from '@/lib/skipConnectors'
 import { ConnectorButton } from '@/components/skip/ConnectorButton'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,6 +30,7 @@ import {
   Info,
   Server,
   Key,
+  ExternalLink,
 } from 'lucide-react'
 
 interface GestaoEmailUsuarioProps {
@@ -42,6 +49,8 @@ export default function GestaoEmailUsuario({ onRecarregarGlobal }: GestaoEmailUs
   const [conectorConectado, setConectorConectado] = useState(false)
   const [carregandoConector, setCarregandoConector] = useState(true)
   const [conectandoPopup, setConectandoPopup] = useState(false)
+  const [blockedConsentUrl, setBlockedConsentUrl] = useState<string | null>(null)
+  const [preferirMesmaAba, setPreferirMesmaAba] = useState(false)
 
   // Configuração do usuário
   const [config, setConfig] = useState<ConfigEmailUsuario>({
@@ -117,10 +126,14 @@ export default function GestaoEmailUsuario({ onRecarregarGlobal }: GestaoEmailUs
     carregarDados()
   }, [user?.id])
 
-  const handleConectarResend = async () => {
+  const handleConectarResend = async (opts?: { mesmaAba?: boolean }) => {
     try {
       setConectandoPopup(true)
-      await connect('resend')
+      setBlockedConsentUrl(null)
+
+      const usarMesmaAba = opts?.mesmaAba ?? preferirMesmaAba
+
+      await connect('resend', { preferSameTab: usarMesmaAba })
       await verificarConector()
       toast({
         title: 'Conta Resend conectada!',
@@ -128,14 +141,38 @@ export default function GestaoEmailUsuario({ onRecarregarGlobal }: GestaoEmailUs
       })
       setConfig((prev) => ({ ...prev, usar_resend_proprio: true }))
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Tente novamente.'
-      toast({
-        title: 'Não foi possível conectar ao Resend',
-        description:
-          msg ||
-          'Verifique se as janelas popup estão permitidas no seu navegador para autenticar o conector.',
-        variant: 'destructive',
-      })
+      if (err instanceof ConnectPopupBlockedError) {
+        setBlockedConsentUrl(err.url)
+        toast({
+          title: 'Popup bloqueado pelo navegador',
+          description:
+            'O navegador bloqueou a janela automática. Use o link de autorização destacado abaixo para prosseguir.',
+          variant: 'destructive',
+        })
+      } else if (
+        err &&
+        typeof err === 'object' &&
+        'url' in err &&
+        typeof (err as { url: unknown }).url === 'string'
+      ) {
+        setBlockedConsentUrl((err as { url: string }).url)
+      } else {
+        const msg = err instanceof Error ? err.message : 'Tente novamente.'
+        // Tenta obter a URL de consentimento para fornecer como fallback imediato
+        try {
+          const consentUrl = await getConsentUrl('resend')
+          setBlockedConsentUrl(consentUrl)
+        } catch {
+          // Mantém mensagem padrão
+        }
+        toast({
+          title: 'Atenção ao autorizar Resend',
+          description:
+            msg ||
+            'Não foi possível abrir o popup automaticamente. Utilize o link direto de autorização.',
+          variant: 'destructive',
+        })
+      }
     } finally {
       setConectandoPopup(false)
     }
@@ -144,6 +181,7 @@ export default function GestaoEmailUsuario({ onRecarregarGlobal }: GestaoEmailUs
   const handleDesconectarResend = async () => {
     try {
       setConectandoPopup(true)
+      setBlockedConsentUrl(null)
       await disconnect('resend')
       await verificarConector()
       setConfig((prev) => ({ ...prev, usar_resend_proprio: false }))
@@ -384,25 +422,112 @@ export default function GestaoEmailUsuario({ onRecarregarGlobal }: GestaoEmailUs
                       <span>Desconectar Minha Conta</span>
                     </Button>
                   ) : (
-                    <Button
-                      size="sm"
-                      onClick={handleConectarResend}
-                      disabled={conectandoPopup}
-                      className="bg-zinc-900 hover:bg-zinc-800 text-white text-xs gap-1.5 shadow-xs"
-                    >
-                      <Link2 className="w-3.5 h-3.5" />
-                      <span>{conectandoPopup ? 'Abrindo...' : 'Conectar Minha Conta Resend'}</span>
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        onClick={() => handleConectarResend()}
+                        disabled={conectandoPopup}
+                        className="bg-zinc-900 hover:bg-zinc-800 text-white text-xs gap-1.5 shadow-xs"
+                      >
+                        <Link2 className="w-3.5 h-3.5" />
+                        <span>
+                          {conectandoPopup ? 'Abrindo...' : 'Conectar Minha Conta Resend'}
+                        </span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleConectarResend({ mesmaAba: true })}
+                        disabled={conectandoPopup}
+                        title="Abre a autorização diretamente nesta aba, evitando bloqueio de popup"
+                        className="text-xs border-zinc-300 text-zinc-700 hover:bg-zinc-100 gap-1"
+                      >
+                        <span>Mesma aba</span>
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
 
-              {/* Alternativa com ConnectorButton nativo */}
-              <div className="pt-2 border-t border-zinc-100 flex items-center justify-between">
-                <span className="text-[11px] text-zinc-500">
-                  Ou utilize o botão oficial do conector do app:
-                </span>
-                <ConnectorButton toolkit="resend" name="Resend" />
+              {/* Alerta de Popup Bloqueado com Fallback Clicável em Português */}
+              {blockedConsentUrl && (
+                <div className="p-3.5 rounded-xl border border-amber-300 bg-amber-50/90 text-xs text-amber-950 space-y-2 animate-in fade-in">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-semibold text-amber-900">
+                        O navegador bloqueou a janela de autorização do Resend
+                      </p>
+                      <p className="text-amber-800 leading-relaxed text-[11px]">
+                        Para concluir a conexão com segurança, clique no link abaixo. Você será
+                        levado à tela oficial do Resend para autorizar e retornará a esta página com
+                        sua conta vinculada.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 pt-1 pl-6">
+                    <a
+                      href={blockedConsentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-medium text-xs shadow-xs transition-colors"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Clique aqui para abrir a autorização do Resend</span>
+                    </a>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        window.location.assign(blockedConsentUrl)
+                      }}
+                      className="text-xs text-amber-900 hover:bg-amber-100 h-8"
+                    >
+                      Navegar nesta mesma aba
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setBlockedConsentUrl(null)}
+                      className="text-xs text-zinc-500 hover:text-zinc-700 h-8"
+                    >
+                      Dispensar aviso
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Opção de preferência de navegação & Alternativa com ConnectorButton nativo */}
+              <div className="pt-2 border-t border-zinc-100 space-y-2">
+                <div className="flex items-center justify-between text-xs text-zinc-600">
+                  <span className="text-[11px]">Como abrir autorização:</span>
+                  <label className="flex items-center gap-2 cursor-pointer text-[11px]">
+                    <input
+                      type="checkbox"
+                      checked={preferirMesmaAba}
+                      onChange={(e) => setPreferirMesmaAba(e.target.checked)}
+                      className="rounded border-zinc-300 text-[#0F766E] focus:ring-[#0F766E]"
+                    />
+                    <span>Navegar sempre na mesma aba (sem popup)</span>
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[11px] text-zinc-500">
+                    Ou utilize o botão oficial do conector do app:
+                  </span>
+                  <ConnectorButton
+                    toolkit="resend"
+                    name="Resend"
+                    preferSameTab={preferirMesmaAba}
+                    onStatusChange={(st) => {
+                      setConectorConectado(st === 'connected')
+                      if (st === 'connected') {
+                        setConfig((prev) => ({ ...prev, usar_resend_proprio: true }))
+                      }
+                    }}
+                  />
+                </div>
               </div>
 
               {/* Toggle de Ativação do Resend Próprio */}

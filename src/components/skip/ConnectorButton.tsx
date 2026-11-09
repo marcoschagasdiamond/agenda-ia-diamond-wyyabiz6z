@@ -15,10 +15,14 @@ export function ConnectorButton({
   toolkit,
   name,
   className,
+  onStatusChange,
+  preferSameTab = false,
 }: {
   toolkit: string
   name: string
   className?: string
+  onStatusChange?: (status: ConnectorStatus | null) => void
+  preferSameTab?: boolean
 }) {
   const [status, setStatus] = useState<ConnectorStatus | null>(null)
   const [busy, setBusy] = useState(false)
@@ -34,7 +38,11 @@ export function ConnectorButton({
     setError(null)
     listConnectors()
       .then((all) => {
-        if (!cancelled) setStatus(all.find((c) => c.toolkit === toolkit)?.status ?? null)
+        if (!cancelled) {
+          const st = all.find((c) => c.toolkit === toolkit)?.status ?? null
+          setStatus(st)
+          onStatusChange?.(st)
+        }
       })
       .catch((e: unknown) => {
         if (!cancelled) setError(errorText(e))
@@ -51,7 +59,11 @@ export function ConnectorButton({
     const refresh = () => {
       listConnectors()
         .then((all) => {
-          if (!cancelled) setStatus(all.find((c) => c.toolkit === toolkit)?.status ?? null)
+          if (!cancelled) {
+            const st = all.find((c) => c.toolkit === toolkit)?.status ?? null
+            setStatus(st)
+            onStatusChange?.(st)
+          }
         })
         .catch(() => {
           // The next click or load reports it; a background refresh must not.
@@ -72,12 +84,23 @@ export function ConnectorButton({
       if (status === 'connected') {
         await disconnect(toolkit)
         setStatus('not_connected')
+        onStatusChange?.('not_connected')
       } else {
-        await connect(toolkit)
+        await connect(toolkit, { preferSameTab })
       }
     } catch (e: unknown) {
-      if (e instanceof ConnectPopupBlockedError) setBlockedUrl(e.url)
-      else setError(errorText(e))
+      if (e instanceof ConnectPopupBlockedError) {
+        setBlockedUrl(e.url)
+      } else if (
+        e &&
+        typeof e === 'object' &&
+        'url' in e &&
+        typeof (e as { url: unknown }).url === 'string'
+      ) {
+        setBlockedUrl((e as { url: string }).url)
+      } else {
+        setError(errorText(e))
+      }
     } finally {
       setBusy(false)
     }
@@ -105,18 +128,38 @@ export function ConnectorButton({
         {label}
       </button>
       {blockedUrl && (
-        <a
-          href={blockedUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={() => setBlockedUrl(null)}
-          className="ml-2 text-sm underline"
-        >
-          Abrir página de conexão
-        </a>
+        <div className="mt-2 p-2.5 rounded-lg border border-amber-300 bg-amber-50 text-xs text-amber-900 space-y-1.5 animate-in fade-in">
+          <p className="font-semibold flex items-center gap-1.5 text-amber-800">
+            <span>⚠️</span> O navegador bloqueou o popup de conexão.
+          </p>
+          <p className="text-[11px] text-amber-800/90 leading-relaxed">
+            Clique no link abaixo para autorizar o {name} em uma nova aba com permissão manual:
+          </p>
+          <div className="flex items-center gap-2 pt-0.5">
+            <a
+              href={blockedUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => {
+                // Mantém o estado visível para o usuário saber o que fazer
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-700 text-white font-medium text-xs shadow-xs transition-colors"
+            >
+              <span>Clique aqui para abrir a autorização do {name}</span>
+              <span aria-hidden="true">↗</span>
+            </a>
+            <button
+              type="button"
+              onClick={() => setBlockedUrl(null)}
+              className="text-[11px] text-zinc-500 hover:text-zinc-700 underline"
+            >
+              Dispensar
+            </button>
+          </div>
+        </div>
       )}
       {error && (
-        <p role="alert" className="mt-1 text-sm text-red-600">
+        <p role="alert" className="mt-1 text-xs text-red-600">
           {error}
         </p>
       )}
