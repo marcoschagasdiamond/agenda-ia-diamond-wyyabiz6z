@@ -33,6 +33,9 @@ import { diamondApi } from '@/services/diamondApi'
 import { ResumoContaMaster, PlanoLicencaTipo, MembroEquipe, ModuloLicenca } from '@/types'
 import SecaoFeedbackTestadores from '@/components/master/SecaoFeedbackTestadores'
 import SecaoConfigEmailSistema from '@/components/master/SecaoConfigEmailSistema'
+import CardDiagnosticoWhatsAppMaster, {
+  StatusWhatsAppMasterData,
+} from '@/components/master/CardDiagnosticoWhatsAppMaster'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -103,6 +106,10 @@ export function Master() {
   } | null>(null)
   const [testandoResend, setTestandoResend] = useState(false)
 
+  // Status da Conexão WhatsApp (Master)
+  const [statusWhatsApp, setStatusWhatsApp] = useState<StatusWhatsAppMasterData | null>(null)
+  const [testandoWhatsApp, setTestandoWhatsApp] = useState(false)
+
   // Modal Alterar Plano
   const [modalPlanoOpen, setModalPlanoOpen] = useState(false)
   const [contaSelecionada, setContaSelecionada] = useState<ResumoContaMaster | null>(null)
@@ -148,6 +155,37 @@ export function Master() {
     }
   }
 
+  const checarStatusWhatsApp = async () => {
+    try {
+      setTestandoWhatsApp(true)
+      const res = await diamondApi.getStatusWhatsAppMaster()
+      setStatusWhatsApp({
+        ...res,
+        testado_em: new Date().toISOString(),
+      })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha ao checar status do WhatsApp'
+      setStatusWhatsApp({
+        status: 'desconectado',
+        provedor: 'WhatsApp Cloud API',
+        modo: 'Cada usuário conecta a própria conta (Pessoal)',
+        master_conectado: false,
+        erro_master: message,
+        estatisticas: {
+          total_convites: 0,
+          total_com_telefone: 0,
+          total_enviados: 0,
+          total_falhas: 0,
+          ultimo_erro: message,
+        },
+        mensagem: message,
+        testado_em: new Date().toISOString(),
+      })
+    } finally {
+      setTestandoWhatsApp(false)
+    }
+  }
+
   const carregarDados = async () => {
     try {
       setLoading(true)
@@ -177,8 +215,9 @@ export function Master() {
           descricao: cfgGratuito.descricao || '',
         })
       }
-      // Carregar status do conector de e-mail Resend em segundo plano
+      // Carregar status dos canais de convite (Resend + WhatsApp) em segundo plano
       checarStatusResend()
+      checarStatusWhatsApp()
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Falha ao carregar painel master'
       toast({
@@ -528,12 +567,22 @@ export function Master() {
         </div>
       </div>
 
-      {/* SEÇÃO DE E-MAILS & NOTIFICAÇÕES (MASTER: REMETENTE PADRÃO + TEMPLATES + PREVIEW) */}
-      <SecaoConfigEmailSistema
-        statusResend={statusResend}
-        testandoResend={testandoResend}
-        onChecarStatusResend={checarStatusResend}
-      />
+      {/* DIAGNÓSTICO DOS CANAIS DE CONVITE & NOTIFICAÇÃO (E-MAIL RESEND & WHATSAPP) */}
+      <div className="space-y-4">
+        {/* Card de Diagnóstico do Canal WhatsApp */}
+        <CardDiagnosticoWhatsAppMaster
+          statusWhatsApp={statusWhatsApp}
+          testandoWhatsApp={testandoWhatsApp}
+          onChecarStatusWhatsApp={checarStatusWhatsApp}
+        />
+
+        {/* SEÇÃO DE E-MAILS & NOTIFICAÇÕES (MASTER: REMETENTE PADRÃO + TEMPLATES + PREVIEW) */}
+        <SecaoConfigEmailSistema
+          statusResend={statusResend}
+          testandoResend={testandoResend}
+          onChecarStatusResend={checarStatusResend}
+        />
+      </div>
 
       {/* BLOCO DE INTEGRAÇÃO STRIPE: PAYMENT LINK + WEBHOOK */}
       <Card className="border-[#0F766E]/30 bg-gradient-to-br from-teal-50/70 via-white to-amber-50/50 shadow-xs">
