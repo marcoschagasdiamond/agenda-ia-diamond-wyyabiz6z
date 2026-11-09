@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useNavegacao } from '@/contexts/NavegacaoContext'
 import { useAuth } from '@/hooks/use-auth'
+import NavColunaMaster from '@/components/master/NavColunaMaster'
 import {
   ChevronRight,
   ChevronDown,
@@ -60,7 +61,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
   const navigate = useNavigate()
   const location = useLocation()
   const pathname = location.pathname
-  const { isConvidadoExterno, meusEscopos } = useAuth()
+  const { isConvidadoExterno, meusEscopos, isMaster } = useAuth()
 
   const {
     categoriaAtivaId,
@@ -182,6 +183,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
     if (pathname.startsWith('/resumos')) return 'resumos'
     if (pathname.startsWith('/config')) return 'config'
     if (pathname.startsWith('/portal')) return 'portal'
+    if (pathname.startsWith('/master')) return 'master'
     return 'dashboard'
   })()
 
@@ -1755,6 +1757,11 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
       return renderColunaAgente()
     case 'config':
       return renderColunaConfig()
+    case 'master':
+      if (isMaster) {
+        return <NavColunaMaster onCloseMobile={onCloseMobile} />
+      }
+      return renderColunaDashboard()
     case 'dashboard':
     default:
       return renderColunaDashboard()
