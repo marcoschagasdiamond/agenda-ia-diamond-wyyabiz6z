@@ -51,6 +51,7 @@ import GestaoLembretes from '@/pages/config/GestaoLembretes'
 import GestaoWhatsApp from '@/pages/config/GestaoWhatsApp'
 import GestaoEmailUsuario from '@/pages/config/GestaoEmailUsuario'
 import { GestaoOpenAIUsuario } from '@/components/config/GestaoOpenAIUsuario'
+import { GestaoGeminiUsuario } from '@/components/config/GestaoGeminiUsuario'
 import { Bell, FileEdit } from 'lucide-react'
 
 export default function Config() {
@@ -404,6 +405,9 @@ export default function Config() {
         <TabsContent value="preferencias" className="space-y-6 m-0">
           {/* Conector OpenAI do Usuário (Gravação & Transcrição de Reuniões) */}
           <GestaoOpenAIUsuario />
+
+          {/* Conector Google Gemini do Usuário (Alternativa de IA para Reuniões) */}
+          <GestaoGeminiUsuario />
 
           {/* Seção 1: Status das Integrações */}
           <Card className="border-[#E5E1D8] bg-white shadow-xs">

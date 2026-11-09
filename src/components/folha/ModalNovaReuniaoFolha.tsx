@@ -81,9 +81,9 @@ export function ModalNovaReuniaoFolha({
   } = useAudioRecorder()
 
   const [etapa, setEtapa] = useState<EtapaReuniao>('gravando')
-  const [erroOpenAI, setErroOpenAI] = useState<string | null>(null)
+  const [erroIA, setErroIA] = useState<string | null>(null)
   const [statusProcessamento, setStatusProcessamento] = useState(
-    'Transcrevendo áudio via Whisper...',
+    'Transcrevendo áudio e estruturando plano com IA...',
   )
 
   // Dados extraídos e editáveis
@@ -125,7 +125,7 @@ export function ModalNovaReuniaoFolha({
   useEffect(() => {
     if (open) {
       setEtapa('gravando')
-      setErroOpenAI(null)
+      setErroIA(null)
       setTranscricao('')
       setTitulo('')
       setDataDetectada(false)
@@ -151,7 +151,7 @@ export function ModalNovaReuniaoFolha({
 
   // Iniciar gravação de microfone
   const handleIniciarGravacao = async () => {
-    setErroOpenAI(null)
+    setErroIA(null)
     try {
       await iniciarGravacao()
       toast({
@@ -181,8 +181,8 @@ export function ModalNovaReuniaoFolha({
     }
 
     setEtapa('processando')
-    setStatusProcessamento('Enviando áudio para transcrição na OpenAI...')
-    setErroOpenAI(null)
+    setStatusProcessamento('Enviando áudio para transcrição com IA...')
+    setErroIA(null)
 
     try {
       // Converte Blob para Base64
@@ -198,7 +198,7 @@ export function ModalNovaReuniaoFolha({
       reader.readAsDataURL(blob)
       const audioBase64 = await base64Promise
 
-      setStatusProcessamento('OpenAI: transcrevendo fala e extraindo plano executivo...')
+      setStatusProcessamento('Transcrevendo fala e extraindo plano executivo com IA...')
 
       const hoje = new Date()
       const resposta = await diamondApi.transcreverEExtrairReuniao({
@@ -265,14 +265,19 @@ export function ModalNovaReuniaoFolha({
         })
       }
     } catch (err: any) {
-      console.error('Erro ao processar reunião na OpenAI:', err)
+      console.error('Erro ao processar reunião com IA:', err)
       const codigo = err.codigo || ''
-      if (codigo === 'OPENAI_NAO_CONECTADA' || err.message?.includes('não está conectada')) {
-        setErroOpenAI(
-          'Sua conta OpenAI não está conectada. Para gravar e transcrever reuniões com sua IA pessoal, conecte sua conta em Configurações.',
+      if (
+        codigo === 'IA_NAO_CONECTADA' ||
+        codigo === 'OPENAI_NAO_CONECTADA' ||
+        err.message?.includes('não está conectada') ||
+        err.message?.includes('Nenhuma IA está conectada')
+      ) {
+        setErroIA(
+          'Nenhuma IA está conectada. Conecte sua conta OpenAI ou Google Gemini (chave gratuita em aistudio.google.com) em Configurações para transcrever e estruturar reuniões.',
         )
       } else {
-        setErroOpenAI(err.message || 'Falha ao conectar com o serviço de transcrição da OpenAI.')
+        setErroIA(err.message || 'Falha ao processar reunião com o serviço de IA.')
       }
       setEtapa('gravando')
     }
@@ -442,7 +447,7 @@ export function ModalNovaReuniaoFolha({
                 <DialogTitle className="text-base font-bold text-[#1A1D21] flex items-center gap-2">
                   Nova Reunião na Folha do Dia
                   <Badge className="bg-[#0F766E]/10 text-[#0F766E] border-none text-[10px]">
-                    OpenAI Whisper + Jitsi
+                    OpenAI / Gemini + Jitsi
                   </Badge>
                 </DialogTitle>
                 <DialogDescription className="text-xs text-[#5B6470]">
@@ -475,16 +480,16 @@ export function ModalNovaReuniaoFolha({
           {/* ============================================================== */}
           {etapa === 'gravando' && (
             <div className="space-y-6">
-              {/* Aviso de Erro de Conexão OpenAI */}
-              {erroOpenAI && (
+              {/* Aviso de Erro de Conexão com IA */}
+              {erroIA && (
                 <div className="p-4 rounded-xl border border-amber-300 bg-amber-50 text-amber-950 space-y-2">
                   <div className="flex items-start gap-2.5">
                     <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                     <div className="space-y-1">
                       <p className="font-semibold text-xs text-amber-900">
-                        Atenção com a conta OpenAI (Conta Própria)
+                        Conexão de IA necessária (OpenAI ou Google Gemini)
                       </p>
-                      <p className="text-xs text-amber-800 leading-relaxed">{erroOpenAI}</p>
+                      <p className="text-xs text-amber-800 leading-relaxed">{erroIA}</p>
                     </div>
                   </div>
                   <div className="pt-2 pl-7">
@@ -495,7 +500,7 @@ export function ModalNovaReuniaoFolha({
                     >
                       <Link to="/config">
                         <Sparkles className="w-3.5 h-3.5" />
-                        <span>Conectar OpenAI em Configurações</span>
+                        <span>Conectar OpenAI ou Gemini em Configurações</span>
                       </Link>
                     </Button>
                   </div>
@@ -638,8 +643,8 @@ export function ModalNovaReuniaoFolha({
                   </p>
                   <p className="text-blue-800 text-[11px] leading-relaxed">
                     Você pode falar naturalmente: &quot;reunião com o cliente João quinta às 15h
-                    para alinhar a proposta&quot;. A OpenAI identifica automaticamente a data de
-                    realização e gera tarefas para o Kanban.
+                    para alinhar a proposta&quot;. A IA (OpenAI ou Gemini) identifica
+                    automaticamente a data de realização e gera tarefas para o Kanban.
                   </p>
                 </div>
               </div>
@@ -647,7 +652,7 @@ export function ModalNovaReuniaoFolha({
           )}
 
           {/* ============================================================== */}
-          {/* ETAPA 2: PROCESSANDO NA OPENAI */}
+          {/* ETAPA 2: PROCESSANDO COM IA */}
           {/* ============================================================== */}
           {etapa === 'processando' && (
             <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
@@ -655,13 +660,11 @@ export function ModalNovaReuniaoFolha({
                 <Loader2 className="w-8 h-8 animate-spin" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-base font-bold text-[#1A1D21]">
-                  Processando Reunião com OpenAI
-                </h3>
+                <h3 className="text-base font-bold text-[#1A1D21]">Processando Reunião com IA</h3>
                 <p className="text-xs text-[#5B6470]">{statusProcessamento}</p>
               </div>
               <Badge variant="outline" className="text-[11px] border-zinc-200 text-zinc-600">
-                Whisper Audio Transcription • GPT-4o Action Plan
+                OpenAI Whisper / Google Gemini • Plano de Ação & Kanban
               </Badge>
             </div>
           )}
@@ -904,7 +907,7 @@ export function ModalNovaReuniaoFolha({
                     value={transcricao}
                     onChange={(e) => setTranscricao(e.target.value)}
                     className="text-xs border-[#E5E1D8]"
-                    placeholder="Texto transcrito pela OpenAI..."
+                    placeholder="Texto transcrito pela IA..."
                   />
                 </div>
               </div>

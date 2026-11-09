@@ -6,9 +6,13 @@
  * Rota: POST /backend/v1/transcrever-reuniao
  *
  * Modelo de execução:
- * 1. Usa a conta OpenAI conectada pelo próprio usuário ($connectors.execute com OPENAI_CREATE_AUDIO_TRANSCRIPTION e OPENAI_CREATE_CHAT_COMPLETION).
- * 2. Se o usuário NÃO tiver a conta OpenAI conectada, retorna erro amigável em pt-BR instruindo a conectar em Configurações.
- * 3. Transcreve o áudio (ou aceita transcrição direta caso o áudio já venha transcrito / texto de teste) e extrai:
+ * 1. Prioriza a conta OpenAI conectada pelo próprio usuário ($connectors.execute com
+ *    OPENAI_CREATE_AUDIO_TRANSCRIPTION e OPENAI_CREATE_CHAT_COMPLETION).
+ * 2. Se o usuário NÃO tiver OpenAI conectada, verifica se possui o conector Google Gemini conectado
+ *    ($connectors.execute com GEMINI_GENERATE_CONTENT).
+ * 3. Se nenhuma IA estiver conectada, retorna erro amigável com código 'IA_NAO_CONECTADA'
+ *    instruindo a conectar OpenAI ou Gemini em Configurações.
+ * 4. Processa áudio/transcrição e extrai:
  *    - titulo_sugerido
  *    - data_inicio (ISO no fuso ou YYYY-MM-DDTHH:mm)
  *    - data_fim
@@ -49,12 +53,30 @@ routerAdd('POST', '/backend/v1/transcrever-reuniao', (c) => {
       })
     }
 
-    let textoFinal = textoTranscritoFornecido
+    // Helper para verificar se um erro é de conector não conectado
+    const isNotConnectedError = (errStr) => {
+      const s = String(errStr || '').toLowerCase()
+      return (
+        s.includes('not connected') ||
+        s.includes('no active connection') ||
+        s.includes('not configured') ||
+        s.includes('connection not found') ||
+        s.includes('account not connected') ||
+        s.includes('is not connected')
+      )
+    }
 
-    // 1. Transcrição via conector OpenAI do usuário (caso haja áudio)
+    let textoFinal = textoTranscritoFornecido
+    let iaUtilizada = null // 'openai' | 'gemini' | 'nenhuma'
+    let openaiDisponivel = true
+    let geminiDisponivel = true
+
+    // 1. Transcrição de áudio caso haja áudio e não haja texto direto
     if (!textoFinal && audioBase64) {
+      const audioFileName = body.nome_arquivo || 'reuniao.webm'
+
+      // Tentativa 1: Whisper via conector OpenAI do usuário
       try {
-        const audioFileName = body.nome_arquivo || 'reuniao.webm'
         const resTrans = $connectors.execute(authRecord, 'OPENAI_CREATE_AUDIO_TRANSCRIPTION', {
           model: 'whisper-1',
           raw_content: audioBase64,
@@ -64,51 +86,113 @@ routerAdd('POST', '/backend/v1/transcrever-reuniao', (c) => {
           temperature: 0.2,
         })
 
-        if (!resTrans || !resTrans.successful) {
-          const errStr = String(resTrans?.error || '')
-          if (
-            errStr.includes('not connected') ||
-            errStr.includes('No active connection') ||
-            errStr.includes('not configured') ||
-            errStr.includes('connection not found')
-          ) {
-            return c.json(400, {
-              sucesso: false,
-              codigo: 'OPENAI_NAO_CONECTADA',
-              mensagem:
-                'Sua conta OpenAI não está conectada. Acesse Configurações → Memória Estratégica & Conectores para conectar sua chave OpenAI.',
-            })
+        if (resTrans && resTrans.successful) {
+          const transData = resTrans.data || {}
+          textoFinal = transData.text || transData.transcript || ''
+          if (!textoFinal && typeof transData === 'string') {
+            textoFinal = transData
           }
+          if (textoFinal && textoFinal.trim()) {
+            iaUtilizada = 'openai'
+          }
+        } else {
+          const errStr = String(resTrans?.error || '')
+          if (isNotConnectedError(errStr)) {
+            openaiDisponivel = false
+          } else {
+            console.log('Aviso ao transcrever com OpenAI Whisper:', errStr)
+          }
+        }
+      } catch (whisperErr) {
+        const msg = String(whisperErr?.message || whisperErr || '')
+        if (isNotConnectedError(msg)) {
+          openaiDisponivel = false
+        } else {
+          console.log('Erro de execução OpenAI Whisper:', whisperErr)
+        }
+      }
 
-          return c.json(500, {
-            sucesso: false,
-            codigo: 'ERRO_TRANSCRICAO',
-            mensagem:
-              'Não foi possível transcrever o áudio com a sua conta OpenAI: ' +
-              (resTrans?.error || 'Erro desconhecido'),
-          })
-        }
+      // Tentativa 2: Se OpenAI não conectada ou sem texto, tentar Gemini via GEMINI_GENERATE_CONTENT
+      if (!textoFinal) {
+        try {
+          // Gemini 1.5/2.0 aceita áudio ou prompt multivariado; enviamos o prompt instruindo transcrição
+          const promptAudioGemini =
+            'TRANSCRIÇÃO DE ÁUDIO DE REUNIÃO DE TRABALHO.\n' +
+            'Você é um transcritor e assistente executivo sênior. O áudio a seguir foi gravado em formato ' +
+            audioMimeType +
+            ' codificado em base64. ' +
+            'Por favor, transcreva integralmente a fala em português do Brasil com fidelidade e correção gramatical. ' +
+            'Retorne apenas a transcrição do conteúdo falado.\n\n' +
+            '[AUDIO_BASE64_MIME:' +
+            audioMimeType +
+            ']\n' +
+            audioBase64.substring(0, 150000)
 
-        const transData = resTrans.data || {}
-        textoFinal = transData.text || transData.transcript || ''
-        if (!textoFinal && typeof transData === 'string') {
-          textoFinal = transData
-        }
-      } catch (connErr) {
-        const errMsg = String(connErr?.message || connErr || '')
-        if (
-          errMsg.includes('not connected') ||
-          errMsg.includes('No active connection') ||
-          errMsg.includes('not configured')
-        ) {
-          return c.json(400, {
-            sucesso: false,
-            codigo: 'OPENAI_NAO_CONECTADA',
-            mensagem:
-              'Sua conta OpenAI não está conectada. Acesse Configurações → Memória Estratégica & Conectores para conectar sua chave OpenAI.',
+          const resGemini = $connectors.execute(authRecord, 'GEMINI_GENERATE_CONTENT', {
+            prompt: promptAudioGemini,
+            temperature: 0.2,
           })
+
+          if (resGemini && resGemini.successful) {
+            const gData = resGemini.data || {}
+            let gText = ''
+            if (typeof gData === 'string') {
+              gText = gData
+            } else if (gData.text) {
+              gText = gData.text
+            } else if (gData.candidates && gData.candidates[0]?.content?.parts?.[0]?.text) {
+              gText = gData.candidates[0].content.parts[0].text
+            } else if (gData.response) {
+              gText = String(gData.response)
+            }
+            if (gText && gText.trim()) {
+              textoFinal = gText.trim()
+              iaUtilizada = 'gemini'
+            }
+          } else {
+            const errStr = String(resGemini?.error || '')
+            if (isNotConnectedError(errStr)) {
+              geminiDisponivel = false
+            } else {
+              console.log('Aviso ao transcrever com Gemini:', errStr)
+            }
+          }
+        } catch (geminiErr) {
+          const msg = String(geminiErr?.message || geminiErr || '')
+          if (isNotConnectedError(msg)) {
+            geminiDisponivel = false
+          } else {
+            console.log('Erro de execução Gemini transcrição:', geminiErr)
+          }
         }
-        throw connErr
+      }
+
+      // Se ambas as IAs não estiverem conectadas
+      if (!openaiDisponivel && !geminiDisponivel && !textoFinal) {
+        return c.json(400, {
+          sucesso: false,
+          codigo: 'IA_NAO_CONECTADA',
+          mensagem:
+            'Nenhuma IA está conectada. Conecte sua conta OpenAI ou Google Gemini (chave gratuita em aistudio.google.com) em Configurações → Memória Estratégica & Conectores para habilitar a gravação e transcrição.',
+        })
+      }
+
+      if (!textoFinal && !openaiDisponivel && geminiDisponivel) {
+        return c.json(400, {
+          sucesso: false,
+          codigo: 'ERRO_TRANSCRICAO_GEMINI',
+          mensagem:
+            'A conta OpenAI não está conectada e a transcrição via Gemini não pôde processar o formato de áudio. Digite as notas da reunião diretamente no campo de texto ou conecte a OpenAI em Configurações.',
+        })
+      }
+
+      if (!textoFinal && openaiDisponivel && !geminiDisponivel) {
+        return c.json(400, {
+          sucesso: false,
+          codigo: 'OPENAI_NAO_CONECTADA',
+          mensagem:
+            'Sua conta OpenAI não está conectada. Acesse Configurações para conectar sua chave OpenAI ou Google Gemini.',
+        })
       }
     }
 
@@ -121,7 +205,7 @@ routerAdd('POST', '/backend/v1/transcrever-reuniao', (c) => {
       })
     }
 
-    // 2. Extração e estruturação com IA via conector OpenAI do usuário (OPENAI_CREATE_CHAT_COMPLETION)
+    // 2. Extração e estruturação com IA (Projetos e Contatos do sistema para vínculo)
     let projetosNomes = []
     let contatosNomes = []
     try {
@@ -185,79 +269,139 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido (sem tags markdown, sem blocos \`\
       '-' +
       Date.now().toString().slice(-4)
 
-    try {
-      const resChat = $connectors.execute(authRecord, 'OPENAI_CREATE_CHAT_COMPLETION', {
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: promptSistema },
-          {
-            role: 'user',
-            content: 'TRANSCRIÇÃO DA REUNIÃO:\n' + textoFinal,
-          },
-        ],
-        response_format: { type: 'json_object' },
-        temperature: 0.2,
-      })
+    // Tentativa A: OpenAI Chat Completion (caso OpenAI esteja disponível)
+    if (openaiDisponivel) {
+      try {
+        const resChat = $connectors.execute(authRecord, 'OPENAI_CREATE_CHAT_COMPLETION', {
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: promptSistema },
+            {
+              role: 'user',
+              content: 'TRANSCRIÇÃO DA REUNIÃO:\n' + textoFinal,
+            },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.2,
+        })
 
-      if (!resChat || !resChat.successful) {
-        const errStr = String(resChat?.error || '')
-        if (
-          errStr.includes('not connected') ||
-          errStr.includes('No active connection') ||
-          errStr.includes('not configured') ||
-          errStr.includes('connection not found')
-        ) {
-          return c.json(400, {
-            sucesso: false,
-            codigo: 'OPENAI_NAO_CONECTADA',
-            mensagem:
-              'Sua conta OpenAI não está conectada. Acesse Configurações → Memória Estratégica & Conectores para conectar sua chave OpenAI.',
-          })
-        }
+        if (resChat && resChat.successful) {
+          const chatData = resChat.data || {}
+          let contentStr = ''
+          if (chatData.choices && chatData.choices[0] && chatData.choices[0].message) {
+            contentStr = chatData.choices[0].message.content || ''
+          } else if (typeof chatData === 'string') {
+            contentStr = chatData
+          }
 
-        console.log(
-          'Aviso: OPENAI_CREATE_CHAT_COMPLETION retornou erro, fallback heurístico:',
-          resChat?.error,
-        )
-      } else {
-        const chatData = resChat.data || {}
-        let contentStr = ''
-        if (chatData.choices && chatData.choices[0] && chatData.choices[0].message) {
-          contentStr = chatData.choices[0].message.content || ''
-        } else if (typeof chatData === 'string') {
-          contentStr = chatData
-        }
-
-        if (contentStr) {
-          try {
-            const cleaned = contentStr
-              .replace(/```json/g, '')
-              .replace(/```/g, '')
-              .trim()
-            extracaoJson = JSON.parse(cleaned)
-          } catch (pErr) {
-            console.log('Erro ao fazer parse do JSON retornado pela OpenAI:', pErr, contentStr)
+          if (contentStr) {
+            try {
+              const cleaned = contentStr
+                .replace(/```json/g, '')
+                .replace(/```/g, '')
+                .trim()
+              extracaoJson = JSON.parse(cleaned)
+              iaUtilizada = 'openai'
+            } catch (pErr) {
+              console.log('Erro ao fazer parse do JSON retornado pela OpenAI:', pErr, contentStr)
+            }
+          }
+        } else {
+          const errStr = String(resChat?.error || '')
+          if (isNotConnectedError(errStr)) {
+            openaiDisponivel = false
+          } else {
+            console.log('Aviso OPENAI_CREATE_CHAT_COMPLETION:', errStr)
           }
         }
+      } catch (chatErr) {
+        const errMsg = String(chatErr?.message || chatErr || '')
+        if (isNotConnectedError(errMsg)) {
+          openaiDisponivel = false
+        } else {
+          console.log('Erro ao chamar chat completion OpenAI:', chatErr)
+        }
       }
-    } catch (chatErr) {
-      const errMsg = String(chatErr?.message || chatErr || '')
-      if (
-        errMsg.includes('not connected') ||
-        errMsg.includes('No active connection') ||
-        errMsg.includes('not configured')
-      ) {
-        return c.json(400, {
-          sucesso: false,
-          codigo: 'OPENAI_NAO_CONECTADA',
-          mensagem:
-            'Sua conta OpenAI não está conectada. Acesse Configurações → Memória Estratégica & Conectores para conectar sua chave OpenAI.',
-        })
-      }
-      console.log('Erro ao chamar chat completion OpenAI:', chatErr)
     }
 
-    // Fallback heurístico inteligente se o chat completion não gerou JSON
+    // Tentativa B: Google Gemini GEMINI_GENERATE_CONTENT (se OpenAI não gerou JSON ou não conectada)
+    if (!extracaoJson && geminiDisponivel) {
+      try {
+        const promptGemini =
+          promptSistema +
+          '\n\nTRANSCRIÇÃO DA REUNIÃO A ANALISAR:\n' +
+          textoFinal +
+          '\n\nLembrete importante: retorne EXCLUSIVAMENTE o objeto JSON puro sem marcação de código ou markdown.'
+
+        const resGeminiContent = $connectors.execute(authRecord, 'GEMINI_GENERATE_CONTENT', {
+          prompt: promptGemini,
+          temperature: 0.2,
+        })
+
+        if (resGeminiContent && resGeminiContent.successful) {
+          const gData = resGeminiContent.data || {}
+          let contentStr = ''
+          if (typeof gData === 'string') {
+            contentStr = gData
+          } else if (gData.text) {
+            contentStr = gData.text
+          } else if (gData.candidates && gData.candidates[0]?.content?.parts?.[0]?.text) {
+            contentStr = gData.candidates[0].content.parts[0].text
+          } else if (gData.response) {
+            contentStr = String(gData.response)
+          }
+
+          if (contentStr) {
+            try {
+              // Limpeza rigorosa de markdown e crases
+              const cleaned = contentStr
+                .replace(/```json/gi, '')
+                .replace(/```/g, '')
+                .trim()
+              // Localiza o primeiro { e o último }
+              const inicioJson = cleaned.indexOf('{')
+              const fimJson = cleaned.lastIndexOf('}')
+              if (inicioJson !== -1 && fimJson !== -1 && fimJson > inicioJson) {
+                const subJson = cleaned.substring(inicioJson, fimJson + 1)
+                extracaoJson = JSON.parse(subJson)
+                iaUtilizada = 'gemini'
+              } else {
+                extracaoJson = JSON.parse(cleaned)
+                iaUtilizada = 'gemini'
+              }
+            } catch (pErr) {
+              console.log('Erro ao fazer parse do JSON retornado pelo Gemini:', pErr, contentStr)
+            }
+          }
+        } else {
+          const errStr = String(resGeminiContent?.error || '')
+          if (isNotConnectedError(errStr)) {
+            geminiDisponivel = false
+          } else {
+            console.log('Aviso GEMINI_GENERATE_CONTENT:', errStr)
+          }
+        }
+      } catch (geminiChatErr) {
+        const errMsg = String(geminiChatErr?.message || geminiChatErr || '')
+        if (isNotConnectedError(errMsg)) {
+          geminiDisponivel = false
+        } else {
+          console.log('Erro ao chamar Gemini Generate Content:', geminiChatErr)
+        }
+      }
+    }
+
+    // Se nenhuma das IAs estava conectada para a extração
+    if (!openaiDisponivel && !geminiDisponivel && !extracaoJson) {
+      return c.json(400, {
+        sucesso: false,
+        codigo: 'IA_NAO_CONECTADA',
+        mensagem:
+          'Sua conta OpenAI ou Google Gemini não está conectada. Acesse Configurações → Memória Estratégica & Conectores para conectar sua chave OpenAI ou Google Gemini (chave gratuita em aistudio.google.com).',
+      })
+    }
+
+    // Fallback heurístico inteligente se nenhuma IA estruturou JSON com sucesso
     if (!extracaoJson) {
       const linhas = textoFinal.split('\n').filter((l) => l.trim().length > 0)
       const tituloSugerido = linhas[0]?.substring(0, 70) || 'Reunião capturada na Folha do Dia'
@@ -282,6 +426,7 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido (sem tags markdown, sem blocos \`\
     return c.json(200, {
       sucesso: true,
       transcricao: textoFinal,
+      ia_utilizada: iaUtilizada || (openaiDisponivel ? 'openai' : 'gemini'),
       analise: {
         ...extracaoJson,
         link_reuniao_sugerido: linkReuniaoJitsi,
