@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-09T02:12:37.527Z",
+  "generatedAt": "2026-11-09T02:23:36.806Z",
   "collections": [
     {
       "name": "users",
@@ -3457,6 +3457,183 @@
         }
       ],
       "indexes": ["CREATE INDEX idx_feedback_created ON feedback_teste (created DESC)"]
+    },
+    {
+      "name": "config_email",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "remetente_nome",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "remetente_email",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "assunto_convite",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "titulo_cabecalho",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "subtitulo_cabecalho",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "texto_apresentacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "texto_botao_aceite",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cor_primaria",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cor_cabecalho",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "texto_rodape",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "assunto_notificacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "texto_notificacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "config_email_usuario",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && usuario = @request.auth.id",
+        "view": "@request.auth.id != '' && usuario = @request.auth.id",
+        "create": "@request.auth.id != '' && @request.body.usuario = @request.auth.id",
+        "update": "@request.auth.id != '' && usuario = @request.auth.id",
+        "delete": "@request.auth.id != '' && usuario = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "usuario",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "mensagem_personalizada_convite",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "remetente_nome_preferido",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "usar_resend_proprio",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ultimo_teste_em",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ultimo_status_teste",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ultimo_erro_teste",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE UNIQUE INDEX idx_cfg_email_user ON config_email_usuario (usuario)"]
     }
   ]
 }

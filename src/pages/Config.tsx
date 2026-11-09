@@ -49,6 +49,7 @@ import GestaoFolha from '@/pages/config/GestaoFolha'
 import ConstrutorFormularios from '@/pages/config/ConstrutorFormularios'
 import GestaoLembretes from '@/pages/config/GestaoLembretes'
 import GestaoWhatsApp from '@/pages/config/GestaoWhatsApp'
+import GestaoEmailUsuario from '@/pages/config/GestaoEmailUsuario'
 import { Bell, FileEdit } from 'lucide-react'
 
 export default function Config() {
@@ -61,13 +62,17 @@ export default function Config() {
   const subAbaUrl = searchParams.get('gestao') || 'categorias_fluxos'
 
   const [abaPrincipal, setAbaPrincipal] = useState<string>(
-    abaUrl === 'lembretes'
-      ? 'lembretes'
-      : abaUrl === 'formularios'
-        ? 'formularios'
-        : abaUrl === 'preferencias'
-          ? 'preferencias'
-          : 'central',
+    abaUrl === 'email'
+      ? 'email'
+      : abaUrl === 'whatsapp'
+        ? 'whatsapp'
+        : abaUrl === 'lembretes'
+          ? 'lembretes'
+          : abaUrl === 'formularios'
+            ? 'formularios'
+            : abaUrl === 'preferencias'
+              ? 'preferencias'
+              : 'central',
   )
   const [abaGestao, setAbaGestao] = useState<string>(subAbaUrl)
 
@@ -169,6 +174,14 @@ export default function Config() {
           >
             <Settings className="w-3.5 h-3.5" />
             <span>Central de Gestão</span>
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="email"
+            className="data-[state=active]:bg-[#0F766E] data-[state=active]:text-white text-xs px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 font-medium"
+          >
+            <Mail className="w-3.5 h-3.5" />
+            <span>E-mail & Convites</span>
           </TabsTrigger>
 
           <TabsTrigger
@@ -357,7 +370,14 @@ export default function Config() {
         </TabsContent>
 
         {/* ============================================================== */}
-        {/* 2. ABA: WHATSAPP & SINCRONIZAÇÃO                              */}
+        {/* 2. ABA: MEU E-MAIL & CONVITES (CONECTOR RESEND DO USUÁRIO)    */}
+        {/* ============================================================== */}
+        <TabsContent value="email" className="space-y-4 m-0">
+          <GestaoEmailUsuario onRecarregarGlobal={recarregarGlobal} />
+        </TabsContent>
+
+        {/* ============================================================== */}
+        {/* 3. ABA: WHATSAPP & SINCRONIZAÇÃO                              */}
         {/* ============================================================== */}
         <TabsContent value="whatsapp" className="space-y-4 m-0">
           <GestaoWhatsApp onRecarregarGlobal={recarregarGlobal} />

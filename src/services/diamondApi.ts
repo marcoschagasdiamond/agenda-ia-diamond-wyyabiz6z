@@ -1603,20 +1603,17 @@ export const diamondApi = {
   async reenviarConvite(
     conviteId: string,
   ): Promise<{ sucesso: boolean; email_enviado?: boolean; mensagem: string; erro?: string }> {
-    const res = await fetch(
-      `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/equipe/reenviar-convite`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: pb.authStore.token,
-        },
-        body: JSON.stringify({ convite_id: conviteId }),
+    const res = await fetch(`${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/convites/reenviar`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: pb.authStore.token,
       },
-    )
+      body: JSON.stringify({ convite_id: conviteId }),
+    })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
-      throw new Error(err.error || 'Falha ao reenviar convite')
+      throw new Error(err.error || err.erro || 'Falha ao reenviar convite')
     }
     return await res.json()
   },
@@ -2261,5 +2258,141 @@ export const diamondApi = {
    */
   async excluirFeedbackTeste(id: string): Promise<boolean> {
     return await pb.collection('feedback_teste').delete(id)
+  },
+
+  // -------------------------------------------------------------
+  // Configurações de E-mail (Sistema / Master e Usuário Pessoal)
+  // -------------------------------------------------------------
+  async getConfigEmailSistema(): Promise<import('../types').ConfigEmailSistema | null> {
+    try {
+      const list = await pb
+        .collection('config_email')
+        .getList<import('../types').ConfigEmailSistema>(1, 1, {
+          filter: 'ativo = true',
+          sort: '-created',
+        })
+      if (list.items && list.items.length > 0) {
+        return list.items[0]
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar config_email do sistema:', err)
+    }
+    return null
+  },
+
+  async salvarConfigEmailSistema(
+    dados: Partial<import('../types').ConfigEmailSistema>,
+  ): Promise<import('../types').ConfigEmailSistema> {
+    const atual = await this.getConfigEmailSistema()
+    const payload = {
+      remetente_nome: dados.remetente_nome ?? 'Agenda IA Diamond',
+      remetente_email: dados.remetente_email ?? 'onboarding@resend.dev',
+      assunto_convite:
+        dados.assunto_convite ??
+        'Convite de Equipe: {convidador} convidou você para o Agenda IA Diamond',
+      titulo_cabecalho: dados.titulo_cabecalho ?? 'AGENDA IA DIAMOND',
+      subtitulo_cabecalho:
+        dados.subtitulo_cabecalho ?? 'Gestão Estratégica & Segundo Cérebro Executivo',
+      texto_apresentacao:
+        dados.texto_apresentacao ??
+        'convidou você para colaborar na plataforma Agenda IA Diamond com acesso dedicado.',
+      texto_botao_aceite: dados.texto_botao_aceite ?? 'Aceitar Convite e Acessar',
+      cor_primaria: dados.cor_primaria ?? '#0F766E',
+      cor_cabecalho: dados.cor_cabecalho ?? '#1A1D21',
+      texto_rodape:
+        dados.texto_rodape ??
+        'Enviado automaticamente por Agenda IA Diamond • Não responda a este e-mail.',
+      ativo: true,
+    }
+
+    if (atual && atual.id) {
+      return await pb
+        .collection('config_email')
+        .update<import('../types').ConfigEmailSistema>(atual.id, payload)
+    } else {
+      return await pb
+        .collection('config_email')
+        .create<import('../types').ConfigEmailSistema>(payload)
+    }
+  },
+
+  async getConfigEmailUsuario(
+    userId: string,
+  ): Promise<import('../types').ConfigEmailUsuario | null> {
+    if (!userId) return null
+    try {
+      const list = await pb
+        .collection('config_email_usuario')
+        .getList<import('../types').ConfigEmailUsuario>(1, 1, {
+          filter: `usuario = '${userId}'`,
+          sort: '-created',
+        })
+      if (list.items && list.items.length > 0) {
+        return list.items[0]
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar config_email_usuario:', err)
+    }
+    return null
+  },
+
+  async salvarConfigEmailUsuario(
+    userId: string,
+    dados: Partial<import('../types').ConfigEmailUsuario>,
+  ): Promise<import('../types').ConfigEmailUsuario> {
+    const atual = await this.getConfigEmailUsuario(userId)
+    const msg = dados.mensagem_personalizada ?? dados.mensagem_personalizada_convite ?? ''
+    const nome = dados.remetente_nome ?? dados.remetente_nome_preferido ?? ''
+    const payload = {
+      usuario: userId,
+      usar_resend_proprio: dados.usar_resend_proprio ?? false,
+      remetente_nome_preferido: nome,
+      remetente_nome: nome,
+      remetente_email: dados.remetente_email ?? '',
+      mensagem_personalizada_convite: msg,
+      mensagem_personalizada: msg,
+      rodape_personalizado: dados.rodape_personalizado ?? '',
+    }
+
+    if (atual && atual.id) {
+      return await pb
+        .collection('config_email_usuario')
+        .update<import('../types').ConfigEmailUsuario>(atual.id, payload)
+    } else {
+      return await pb
+        .collection('config_email_usuario')
+        .create<import('../types').ConfigEmailUsuario>(payload)
+    }
+  },
+
+  async obterConfigEmailUsuario(
+    userId: string,
+  ): Promise<import('../types').ConfigEmailUsuario | null> {
+    return await this.getConfigEmailUsuario(userId)
+  },
+
+  async dispararEmailTesteUsuario(): Promise<import('../types').RespostaEnvioEmailTeste> {
+    return await this.testarEnvioEmailUsuario()
+  },
+
+  async testarEnvioEmailUsuario(): Promise<import('../types').RespostaEnvioEmailTeste> {
+    const res = await fetch(
+      `${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/email/teste-usuario`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: pb.authStore.token,
+        },
+      },
+    )
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      return {
+        sucesso: false,
+        erro: data.erro || data.error || 'Falha ao disparar e-mail de teste.',
+      }
+    }
+    return data
   },
 }

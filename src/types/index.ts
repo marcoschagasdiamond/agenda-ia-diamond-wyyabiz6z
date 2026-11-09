@@ -973,3 +973,60 @@ export interface CriarFeedbackTesteInput {
   usuario_nome?: string
   usuario_email?: string
 }
+
+export interface ConfigEmailSistema {
+  id?: string
+  remetente_nome: string
+  remetente_email: string
+  assunto_convite: string
+  titulo_cabecalho: string
+  subtitulo_cabecalho: string
+  texto_apresentacao: string
+  texto_botao_aceite: string
+  cor_primaria: string
+  cor_cabecalho: string
+  texto_rodape: string
+  ativo: boolean
+  created?: string
+  updated?: string
+}
+
+export interface ConfigEmailUsuario {
+  id?: string
+  usuario: string
+  usar_resend_proprio: boolean
+  remetente_nome_preferido?: string
+  remetente_nome?: string
+  remetente_email?: string
+  mensagem_personalizada_convite?: string
+  mensagem_personalizada?: string
+  rodape_personalizado?: string
+  ultimo_teste_em?: string
+  ultimo_status_teste?: 'sucesso' | 'falha' | 'pendente' | ''
+  ultimo_erro_teste?: string
+  created?: string
+  updated?: string
+}
+
+export interface StatusResendMasterResponse {
+  status: 'conectado' | 'ativo_com_alertas' | 'pendente_teste' | 'desconectado'
+  provedor: string
+  modo: string
+  remetente_padrao: string
+  estatisticas: {
+    total_convites: number
+    total_enviados: number
+    total_falhas: number
+    ultimo_erro: string
+  }
+  mensagem?: string
+  erro?: string
+}
+
+export interface RespostaEnvioEmailTeste {
+  sucesso: boolean
+  mensagem?: string
+  erro?: string
+  disparado_por?: string
+  remetente?: string
+}
