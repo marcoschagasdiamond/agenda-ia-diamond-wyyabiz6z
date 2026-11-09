@@ -2121,4 +2121,119 @@ export const diamondApi = {
     }
     return await res.json()
   },
+
+  /* ========================================================================== */
+  /* GESTÃO DE FEEDBACK DE TESTE (BUGS, SUGESTÕES, IDEIAS)                     */
+  /* ========================================================================== */
+
+  /**
+   * Envia um novo feedback de teste
+   */
+  async enviarFeedbackTeste(
+    input: import('../types').CriarFeedbackTesteInput,
+  ): Promise<import('../types').FeedbackTesteItem> {
+    const dados: Record<string, unknown> = {
+      texto: input.texto.trim(),
+      tipo: input.tipo,
+      status: 'novo',
+      tela_origem: input.tela_origem || window.location.pathname,
+    }
+
+    if (input.usuario) {
+      dados.usuario = input.usuario
+    } else if (pb.authStore.record?.id) {
+      dados.usuario = pb.authStore.record.id
+    }
+
+    if (input.usuario_nome) {
+      dados.usuario_nome = input.usuario_nome
+    } else if (pb.authStore.record?.name) {
+      dados.usuario_nome = pb.authStore.record.name
+    }
+
+    if (input.usuario_email) {
+      dados.usuario_email = input.usuario_email
+    } else if (pb.authStore.record?.email) {
+      dados.usuario_email = pb.authStore.record.email
+    }
+
+    if (input.conta) {
+      dados.conta = input.conta
+    } else {
+      try {
+        const lic = await this.getLicencaConta()
+        if (lic?.id) dados.conta = lic.id
+      } catch {
+        /* conta opcional */
+      }
+    }
+
+    return await pb.collection('feedback_teste').create<import('../types').FeedbackTesteItem>(dados)
+  },
+
+  /**
+   * Lista feedbacks com suporte a filtros de tipo, status e ordenação
+   */
+  async listarFeedbacksTeste(filtros?: {
+    tipo?: import('../types').TipoFeedbackTeste | 'todos'
+    status?: import('../types').StatusFeedbackTeste | 'todos'
+    termo?: string
+  }): Promise<import('../types').FeedbackTesteItem[]> {
+    try {
+      const conds: string[] = []
+      if (filtros?.tipo && filtros.tipo !== 'todos') {
+        conds.push(`tipo = "${filtros.tipo}"`)
+      }
+      if (filtros?.status && filtros.status !== 'todos') {
+        conds.push(`status = "${filtros.status}"`)
+      }
+      if (filtros?.termo && filtros.termo.trim()) {
+        const t = filtros.termo.trim()
+        conds.push(
+          `(texto ~ "${t}" || tela_origem ~ "${t}" || usuario_nome ~ "${t}" || usuario_email ~ "${t}")`,
+        )
+      }
+
+      const filter = conds.join(' && ')
+
+      return await pb
+        .collection('feedback_teste')
+        .getFullList<import('../types').FeedbackTesteItem>({
+          filter: filter || undefined,
+          sort: '-created',
+          expand: 'usuario,conta',
+        })
+    } catch {
+      return []
+    }
+  },
+
+  /**
+   * Atualiza o status do feedback (novo / em_analise / resolvido)
+   */
+  async atualizarStatusFeedback(
+    id: string,
+    status: import('../types').StatusFeedbackTeste,
+    resposta?: string,
+    nomeMaster?: string,
+  ): Promise<import('../types').FeedbackTesteItem> {
+    const payload: Record<string, unknown> = { status }
+    if (status === 'resolvido') {
+      payload.resolvido_em = new Date().toISOString()
+      if (nomeMaster) payload.resolvido_por = nomeMaster
+    }
+    if (resposta !== undefined) {
+      payload.resposta_master = resposta
+    }
+    return await pb
+      .collection('feedback_teste')
+      .update<import('../types').FeedbackTesteItem>(id, payload)
+  },
+
+  /**
+   * Remove um feedback de teste
+   */
+  async excluirFeedbackTeste(id: string): Promise<boolean> {
+    return await pb.collection('feedback_teste').delete(id)
+  },
 }

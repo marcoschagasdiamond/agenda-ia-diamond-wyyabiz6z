@@ -926,3 +926,48 @@ export interface WhatsAppSyncResponse {
   mensagem?: string
   error?: string
 }
+
+export type TipoFeedbackTeste = 'bug' | 'sugestao' | 'ideia' | 'outro'
+export type StatusFeedbackTeste = 'novo' | 'em_analise' | 'resolvido'
+
+export interface FeedbackTesteItem {
+  id: string
+  texto: string
+  tipo: TipoFeedbackTeste
+  status: StatusFeedbackTeste
+  usuario?: string
+  conta?: string
+  tela_origem?: string
+  usuario_nome?: string
+  usuario_email?: string
+  resolvido_em?: string
+  resolvido_por?: string
+  resposta_master?: string
+  created: string
+  updated: string
+  // Relações expandidas opcionais
+  expand?: {
+    usuario?: {
+      id: string
+      name?: string
+      email?: string
+      avatar?: string
+    }
+    conta?: {
+      id: string
+      nome_conta?: string
+      plano?: string
+      conta_teste?: boolean
+    }
+  }
+}
+
+export interface CriarFeedbackTesteInput {
+  texto: string
+  tipo: TipoFeedbackTeste
+  tela_origem: string
+  usuario?: string
+  conta?: string
+  usuario_nome?: string
+  usuario_email?: string
+}

@@ -33,6 +33,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import ModalConvidarEquipe from '@/components/ModalConvidarEquipe'
 import SinoNotificacoes from '@/components/SinoNotificacoes'
 import CommandPaletteGlobal from '@/components/CommandPaletteGlobal'
+import BotaoFeedbackFlutuante from '@/components/comercial/BotaoFeedbackFlutuante'
 
 interface LayoutProps {
   children?: React.ReactNode
@@ -439,6 +440,9 @@ export default function Layout({ children }: LayoutProps) {
         onOpenChange={setModalConvidarEquipeOpen}
         escopoInicial={modalConvidarEscopoPadrao}
       />
+
+      {/* Botão Flutuante Global de Feedback e Relato de Testes */}
+      <BotaoFeedbackFlutuante />
     </div>
   )
 }

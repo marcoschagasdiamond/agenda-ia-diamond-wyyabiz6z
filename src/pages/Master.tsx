@@ -31,6 +31,7 @@ import {
 import { useAuth } from '@/hooks/use-auth'
 import { diamondApi } from '@/services/diamondApi'
 import { ResumoContaMaster, PlanoLicencaTipo, MembroEquipe, ModuloLicenca } from '@/types'
+import SecaoFeedbackTestadores from '@/components/master/SecaoFeedbackTestadores'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -999,6 +1000,9 @@ export function Master() {
           </div>
         </CardContent>
       </Card>
+
+      {/* SEÇÃO DE FEEDBACK DOS TESTADORES (BUGS, SUGESTÕES, IDEIAS) */}
+      <SecaoFeedbackTestadores nomeMaster={user?.name || user?.email || 'Master'} />
 
       {/* Cards de Métricas Consolidadas */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
