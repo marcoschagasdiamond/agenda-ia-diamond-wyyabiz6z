@@ -50,6 +50,7 @@ import {
   FileText,
   Rocket,
   CheckCircle,
+  Video,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -143,6 +144,12 @@ export default function Calendario() {
   const [modalNovoEventoOpen, setModalNovoEventoOpen] = useState(false)
   const [modalDetalheOpen, setModalDetalheOpen] = useState(false)
   const [itemSelecionado, setItemSelecionado] = useState<ItemCalendarioUnificado | null>(null)
+
+  // 4.1 Modal da Sala de Reunião Jitsi Integrada
+  const [modalJitsiOpen, setModalJitsiOpen] = useState(false)
+  const [jitsiUrlAtiva, setJitsiUrlAtiva] = useState<string | null>(null)
+  const [jitsiTituloAtivo, setJitsiTituloAtivo] = useState<string>('')
+
   const [modalDiaOpen, setModalDiaOpen] = useState(false)
   const [diaVisualizado, setDiaVisualizado] = useState<string>('')
   const [filtroTipoModalDia, setFiltroTipoModalDia] = useState<TipoAtividadeGrade | 'todos'>(
@@ -165,6 +172,7 @@ export default function Calendario() {
     cor: string
     projetoId: string
     contatoId: string
+    linkReuniao?: string
     lembreteModo?: 'padrao' | 'personalizado' | 'desativado'
     lembreteAntecedencias?: LembreteAntecedenciaCodigo[]
   }>({
@@ -181,6 +189,7 @@ export default function Calendario() {
     cor: '#0F766E',
     projetoId: '',
     contatoId: '',
+    linkReuniao: '',
     lembreteModo: 'padrao',
     lembreteAntecedencias: ['15m', '1h', '1d'],
   })
@@ -390,6 +399,7 @@ export default function Calendario() {
         contatoNome: cont?.nome,
         contatoId: cont?.id,
         responsavelNome: ev.expand?.criado_por?.name,
+        linkReuniao: ev.link_reuniao,
         rawItem: ev,
       })
     })
@@ -415,6 +425,7 @@ export default function Calendario() {
         contatoNome: cont?.nome,
         contatoId: cont?.id,
         responsavelNome: dem.expand?.atribuido_a?.name,
+        linkReuniao: dem.link_reuniao,
         rawItem: dem,
       })
     })
@@ -762,6 +773,7 @@ export default function Calendario() {
         cor: formEvento.cor,
         projeto: formEvento.projetoId || undefined,
         contato: formEvento.contatoId || undefined,
+        link_reuniao: formEvento.linkReuniao?.trim() || undefined,
         lembrete_modo: formEvento.lembreteModo || 'padrao',
         lembrete_antecedencias:
           formEvento.lembreteModo === 'personalizado'
@@ -1647,6 +1659,105 @@ export default function Calendario() {
                     </div>
                   )}
                 </div>
+
+                {/* Bloco de Sala de Reunião Online */}
+                {(itemSelecionado.linkReuniao ||
+                  (itemSelecionado.rawItem as EventoCalendario | undefined)?.link_reuniao) && (
+                  <div className="p-3 rounded-lg border border-teal-200 bg-teal-50/60 flex flex-col gap-2 mt-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Video className="w-4 h-4 text-[#0F766E]" />
+                        <span className="text-xs font-semibold text-[#0F766E]">
+                          Sala de Reunião Online
+                        </span>
+                      </div>
+                      <Badge className="bg-teal-600 text-white hover:bg-teal-600 border-none text-[9px] px-1.5 py-0.5">
+                        Jitsi / Vídeo
+                      </Badge>
+                    </div>
+
+                    <p className="text-[11px] text-[#5B6470] break-all">
+                      {itemSelecionado.linkReuniao ||
+                        (itemSelecionado.rawItem as EventoCalendario).link_reuniao}
+                    </p>
+
+                    <div className="flex items-center gap-2 pt-1 flex-wrap">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          const link =
+                            itemSelecionado.linkReuniao ||
+                            (itemSelecionado.rawItem as EventoCalendario).link_reuniao ||
+                            ''
+                          setJitsiUrlAtiva(link)
+                          setJitsiTituloAtivo(itemSelecionado.titulo)
+                          setModalJitsiOpen(true)
+                        }}
+                        className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-8 px-3 font-medium gap-1.5"
+                      >
+                        <Video className="w-3.5 h-3.5" />
+                        Entrar na Reunião
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const link =
+                            itemSelecionado.linkReuniao ||
+                            (itemSelecionado.rawItem as EventoCalendario).link_reuniao ||
+                            ''
+                          if (link) window.open(link, '_blank', 'noopener,noreferrer')
+                        }}
+                        className="text-xs h-8 px-3 border-[#0F766E]/40 text-[#0F766E] hover:bg-teal-50 gap-1.5"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        Abrir em Nova Aba
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Exibição de Transcrição e Resumo se houver */}
+                {Boolean(
+                  (itemSelecionado.rawItem as EventoCalendario | undefined)?.resumo ||
+                  (itemSelecionado.rawItem as EventoCalendario | undefined)?.transcricao,
+                ) && (
+                  <div className="p-3 rounded-lg border border-[#E5E1D8] bg-[#FAFAF9] space-y-2 text-xs">
+                    {(itemSelecionado.rawItem as EventoCalendario).resumo && (
+                      <div>
+                        <span className="text-[10px] font-bold uppercase text-[#5B6470] block mb-0.5">
+                          Resumo da Reunião (IA)
+                        </span>
+                        <p className="text-[#1A1D21] leading-relaxed">
+                          {(itemSelecionado.rawItem as EventoCalendario).resumo}
+                        </p>
+                      </div>
+                    )}
+                    {(itemSelecionado.rawItem as EventoCalendario).decisoes && (
+                      <div>
+                        <span className="text-[10px] font-bold uppercase text-[#5B6470] block mb-0.5">
+                          Decisões
+                        </span>
+                        <p className="text-[#1A1D21] leading-relaxed">
+                          {(itemSelecionado.rawItem as EventoCalendario).decisoes}
+                        </p>
+                      </div>
+                    )}
+                    {(itemSelecionado.rawItem as EventoCalendario).transcricao && (
+                      <details className="cursor-pointer text-[#5B6470]">
+                        <summary className="text-[10px] font-bold uppercase text-[#5B6470] hover:text-[#1A1D21]">
+                          Ver transcrição completa
+                        </summary>
+                        <p className="mt-1 text-[11px] text-[#5B6470] whitespace-pre-wrap bg-white p-2 rounded border border-[#E5E1D8]">
+                          {(itemSelecionado.rawItem as EventoCalendario).transcricao}
+                        </p>
+                      </details>
+                    )}
+                  </div>
+                )}
               </div>
 
               <DialogFooter className="flex items-center justify-between sm:justify-between pt-2 border-t border-[#E5E1D8]">
@@ -1680,6 +1791,7 @@ export default function Calendario() {
                           cor: ev.cor || '#0F766E',
                           projetoId: ev.projeto || '',
                           contatoId: ev.contato || '',
+                          linkReuniao: ev.link_reuniao || '',
                           lembreteModo: ev.lembrete_modo || 'padrao',
                           lembreteAntecedencias: Array.isArray(ev.lembrete_antecedencias)
                             ? (ev.lembrete_antecedencias as any)
@@ -1754,6 +1866,53 @@ export default function Calendario() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ======================================================== */}
+      {/* 4.1 MODAL: SALA DE REUNIÃO JITSI EMBUTIDA                */}
+      {/* ======================================================== */}
+      <Dialog open={modalJitsiOpen} onOpenChange={setModalJitsiOpen}>
+        <DialogContent className="max-w-4xl w-[95vw] h-[85vh] bg-zinc-900 border-zinc-800 text-white flex flex-col p-0 overflow-hidden">
+          <DialogHeader className="p-3 bg-zinc-950 border-b border-zinc-800 flex flex-row items-center justify-between space-y-0">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+              <DialogTitle className="text-sm font-semibold text-white">
+                {jitsiTituloAtivo || 'Sala de Reunião Online'}
+              </DialogTitle>
+              <Badge className="bg-teal-700 text-white text-[10px] px-1.5 py-0">Jitsi Meet</Badge>
+            </div>
+
+            <div className="flex items-center gap-2 mr-6">
+              {jitsiUrlAtiva && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => window.open(jitsiUrlAtiva, '_blank', 'noopener,noreferrer')}
+                  className="text-xs h-7 text-zinc-300 hover:text-white hover:bg-zinc-800 gap-1"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Abrir no Navegador
+                </Button>
+              )}
+            </div>
+          </DialogHeader>
+
+          <div className="flex-1 w-full h-full bg-zinc-950 relative">
+            {jitsiUrlAtiva ? (
+              <iframe
+                src={jitsiUrlAtiva}
+                title="Sala de Reunião Jitsi"
+                allow="camera; microphone; fullscreen; display-capture; autoplay"
+                className="w-full h-full border-0"
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-zinc-400 text-xs">
+                Link da reunião não informado.
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -1959,7 +2118,35 @@ export default function Calendario() {
                 rows={2}
                 value={formEvento.descricao}
                 onChange={(e) => setFormEvento({ ...formEvento, descricao: e.target.value })}
-                placeholder="Detalhes, link da sala virtual ou anotações..."
+                placeholder="Detalhes, pauta ou anotações..."
+                className="text-xs border-[#E5E1D8]"
+              />
+            </div>
+
+            {/* Link da Reunião (Jitsi ou custom) */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-[#1A1D21] flex items-center gap-1.5">
+                  <Video className="w-3.5 h-3.5 text-[#0F766E]" />
+                  Link da Reunião Online (Jitsi / Meet / Zoom)
+                </label>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFormEvento({
+                      ...formEvento,
+                      linkReuniao: `https://meet.jit.si/diamond-${Date.now()}`,
+                    })
+                  }
+                  className="text-[10px] text-[#0F766E] hover:underline font-medium"
+                >
+                  Gerar sala Jitsi gratuita
+                </button>
+              </div>
+              <Input
+                value={formEvento.linkReuniao || ''}
+                onChange={(e) => setFormEvento({ ...formEvento, linkReuniao: e.target.value })}
+                placeholder="https://meet.jit.si/... ou https://meet.google.com/..."
                 className="text-xs border-[#E5E1D8]"
               />
             </div>

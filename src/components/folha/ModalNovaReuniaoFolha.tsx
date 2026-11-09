@@ -328,7 +328,7 @@ export function ModalNovaReuniaoFolha({
         data_inicio: dtInicioIso,
         data_fim: dtFimIso,
         categoria: 'reuniao' as const,
-        status: 'agendado' as const,
+        status: 'pendente' as const,
         prioridade: 'alta' as const,
         link_reuniao: linkReuniao.trim(),
         transcricao: transcricao.trim(),
@@ -345,34 +345,24 @@ export function ModalNovaReuniaoFolha({
       // 2. Determina onde criar os cards do Kanban (Fluxo do projeto ou fluxo selecionado)
       let fluxoDestinoId = fluxoId !== 'none' ? fluxoId : null
 
-      // Se nenhum fluxo selecionado mas tem projeto, tenta achar o fluxo do projeto
-      if (!fluxoDestinoId && projetoId !== 'none') {
-        const proj = projetos.find((p) => p.id === projetoId)
-        if (proj && proj.fluxo_padrao) {
-          fluxoDestinoId = proj.fluxo_padrao
-        }
-      }
-
-      // Se ainda não tiver fluxo, usa o primeiro fluxo disponível
+      // Se nenhum fluxo selecionado mas tem fluxos disponíveis, usa o primeiro fluxo ativo
       if (!fluxoDestinoId && fluxos.length > 0) {
         fluxoDestinoId = fluxos[0].id
       }
 
-      // Busca as colunas do fluxo para colocar na coluna BACKLOG
-      let colunaBacklogId = ''
-      if (fluxoDestinoId) {
-        try {
-          const colunas = await diamondApi.getColunasFluxo(fluxoDestinoId)
-          const colBacklog =
-            colunas.find((c) => c.nome.toUpperCase().includes('BACKLOG')) ||
-            colunas.find((c) => c.chave?.toUpperCase().includes('BACKLOG')) ||
-            colunas[0]
-          if (colBacklog) {
-            colunaBacklogId = colBacklog.id
-          }
-        } catch (eCol) {
-          console.warn('Não foi possível carregar colunas do fluxo:', eCol)
+      // Busca as colunas do fluxo para identificar a chave da coluna BACKLOG (ou primeira coluna)
+      let statusDestino = 'backlog'
+      try {
+        const colunas = await diamondApi.listColunasFluxo()
+        const colBacklog =
+          colunas.find((c) => c.titulo?.toUpperCase().includes('BACKLOG')) ||
+          colunas.find((c) => c.chave?.toLowerCase().includes('backlog')) ||
+          colunas[0]
+        if (colBacklog?.chave) {
+          statusDestino = colBacklog.chave
         }
+      } catch (eCol) {
+        console.warn('Não foi possível carregar colunas do fluxo:', eCol)
       }
 
       // 3. Cria cards no Kanban para cada próximo passo selecionado
@@ -386,9 +376,8 @@ export function ModalNovaReuniaoFolha({
             projeto: projetoId !== 'none' ? projetoId : undefined,
             contato: contatoId !== 'none' ? contatoId : undefined,
             prioridade: 'alta',
-            status: 'a_fazer',
+            status: statusDestino,
             fluxo_id: fluxoDestinoId || undefined,
-            coluna_id: colunaBacklogId || undefined,
           })
           criados++
         } catch (cardErr) {

@@ -63,6 +63,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { GravadorReuniao } from '@/components/folha/GravadorReuniao'
+import { ModalNovaReuniaoFolha } from '@/components/folha/ModalNovaReuniaoFolha'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
@@ -249,6 +250,9 @@ export default function Folha() {
   const [demandaContato, setDemandaContato] = useState('none')
   const [demandaTimeline, setDemandaTimeline] = useState('')
   const [criandoDemanda, setCriandoDemanda] = useState(false)
+
+  // Modal Nova Reunião com IA (Gravação + Whisper + GPT + Kanban + Calendário)
+  const [modalNovaReuniaoOpen, setModalNovaReuniaoOpen] = useState(false)
 
   // Modal de Detalhes da Reunião Gravada
   const [modalReuniaoDetalhesOpen, setModalReuniaoDetalhesOpen] = useState(false)
@@ -1693,7 +1697,19 @@ export default function Folha() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            type="button"
+            onClick={() => setModalNovaReuniaoOpen(true)}
+            className="bg-red-600 hover:bg-red-700 text-white text-xs h-9 px-3.5 font-medium shadow-sm gap-2"
+          >
+            <Mic className="w-4 h-4" />
+            <span>Nova Reunião</span>
+            <Badge className="bg-white/20 text-white hover:bg-white/20 border-none text-[9px] px-1 py-0">
+              IA
+            </Badge>
+          </Button>
+
           <Button
             onClick={handleOrganizarComIA}
             disabled={organizando || pendentes.length === 0}
@@ -4158,6 +4174,18 @@ export default function Folha() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Modal Nova Reunião Folha com Transcrição IA */}
+      <ModalNovaReuniaoFolha
+        open={modalNovaReuniaoOpen}
+        onOpenChange={setModalNovaReuniaoOpen}
+        projetos={projetos}
+        contatos={contatos}
+        fluxos={fluxos}
+        onReuniaoConcluida={() => {
+          carregarDados()
+        }}
+      />
 
       {/* Modal de Desbloqueio Comercial do Plano */}
       <ModalDesbloqueioPlano

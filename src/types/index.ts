@@ -54,6 +54,7 @@ export interface ItemCalendarioUnificado {
   contatoId?: string
   responsavelNome?: string
   faseColunaNome?: string
+  linkReuniao?: string
   rawItem: unknown
 }
 
