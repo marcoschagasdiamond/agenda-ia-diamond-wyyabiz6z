@@ -402,7 +402,7 @@ export default function GestaoEmailUsuario({ onRecarregarGlobal }: GestaoEmailUs
                 <span className="text-[11px] text-zinc-500">
                   Ou utilize o botão oficial do conector do app:
                 </span>
-                <ConnectorButton toolkit="resend" onConnected={() => verificarConector()} />
+                <ConnectorButton toolkit="resend" name="Resend" />
               </div>
 
               {/* Toggle de Ativação do Resend Próprio */}

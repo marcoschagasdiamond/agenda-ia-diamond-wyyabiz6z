@@ -1029,4 +1029,6 @@ export interface RespostaEnvioEmailTeste {
   erro?: string
   disparado_por?: string
   remetente?: string
+  destinatario?: string
+  modo_envio?: string
 }
