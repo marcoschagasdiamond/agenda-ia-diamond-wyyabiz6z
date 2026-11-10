@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-10T14:20:44.885Z",
+  "generatedAt": "2026-11-10T15:12:49.147Z",
   "collections": [
     {
       "name": "users",
@@ -1702,6 +1702,18 @@
           "required": false,
           "system": false,
           "collectionRef": "folha_dia"
+        },
+        {
+          "name": "lembrete_minutos_antes",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lembrete_enviado",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

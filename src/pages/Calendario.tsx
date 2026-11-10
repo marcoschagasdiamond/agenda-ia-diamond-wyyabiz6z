@@ -175,6 +175,7 @@ export default function Calendario() {
     linkReuniao?: string
     lembreteModo?: 'padrao' | 'personalizado' | 'desativado'
     lembreteAntecedencias?: LembreteAntecedenciaCodigo[]
+    lembreteMinutos?: string
   }>({
     titulo: '',
     descricao: '',
@@ -192,6 +193,7 @@ export default function Calendario() {
     linkReuniao: '',
     lembreteModo: 'padrao',
     lembreteAntecedencias: ['15m', '1h', '1d'],
+    lembreteMinutos: '15',
   })
   const [salvandoEvento, setSalvandoEvento] = useState(false)
 
@@ -733,6 +735,7 @@ export default function Calendario() {
       contatoId: '',
       lembreteModo: 'padrao',
       lembreteAntecedencias: ['15m', '1h', '1d'],
+      lembreteMinutos: '15',
     })
     setModalNovoEventoOpen(true)
   }
@@ -779,6 +782,8 @@ export default function Calendario() {
           formEvento.lembreteModo === 'personalizado'
             ? formEvento.lembreteAntecedencias
             : undefined,
+        lembrete_minutos_antes: Number(formEvento.lembreteMinutos) || 0,
+        lembrete_enviado: false,
         criado_por: user?.id,
       }
 
@@ -1798,6 +1803,10 @@ export default function Calendario() {
                             : typeof ev.lembrete_antecedencias === 'string'
                               ? JSON.parse(ev.lembrete_antecedencias || '[]')
                               : ['15m', '1h', '1d'],
+                          lembreteMinutos:
+                            ev.lembrete_minutos_antes && ev.lembrete_minutos_antes > 0
+                              ? String(ev.lembrete_minutos_antes)
+                              : '0',
                         })
                         setModalDetalheOpen(false)
                         setModalNovoEventoOpen(true)
@@ -2368,6 +2377,30 @@ export default function Calendario() {
                     : 'Usa a antecedência configurada em Configurações > Lembretes (ex: 15m, 1h, 1d).'}
                 </p>
               )}
+
+              {/* Antecedência do lembrete por E-mail + WhatsApp (cron do servidor) */}
+              <div className="pt-1.5 border-t border-[#0F766E]/20 space-y-1">
+                <span className="text-[11px] text-[#5B6470] block">
+                  Aviso por E-mail + WhatsApp antes do evento:
+                </span>
+                <Select
+                  value={formEvento.lembreteMinutos || '0'}
+                  onValueChange={(val) => setFormEvento({ ...formEvento, lembreteMinutos: val })}
+                >
+                  <SelectTrigger className="text-xs border-[#E5E1D8] h-8 bg-white">
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent className="text-xs">
+                    <SelectItem value="0">Sem lembrete</SelectItem>
+                    <SelectItem value="10">10 minutos antes</SelectItem>
+                    <SelectItem value="15">15 minutos antes</SelectItem>
+                    <SelectItem value="30">30 minutos antes</SelectItem>
+                    <SelectItem value="60">1 hora antes</SelectItem>
+                    <SelectItem value="120">2 horas antes</SelectItem>
+                    <SelectItem value="1440">1 dia antes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Vínculos Opcionais: Projeto e Contato */}

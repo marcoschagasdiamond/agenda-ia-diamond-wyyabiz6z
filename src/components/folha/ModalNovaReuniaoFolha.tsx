@@ -37,6 +37,7 @@ import {
   User,
   FolderGit2,
   Layers,
+  Bell,
   ArrowRight,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
@@ -116,6 +117,7 @@ export function ModalNovaReuniaoFolha({
   const [projetoId, setProjetoId] = useState<string>('none')
   const [contatoId, setContatoId] = useState<string>('none')
   const [fluxoId, setFluxoId] = useState<string>('none')
+  const [lembreteMinutos, setLembreteMinutos] = useState<string>('15')
 
   // Estado de persistência final
   const [salvandoTudo, setSalvandoTudo] = useState(false)
@@ -158,6 +160,7 @@ export function ModalNovaReuniaoFolha({
       setProjetoId('none')
       setContatoId('none')
       setFluxoId('none')
+      setLembreteMinutos('15')
       setEventoCriadoId(null)
       setCardsCriadosCount(0)
     } else {
@@ -419,6 +422,8 @@ export function ModalNovaReuniaoFolha({
         proximos_passos: JSON.stringify(passosFinal),
         projeto: projetoId !== 'none' ? projetoId : undefined,
         contato: contatoId !== 'none' ? contatoId : undefined,
+        lembrete_minutos_antes: Number(lembreteMinutos) || 0,
+        lembrete_enviado: false,
       }
 
       const eventoCriado = await diamondApi.createEventoCalendario(payloadEvento)
@@ -922,6 +927,29 @@ export function ModalNovaReuniaoFolha({
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-zinc-600 flex items-center gap-1">
+                    <Bell className="w-3 h-3" /> Lembrete Automático
+                  </label>
+                  <Select value={lembreteMinutos} onValueChange={setLembreteMinutos}>
+                    <SelectTrigger className="h-8 text-xs border-[#E5E1D8] bg-white">
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">Sem lembrete</SelectItem>
+                      <SelectItem value="10">10 minutos antes</SelectItem>
+                      <SelectItem value="15">15 minutos antes</SelectItem>
+                      <SelectItem value="30">30 minutos antes</SelectItem>
+                      <SelectItem value="60">1 hora antes</SelectItem>
+                      <SelectItem value="120">2 horas antes</SelectItem>
+                      <SelectItem value="1440">1 dia antes</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-zinc-400">
+                    Enviado por e-mail e WhatsApp do usuário, uma única vez.
+                  </p>
                 </div>
               </div>
 
