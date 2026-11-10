@@ -1786,22 +1786,7 @@ export default function Folha() {
 
       {/* Modo Gravador de Reuniões */}
       {modoCaptura === 'gravador' && (
-        <GravadorReuniao
-          projetos={projetos}
-          contatos={contatos}
-          fluxos={fluxos}
-          categorias={categorias}
-          marcosTimeline={marcosTimeline}
-          onReuniaoCriada={(novaFolha) => {
-            setFolhaItems((prev) => [novaFolha, ...prev])
-            setModoCaptura('assuntos')
-            carregarDados()
-          }}
-          onAbrirCriarProjeto={() => handleAbrirCriarProjeto('reuniao_temp')}
-          onAbrirCriarContato={() => handleAbrirCriarContato('reuniao_temp')}
-          onAbrirCriarFluxo={() => handleAbrirCriarFluxo('reuniao_temp')}
-          onAbrirCriarTimeline={() => handleAbrirCriarTimeline('reuniao_temp')}
-        />
+        <GravadorReuniao onAbrirNovaReuniao={() => setModalNovaReuniaoOpen(true)} />
       )}
 
       {/* Formulário de Múltiplos Assuntos da Folha */}
