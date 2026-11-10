@@ -51,9 +51,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
             </div>
           </div>
           <div className="space-y-1">
-            <h2 className="text-base font-bold text-[#1A1D21]">
-              Algo deu errado nesta seção
-            </h2>
+            <h2 className="text-base font-bold text-[#1A1D21]">Algo deu errado nesta seção</h2>
             <p className="text-xs text-[#5B6470] max-w-md mx-auto">
               Encontramos um problema ao exibir este conteúdo, mas o restante do aplicativo continua
               funcionando. Tente novamente — se persistir, recarregue a página.

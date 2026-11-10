@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { listConnectors, disconnect } from '@/lib/skipConnectors'
-import { conectarViaNovaJanela } from '@/lib/conexaoAutorizacao'
+import { conectarViaNovaJanela, type DiagnosticoConexao } from '@/lib/conexaoAutorizacao'
 import { useToast } from '@/hooks/use-toast'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -29,6 +29,7 @@ export function GestaoGeminiUsuario() {
   const [conectado, setConectado] = useState(false)
   const [processando, setProcessando] = useState(false)
   const [blockedUrl, setBlockedUrl] = useState<string | null>(null)
+  const [diagnosticoBloqueio, setDiagnosticoBloqueio] = useState<DiagnosticoConexao | null>(null)
 
   const carregarStatus = useCallback(async () => {
     try {
@@ -63,11 +64,20 @@ export function GestaoGeminiUsuario() {
     try {
       setProcessando(true)
       setBlockedUrl(null)
+      setDiagnosticoBloqueio(null)
 
+      // conectarViaNovaJanela abre a janela SINCRONAMENTE no gesto do clique (antes de
+      // qualquer await), o que o Safari exige — ver src/lib/conexaoAutorizacao.ts.
       const resultado = await conectarViaNovaJanela('gemini', calcularReturnUrlConfig())
 
       if (resultado.janelaBloqueada && resultado.url) {
+        // Log de diagnóstico para identificar o motivo do bloqueio em dispositivos reais.
+        console.error(
+          '[conexao-ia][gemini] janela de autorização bloqueada:',
+          resultado.diagnostico,
+        )
         setBlockedUrl(resultado.url)
+        setDiagnosticoBloqueio(resultado.diagnostico)
         toast({
           title: 'Janela de autorização bloqueada pelo navegador',
           description:
@@ -89,6 +99,7 @@ export function GestaoGeminiUsuario() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Tente novamente.'
       setBlockedUrl(null)
+      setDiagnosticoBloqueio(null)
       toast({
         title: 'Atenção ao conectar Gemini',
         description: msg,
@@ -292,6 +303,14 @@ export function GestaoGeminiUsuario() {
                 Dispensar aviso
               </Button>
             </div>
+            {diagnosticoBloqueio && (
+              <p className="text-[10px] text-blue-700/70 pl-6 select-text">
+                Diagnóstico: {diagnosticoBloqueio.motivo} · {diagnosticoBloqueio.navegador} ·{' '}
+                {diagnosticoBloqueio.tempoMs}ms
+                {diagnosticoBloqueio.emIframe ? ' · em iframe' : ''} ·{' '}
+                {diagnosticoBloqueio.detalhe || 'sem detalhe adicional'}
+              </p>
+            )}
           </div>
         )}
       </CardContent>
