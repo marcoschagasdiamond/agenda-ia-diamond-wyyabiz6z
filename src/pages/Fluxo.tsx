@@ -1499,16 +1499,19 @@ export default function Fluxo() {
   }
 
   // Card renderizado no modelo visual DiamondGroup
-  function renderKanbanCard(card: CardType, onEdit: () => void) {
+  // Clique no corpo do card navega para a página completa /card/:id (modelo Ummense);
+  // o modal rápido de edição fica acessível só pelo menu 3 pontinhos (Editar Modal Rápido).
+  function renderKanbanCard(card: CardType) {
     const familiaDoCard = familias.find((f) => f.id === card.grupo_familia)
     const contato = getContatoDoCard(card)
+    const onEdit = () => abrirModalEditarCard(card)
 
     return (
       <div
         key={card.id}
         draggable
         onDragStart={(e) => handleDragStart(e, card.id)}
-        onClick={onEdit}
+        onClick={() => navigate(`/card/${card.id}`)}
         className="group relative bg-white rounded-xl border border-[#E5E1D8] p-3.5 shadow-2xs hover:shadow-md transition-all cursor-pointer diamond-card-hover"
       >
         {/* Linha Superior: Avatar circular à esquerda, título em maiúsculas ao centro, botão abrir + 3 pontinhos à direita */}
@@ -2720,9 +2723,7 @@ export default function Fluxo() {
                       {/* Se for coluna de conclusão e o usuário clicou em Visualizar Todos, exibe os cards acima do resumo */}
                       {isColunaFinalizado && mostrarCardsFinalizados && colCards.length > 0 && (
                         <div className="space-y-2.5 pb-2 border-b border-[#E5E1D8]/70 mb-2">
-                          {colCards.map((card) =>
-                            renderKanbanCard(card, () => abrirModalEditarCard(card)),
-                          )}
+                          {colCards.map((card) => renderKanbanCard(card))}
                         </div>
                       )}
 
@@ -2771,9 +2772,7 @@ export default function Fluxo() {
                                 </div>
 
                                 <div className="space-y-2.5">
-                                  {cardsDaFamilia.map((card) =>
-                                    renderKanbanCard(card, () => abrirModalEditarCard(card)),
-                                  )}
+                                  {cardsDaFamilia.map((card) => renderKanbanCard(card))}
                                   {cardsDaFamilia.length === 0 && (
                                     <div className="h-10 border border-dashed border-[#E5E1D8] rounded-lg flex items-center justify-center text-[10px] text-[#5B6470]/60">
                                       Arraste cards para esta família
@@ -2805,17 +2804,13 @@ export default function Fluxo() {
                                   </div>
                                 )}
 
-                                {cardsSemFamilia.map((card) =>
-                                  renderKanbanCard(card, () => abrirModalEditarCard(card)),
-                                )}
+                                {cardsSemFamilia.map((card) => renderKanbanCard(card))}
                               </div>
                             )
                           })()}
                         </>
                       ) : !isColunaFinalizado ? (
-                        colCards.map((card) =>
-                          renderKanbanCard(card, () => abrirModalEditarCard(card)),
-                        )
+                        colCards.map((card) => renderKanbanCard(card))
                       ) : null}
 
                       {colCards.length === 0 && !isColunaFinalizado && (
@@ -2924,7 +2919,7 @@ export default function Fluxo() {
                     >
                       {/* Lado Esquerdo: Título, Descrição, Família e Próximo Passo */}
                       <div
-                        onClick={() => abrirModalEditarCard(card)}
+                        onClick={() => navigate(`/card/${card.id}`)}
                         className="flex-1 cursor-pointer space-y-1.5"
                       >
                         <div className="flex items-center gap-2 flex-wrap">
