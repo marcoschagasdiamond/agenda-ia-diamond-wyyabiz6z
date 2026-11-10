@@ -1,12 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import pb from '@/lib/pocketbase/client'
-import { listConnectors, connect, disconnect, ConnectPopupBlockedError } from '@/lib/skipConnectors'
+import { listConnectors, disconnect } from '@/lib/skipConnectors'
+import { conectarViaNovaJanela } from '@/lib/conexaoAutorizacao'
 import { useToast } from '@/hooks/use-toast'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
-  Sparkles,
   RefreshCw,
   CheckCircle2,
   AlertTriangle,
@@ -16,6 +15,7 @@ import {
   Mic,
   Brain,
   Calendar,
+  Sparkles,
 } from 'lucide-react'
 
 // URL segura de retorno no app para onde o conector deve redirecionar o usuário
@@ -28,7 +28,6 @@ export function GestaoOpenAIUsuario() {
   const [carregando, setCarregando] = useState(true)
   const [conectado, setConectado] = useState(false)
   const [processando, setProcessando] = useState(false)
-  const [preferirMesmaAba, setPreferirMesmaAba] = useState(true)
   const [blockedUrl, setBlockedUrl] = useState<string | null>(null)
 
   const carregarStatus = useCallback(async () => {
@@ -48,7 +47,7 @@ export function GestaoOpenAIUsuario() {
   useEffect(() => {
     carregarStatus()
 
-    // Recarregar status quando a janela/aba ganhar foco (ex: usuário autorizou em popup ou voltou de outra aba)
+    // Recarregar status quando a janela/aba ganhar foco (usuário autorizou em nova aba e voltou)
     const onFocus = () => {
       carregarStatus()
     }
@@ -58,90 +57,43 @@ export function GestaoOpenAIUsuario() {
     }
   }, [carregarStatus])
 
-  // Obtém a URL de autorização diretamente da API Skip Connectors garantindo retorno em /config
-  const obterUrlAutorizacao = async (): Promise<string> => {
-    const returnUrl = calcularReturnUrlConfig()
-    const res: unknown = await pb.send(`/api/skip/connectors/openai/connect`, {
-      method: 'POST',
-      body: { returnUrl },
-    })
-    if (
-      res &&
-      typeof res === 'object' &&
-      'url' in res &&
-      typeof (res as { url: unknown }).url === 'string'
-    ) {
-      return (res as { url: string }).url
-    }
-    throw new Error('Não foi possível obter a URL de autorização da OpenAI.')
-  }
-
-  // Navegação resiliente e protegida contra SecurityError no Safari/iOS
-  const navegarComSeguranca = (url: string) => {
-    try {
-      window.location.assign(url)
-    } catch (navErr) {
-      console.warn('Bloqueio ou SecurityError na navegação direta (Safari/ITP):', navErr)
-      setBlockedUrl(url)
-      toast({
-        title: 'Autorização requer clique manual',
-        description:
-          'Seu navegador (Safari) restringiu a navegação automática. Clique no link de autorização destacado abaixo para prosseguir com segurança.',
-        variant: 'destructive',
-      })
-    }
-  }
-
-  const handleConectar = async (forcarMesmaAba = preferirMesmaAba) => {
+  // Fluxo resiliente: abre a autorização em NOVA aba/janela (modelo que funciona no Safari).
+  // Qualquer falha cai no fallback com link clicável — a página nunca navega nem quebra.
+  const handleConectar = async () => {
     try {
       setProcessando(true)
       setBlockedUrl(null)
 
-      // Se configurado para navegar na mesma aba (padrão recomendado para Safari/iOS e navegadores estritos)
-      if (forcarMesmaAba) {
-        try {
-          const consentUrl = await obterUrlAutorizacao()
-          if (/^https?:/i.test(consentUrl)) {
-            navegarComSeguranca(consentUrl)
-            return
-          }
-        } catch (apiErr: unknown) {
-          console.warn('Tentando fallback via connect() da biblioteca:', apiErr)
-        }
-      }
+      const resultado = await conectarViaNovaJanela('openai', calcularReturnUrlConfig())
 
-      // Fluxo com fallback de popup usando a returnUrl canônica
-      await connect('openai', calcularReturnUrlConfig())
-      await carregarStatus()
-      toast({
-        title: 'OpenAI conectada com sucesso!',
-        description:
-          'Sua conta está ativa para transcrição e estruturação de reuniões na Folha do Dia.',
-      })
-    } catch (err: unknown) {
-      if (err instanceof ConnectPopupBlockedError) {
-        setBlockedUrl(err.url)
+      if (resultado.janelaBloqueada && resultado.url) {
+        setBlockedUrl(resultado.url)
         toast({
           title: 'Janela de autorização bloqueada pelo navegador',
           description:
-            'O navegador (Safari/Chrome) bloqueou a abertura automática. Clique no link destacado abaixo para autorizar.',
+            'Clique no botão de autorização destacado abaixo para abrir a OpenAI em nova aba.',
           variant: 'destructive',
         })
-      } else if (
-        err &&
-        typeof err === 'object' &&
-        'url' in err &&
-        typeof (err as { url: unknown }).url === 'string'
-      ) {
-        setBlockedUrl((err as { url: string }).url)
-      } else {
-        const msg = err instanceof Error ? err.message : 'Tente novamente.'
-        toast({
-          title: 'Atenção ao conectar OpenAI',
-          description: msg,
-          variant: 'destructive',
-        })
+        return
       }
+
+      toast({
+        title: 'Autorização aberta em nova aba',
+        description:
+          'Conclua a autorização na aba da OpenAI. Ao voltar para cá, o status atualiza automaticamente.',
+      })
+      // Revalida o status logo em seguida (a autorização pode já ter sido concluída).
+      setTimeout(() => {
+        carregarStatus()
+      }, 1500)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Tente novamente.'
+      setBlockedUrl(null)
+      toast({
+        title: 'Atenção ao conectar OpenAI',
+        description: msg,
+        variant: 'destructive',
+      })
     } finally {
       setProcessando(false)
     }
@@ -295,19 +247,19 @@ export function GestaoOpenAIUsuario() {
           </div>
         </div>
 
-        {/* Fallback Clicável para Popup ou Erro de Navegação do Safari */}
+        {/* Fallback Clicável quando a nova janela for bloqueada pelo navegador */}
         {blockedUrl && (
           <div className="p-3.5 rounded-xl border border-emerald-300 bg-emerald-50/90 text-xs text-emerald-950 space-y-2 animate-in fade-in">
             <div className="flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <p className="font-semibold text-emerald-950">
-                  O navegador restringiu a navegação automática da OpenAI
+                  O navegador bloqueou a abertura da janela de autorização da OpenAI
                 </p>
                 <p className="text-emerald-800 leading-relaxed text-[11px]">
-                  Para concluir a conexão com segurança, utilize o link direto abaixo. Você será
-                  levado à tela oficial de autorização da OpenAI e retornará a esta página com sua
-                  conta ativa.
+                  Para concluir a conexão, clique no link direto abaixo. Você será levado à tela
+                  oficial de autorização da OpenAI e, ao voltar a esta página, o status atualiza
+                  automaticamente.
                 </p>
               </div>
             </div>
@@ -324,38 +276,12 @@ export function GestaoOpenAIUsuario() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  navegarComSeguranca(blockedUrl)
-                }}
-                className="text-xs text-emerald-900 hover:bg-emerald-100 h-8 font-medium"
-              >
-                Navegar nesta mesma aba
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
                 onClick={() => setBlockedUrl(null)}
                 className="text-xs text-zinc-500 hover:text-zinc-700 h-8"
               >
                 Dispensar aviso
               </Button>
             </div>
-          </div>
-        )}
-
-        {/* Opção de preferência de navegação (mesma aba vs popup) */}
-        {!conectado && (
-          <div className="pt-2 border-t border-zinc-100 flex items-center justify-between text-xs text-zinc-600">
-            <span className="text-[11px] text-[#5B6470]">Modo de autorização do conector:</span>
-            <label className="flex items-center gap-2 cursor-pointer text-[11px] text-[#1A1D21]">
-              <input
-                type="checkbox"
-                checked={preferirMesmaAba}
-                onChange={(e) => setPreferirMesmaAba(e.target.checked)}
-                className="rounded border-zinc-300 text-[#0F766E] focus:ring-[#0F766E]"
-              />
-              <span>Navegar sempre na mesma aba (recomendado para Safari e mobile)</span>
-            </label>
           </div>
         )}
       </CardContent>
