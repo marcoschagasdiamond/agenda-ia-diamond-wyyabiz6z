@@ -14,6 +14,7 @@ routerAdd(
 
       const body = e.requestInfo().body || {}
       const dataAlvo = body.data || new Date().toISOString().split('T')[0]
+      const agoraReferencia = new Date().toISOString()
 
       // 1. Buscar registros da folha pendentes
       const folhaPendentes = $app.findRecordsByFilter(
@@ -73,6 +74,18 @@ routerAdd(
       const prompt = `Você é o organizador de tarefas e Segundo Cérebro do sistema 'Agenda IA Diamond'.
 Analise os registros livres da folha de trabalho do usuário e converta-os em cards acionáveis para o Kanban, além de estruturar o Resumo Executivo do Dia.
 
+Hoje é: ${agoraReferencia} (data da sessão: ${dataAlvo}).
+
+RESOLUÇÃO DE DATAS E HORÁRIOS (pt-BR):
+- Nos registros DIGITADOS (origem manual/whatsapp, sem [REUNIÃO GRAVADA]), procure menções a compromissos futuros com data e/ou horário citados no próprio texto.
+  Exemplos: "reunião com o Fulano quinta às 10h", "ligar para o Beltrano amanhã 15h", "almoço com cliente sexta 12h30", "visita dia 20/11 às 9h".
+- Resolva datas relativas contra a data da sessão (${dataAlvo}): "hoje", "amanhã", "depois de amanhã", "quinta", "sexta-feira que vem", "próxima segunda", "dia 20/11".
+- Resolva horários em pt-BR: "10h", "10h30", "15:00", "às 9 horas da manhã".
+- Se o texto citar somente hora sem dia (ex.: "reunião às 10h"), use a data da sessão; se a hora já tiver passado hoje, considere o dia seguinte.
+- Retorne cada compromisso em "eventos" com data_inicio e data_fim no formato "YYYY-MM-DDTHH:mm:00" (sem fuso, horário local). Assuma duração de 1 hora quando não falado o fim.
+- Campo "e_reuniao": true quando o compromisso parecer reunião, encontro, call, almoço de negócio ou visita — nesses casos o sistema cria sala de reunião (Jitsi) automaticamente.
+- NÃO invente compromissos: só inclua o que realmente cita data e/ou horário de realização. Tarefa com prazo ("entregar até sexta") também conta, como categoria "prazo".
+
 Projetos existentes:
 ${JSON.stringify(projetosMini)}
 
@@ -114,6 +127,20 @@ Responda ESTRITAMENTE em formato JSON puro, sem crases de markdown e sem texto a
       "id": "id_da_entidade",
       "novo_contexto": "Atualização concisa para o campo contexto_resumido"
     }
+  ],
+  "eventos": [
+    {
+      "folha_id": "id do registro de origem ou null",
+      "titulo": "Título curto do compromisso (ex.: Reunião com Fulano)",
+      "descricao": "Contexto citado no assunto ou string vazia",
+      "data_inicio": "YYYY-MM-DDTHH:mm:00",
+      "data_fim": "YYYY-MM-DDTHH:mm:00",
+      "categoria": "reuniao" | "prazo" | "etapa" | "atividade" | "alinhamento" | "outro",
+      "e_reuniao": true | false,
+      "projeto_id": "id do projeto correspondente ou null",
+      "contato_id": "id do contato correspondente ou null",
+      "prioridade": "baixa" | "media" | "alta" | "urgente"
+    }
   ]
 }`
 
@@ -142,6 +169,50 @@ Responda ESTRITAMENTE em formato JSON puro, sem crases de markdown e sem texto a
 
       const parsed = JSON.parse(rawOutput)
 
+      // Sanitiza eventos propostos: exige título e data_inicio válidos
+      const eventosBrutos = Array.isArray(parsed.eventos) ? parsed.eventos : []
+      const eventosSanitizados = eventosBrutos
+        .map((ev) => {
+          const titulo = String(ev.titulo || '').trim()
+          const inicio = String(ev.data_inicio || '').trim()
+          if (!titulo || !inicio) return null
+          const inicioData = new Date(inicio)
+          if (isNaN(inicioData.getTime())) return null
+          let fim = String(ev.data_fim || '').trim()
+          if (fim) {
+            const fimData = new Date(fim)
+            if (isNaN(fimData.getTime()) || fimData <= inicioData) fim = ''
+          }
+          const categoriasValidas = [
+            'reuniao',
+            'prazo',
+            'etapa',
+            'atividade',
+            'alinhamento',
+            'outro',
+          ]
+          const categoria = categoriasValidas.includes(ev.categoria)
+            ? ev.categoria
+            : ev.e_reuniao
+              ? 'reuniao'
+              : 'outro'
+          const prioridadesValidas = ['baixa', 'media', 'alta', 'urgente']
+          const prioridade = prioridadesValidas.includes(ev.prioridade) ? ev.prioridade : 'media'
+          return {
+            folha_id: ev.folha_id || null,
+            titulo: titulo,
+            descricao: String(ev.descricao || '').trim(),
+            data_inicio: inicio,
+            data_fim: fim || null,
+            categoria: categoria,
+            e_reuniao: Boolean(ev.e_reuniao),
+            projeto_id: ev.projeto_id || null,
+            contato_id: ev.contato_id || null,
+            prioridade: prioridade,
+          }
+        })
+        .filter(Boolean)
+
       return e.json(200, {
         sucesso: true,
         data: dataAlvo,
@@ -149,6 +220,7 @@ Responda ESTRITAMENTE em formato JSON puro, sem crases de markdown e sem texto a
         cards: parsed.cards || [],
         resumo: parsed.resumo || null,
         atualizacoes_contexto: parsed.atualizacoes_contexto || [],
+        eventos: eventosSanitizados,
       })
     } catch (err) {
       return e.json(500, { error: err.message || 'Erro ao organizar folha com IA' })

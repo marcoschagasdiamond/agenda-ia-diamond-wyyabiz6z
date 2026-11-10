@@ -54,7 +54,9 @@ import {
   MoreVertical,
   Calendar,
   FolderLock,
+  Video,
 } from 'lucide-react'
+import type { EventoCalendarioCategoria } from '@/types'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -469,6 +471,20 @@ export default function Folha() {
   }
 
   // Modal de Organizar com IA
+  interface SugestaoEventoIA {
+    folha_id?: string | null
+    titulo: string
+    descricao: string
+    data_inicio: string
+    data_fim: string | null
+    categoria: EventoCalendarioCategoria
+    e_reuniao: boolean
+    projeto_id?: string | null
+    contato_id?: string | null
+    prioridade: 'baixa' | 'media' | 'alta' | 'urgente'
+    _selecionado?: boolean
+    _link_reuniao?: string
+  }
   const [organizando, setOrganizando] = useState(false)
   const [modalRevisaoOpen, setModalRevisaoOpen] = useState(false)
   const [sugestoesIA, setSugestoesIA] = useState<{
@@ -496,7 +512,9 @@ export default function Folha() {
       id: string
       novo_contexto: string
     }>
+    eventos?: SugestaoEventoIA[]
   } | null>(null)
+  const [eventosSelecionados, setEventosSelecionados] = useState<Record<number, boolean>>({})
   const [salvandoRevisao, setSalvandoRevisao] = useState(false)
 
   const [searchParams] = useSearchParams()
@@ -1293,6 +1311,12 @@ export default function Folha() {
     try {
       const resultado = await diamondApi.organizarFolha()
       setSugestoesIA(resultado)
+      // Todos os eventos propostos vêm pré-selecionados para aprovação
+      const mapaEventos: Record<number, boolean> = {}
+      ;(resultado?.eventos || []).forEach((_: SugestaoEventoIA, idx: number) => {
+        mapaEventos[idx] = true
+      })
+      setEventosSelecionados(mapaEventos)
       setModalRevisaoOpen(true)
     } catch (err) {
       toast({
@@ -1329,20 +1353,65 @@ export default function Folha() {
         }
       }
 
-      // 2. Salvar resumo do dia
+      // 2. Criar os eventos aprovados na agenda (datas e horários citados nos assuntos)
+      const eventosAprovados = (sugestoesIA.eventos || []).filter(
+        (_, idx) => eventosSelecionados[idx],
+      )
+      for (const ev of eventosAprovados) {
+        try {
+          // Sala de reunião (Jitsi) quando o compromisso parecer reunião/encontro,
+          // mesmo padrão da "Nova Reunião" da Folha
+          const linkReuniao = ev.e_reuniao ? `https://meet.jit.si/diamond-${Date.now()}` : undefined
+
+          await diamondApi.createEventoCalendario({
+            titulo: ev.titulo,
+            descricao: ev.descricao || undefined,
+            data_inicio: new Date(ev.data_inicio).toISOString(),
+            data_fim: ev.data_fim ? new Date(ev.data_fim).toISOString() : undefined,
+            categoria: ev.categoria,
+            status: 'pendente',
+            prioridade: ev.prioridade,
+            projeto: ev.projeto_id || undefined,
+            contato: ev.contato_id || undefined,
+            folha_origem: ev.folha_id || undefined,
+            link_reuniao: linkReuniao,
+          })
+        } catch (errEv) {
+          console.error('Erro ao criar evento a partir da Folha:', errEv)
+        }
+      }
+
+      // 3. Salvar resumo do dia (com a lista dos eventos criados na agenda)
       if (sugestoesIA.resumo) {
+        const listaEventosTxt =
+          eventosAprovados.length > 0
+            ? '\n\n📅 Compromissos agendados na agenda:\n' +
+              eventosAprovados
+                .map((ev) => {
+                  const dt = new Date(ev.data_inicio)
+                  const dataTxt = dt.toLocaleDateString('pt-BR')
+                  const horaTxt = dt.toLocaleTimeString('pt-BR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                  const sala = ev.e_reuniao ? ' (com sala de reunião online)' : ''
+                  return `- ${ev.titulo}: ${dataTxt} às ${horaTxt}${sala}`
+                })
+                .join('\n')
+            : ''
+
         await diamondApi.createResumo({
           data: hoje,
           feito: sugestoesIA.resumo.feito || '',
           a_fazer: sugestoesIA.resumo.a_fazer || '',
           prioridades: sugestoesIA.resumo.prioridades || '',
           decisoes: sugestoesIA.resumo.decisoes || '',
-          proximos_passos: sugestoesIA.resumo.proximos_passos || '',
+          proximos_passos: (sugestoesIA.resumo.proximos_passos || '') + listaEventosTxt,
           contagem_cards_criados: sugestoesIA.cards?.length || 0,
         })
       }
 
-      // 3. Atualizar contexto histórico de projetos e contatos
+      // 4. Atualizar contexto histórico de projetos e contatos
       if (sugestoesIA.atualizacoes_contexto) {
         for (const act of sugestoesIA.atualizacoes_contexto) {
           if (act.tipo === 'projeto' && act.id) {
@@ -1365,7 +1434,10 @@ export default function Folha() {
 
       toast({
         title: 'Sessão finalizada e organizada com sucesso!',
-        description: 'Cards inseridos no Kanban e Resumo do Dia gravado na memória.',
+        description:
+          eventosAprovados.length > 0
+            ? `${eventosAprovados.length} ${eventosAprovados.length === 1 ? 'compromisso agendado' : 'compromissos agendados'} na agenda, cards no Kanban e Resumo do Dia gravado.`
+            : 'Cards inseridos no Kanban e Resumo do Dia gravado na memória.',
       })
 
       // Limpa o rascunho em elaboração caso o usuário tenha lançado tudo
@@ -3598,8 +3670,8 @@ export default function Folha() {
               Revisão de Sugestões da IA Diamond
             </DialogTitle>
             <DialogDescription className="text-xs text-[#5B6470]">
-              Revise os cards gerados e a síntese executiva antes de gravar no sistema e consolidar
-              a memória.
+              Revise os cards, os compromissos para a agenda e a síntese executiva antes de gravar
+              no sistema e consolidar a memória.
             </DialogDescription>
           </DialogHeader>
 
@@ -3653,6 +3725,75 @@ export default function Folha() {
                   ))}
                 </div>
               </div>
+
+              {/* Eventos Sugeridos (datas e horários citados nos assuntos) */}
+              {sugestoesIA.eventos && sugestoesIA.eventos.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-bold text-[#1A1D21] uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <CalendarCheck className="w-3.5 h-3.5 text-[#0F766E]" />
+                      Compromissos Detectados para a Agenda ({sugestoesIA.eventos.length})
+                    </span>
+                    <span className="text-[11px] text-[#0F766E] normal-case font-medium">
+                      Desmarque o que não deseja criar
+                    </span>
+                  </h4>
+                  <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
+                    {sugestoesIA.eventos.map((ev, idx) => (
+                      <label
+                        key={idx}
+                        className={`flex items-start gap-2.5 p-3 rounded-lg border text-xs cursor-pointer transition-colors ${
+                          eventosSelecionados[idx]
+                            ? 'border-[#0F766E]/50 bg-[#0F766E]/5'
+                            : 'border-[#E5E1D8] bg-[#F4F2EE]/40 opacity-70'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!eventosSelecionados[idx]}
+                          onChange={(e) =>
+                            setEventosSelecionados((prev) => ({
+                              ...prev,
+                              [idx]: e.target.checked,
+                            }))
+                          }
+                          className="mt-0.5 accent-[#0F766E]"
+                        />
+                        <span className="flex-1 space-y-1">
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-[#1A1D21] flex items-center gap-1.5">
+                              {ev.e_reuniao && <Video className="w-3 h-3 text-[#0F766E]" />}
+                              {ev.titulo}
+                            </span>
+                            {ev.e_reuniao && (
+                              <Badge className="text-[9px] bg-[#0F766E] text-white shrink-0">
+                                Com sala de reunião
+                              </Badge>
+                            )}
+                          </span>
+                          <span className="block text-[#0F766E] font-medium">
+                            {new Date(ev.data_inicio).toLocaleString('pt-BR', {
+                              weekday: 'short',
+                              day: '2-digit',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                            {ev.data_fim &&
+                              ` → ${new Date(ev.data_fim).toLocaleTimeString('pt-BR', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}`}
+                          </span>
+                          {ev.descricao && (
+                            <span className="block text-[#5B6470]">{ev.descricao}</span>
+                          )}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Resumo do Dia Sugerido */}
               {sugestoesIA.resumo && (
