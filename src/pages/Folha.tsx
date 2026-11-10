@@ -174,6 +174,28 @@ const carregarRascunhoSalvo = (): ItemRascunhoAssunto[] => {
   return [criarItemAssuntoVazio()]
 }
 
+const chaveDataAssunto = (item: FolhaDia): string =>
+  item.data_hora ? item.data_hora.slice(0, 10) : item.data || item.created?.slice(0, 10) || ''
+
+const rotuloDataAssunto = (chave: string): string => {
+  if (!chave) return 'Sem data'
+  const hojeStr = new Date().toISOString().slice(0, 10)
+  if (chave === hojeStr) return 'Hoje'
+  const ontem = new Date()
+  ontem.setDate(ontem.getDate() - 1)
+  if (chave === ontem.toISOString().slice(0, 10)) return 'Ontem'
+  const partes = chave.split('-').map(Number)
+  if (partes.length !== 3 || partes.some(isNaN)) return chave
+  const data = new Date(partes[0], partes[1] - 1, partes[2])
+  const mesmoAno = data.getFullYear() === new Date().getFullYear()
+  return new Intl.DateTimeFormat(
+    'pt-BR',
+    mesmoAno
+      ? { day: '2-digit', month: 'long' }
+      : { day: '2-digit', month: 'long', year: 'numeric' },
+  ).format(data)
+}
+
 export default function Folha() {
   const { toast } = useToast()
   const {
@@ -529,6 +551,27 @@ export default function Folha() {
       }
     }
   }, [destaqueParam, folhaItems])
+
+  // Cabeçalho fixo ao rolar: um sentinel acima do header sai da vista => header está fixo/compacto
+  const [cabecalhoFixo, setCabecalhoFixo] = useState(false)
+  const sentinelHeaderRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const sentinel = sentinelHeaderRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(
+      (entradas) => {
+        setCabecalhoFixo(!entradas[0]?.isIntersecting)
+      },
+      { rootMargin: '-1px 0px 0px 0px', threshold: 0 },
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [])
+
+  // Captura rápida: campo único no topo, Enter lança o assunto direto na Folha
+  const [textoCapturaRapida, setTextoCapturaRapida] = useState('')
+  const [salvandoCapturaRapida, setSalvandoCapturaRapida] = useState(false)
 
   // Recarga silenciosa somente da listagem de folha_dia e demandas (sem piscar nem alterar formulários)
   const recarregarFolhaSilencioso = async () => {
@@ -1017,6 +1060,49 @@ export default function Folha() {
     }
 
     return false
+  }
+
+  // Captura rápida (Enter): mesmo modelo/campos mínimos do formulário completo
+  // (folha_dia, data/hora agora, status pendente, sem vínculos — a IA classifica no fechamento)
+  const handleCapturaRapidaEnter = async () => {
+    const texto = textoCapturaRapida.trim()
+    if (!texto || salvandoCapturaRapida) return
+
+    const agoraLocal = getAgoraLocalISO()
+    const dataPart = agoraLocal.split('T')[0]
+
+    if (verificarBloqueioDiaFolha([dataPart])) return
+
+    setSalvandoCapturaRapida(true)
+    try {
+      const pendentesAtuais = folhaItems.filter((i) => i.status === 'pendente')
+      const proximaOrdem = pendentesAtuais.length > 0 ? pendentesAtuais.length + 1 : 1
+
+      await diamondApi.createFolhaDia({
+        data: dataPart,
+        data_hora: agoraLocal,
+        ordem: proximaOrdem,
+        registro: texto,
+        tipo_origem: 'manual',
+        status: 'pendente',
+      })
+
+      setTextoCapturaRapida('')
+      toast({
+        title: 'Assunto lançado com sucesso!',
+        description:
+          'Registrado na Folha do Dia. Os vínculos são classificados pela IA no fechamento da sessão.',
+      })
+      await carregarDados()
+    } catch (err) {
+      toast({
+        title: 'Erro ao lançar assunto',
+        description: (err as Error)?.message || 'Tente novamente.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoCapturaRapida(false)
+    }
   }
 
   // Lançamento individual de um assunto do rascunho
@@ -1620,6 +1706,29 @@ export default function Folha() {
       })
   }, [folhaItems, filtrosFolha, demandasCadastradas])
 
+  // Agrupamento por data (Hoje, Ontem, datas anteriores) — apenas apresentação da lista já filtrada
+  const itensAgrupadosPorData = useMemo(() => {
+    const contagemPorChave = new Map<string, number>()
+    itensFiltrados.forEach((item) => {
+      const chave = chaveDataAssunto(item) || 'sem_data'
+      contagemPorChave.set(chave, (contagemPorChave.get(chave) || 0) + 1)
+    })
+
+    const chavesVistas = new Set<string>()
+    return itensFiltrados.map((item, idx) => {
+      const chave = chaveDataAssunto(item) || 'sem_data'
+      let cabecalho: { label: string; count: number } | undefined
+      if (!chavesVistas.has(chave)) {
+        chavesVistas.add(chave)
+        cabecalho = {
+          label: chave === 'sem_data' ? 'Sem data' : rotuloDataAssunto(chave),
+          count: contagemPorChave.get(chave) || 0,
+        }
+      }
+      return { item, idx, cabecalho }
+    })
+  }, [itensFiltrados])
+
   const totalSementes = useMemo(
     () => folhaItems.filter((i) => Boolean(i.estado_semente)).length,
     [folhaItems],
@@ -1752,55 +1861,111 @@ export default function Folha() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-[#E5E1D8] shadow-xs">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[#1A1D21]">
-              Folha em Branco do Dia
-            </h1>
-            <Badge className="bg-[#0F766E]/10 text-[#0F766E] border-none text-[11px] font-semibold">
-              Captura Multi-Assuntos
-            </Badge>
+      {/* Sentinel: quando sai da vista, o cabeçalho abaixo está fixo no topo */}
+      <div ref={sentinelHeaderRef} aria-hidden="true" className="h-px w-full" />
+
+      {/* Top Header fixo: compacta ao rolar, mantendo título, contagens e botões acessíveis */}
+      <div
+        className={`sticky top-0 z-30 -mx-4 md:-mx-6 px-4 md:px-6 pt-2 pb-3 transition-all duration-200 ${
+          cabecalhoFixo
+            ? 'bg-[#F4F2EE]/95 backdrop-blur-md shadow-md border-b border-[#E5E1D8]'
+            : 'bg-transparent border-b border-transparent'
+        }`}
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-[#E5E1D8] shadow-xs">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-lg md:text-xl font-bold tracking-tight text-[#1A1D21]">
+                Folha em Branco do Dia
+              </h1>
+              {!cabecalhoFixo && (
+                <Badge className="bg-[#0F766E]/10 text-[#0F766E] border-none text-[11px] font-semibold">
+                  Captura Multi-Assuntos
+                </Badge>
+              )}
+            </div>
+            {!cabecalhoFixo && (
+              <p className="text-xs text-[#5B6470] mt-1">
+                Lance assuntos de diversas áreas com data, hora e vínculos personalizados (fluxo,
+                projeto, timeline e contatos) ou crie demandas imediatas.
+              </p>
+            )}
           </div>
-          <p className="text-xs text-[#5B6470] mt-1">
-            Lance assuntos de diversas áreas com data, hora e vínculos personalizados (fluxo,
-            projeto, timeline e contatos) ou crie demandas imediatas.
-          </p>
+
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
+            <Button
+              onClick={handleOrganizarComIA}
+              disabled={organizando || pendentes.length === 0}
+              className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-9 px-4 font-medium shadow-sm gap-2"
+            >
+              {organizando ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Organizando com IA...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  {cabecalhoFixo ? 'Organizar com IA' : 'Organizar com IA & Finalizar Sessão'}
+                </>
+              )}
+            </Button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            type="button"
-            onClick={() => setModalNovaReuniaoOpen(true)}
-            className="bg-red-600 hover:bg-red-700 text-white text-xs h-9 px-3.5 font-medium shadow-sm gap-2"
-          >
-            <Mic className="w-4 h-4" />
-            <span>Nova Reunião</span>
-            <Badge className="bg-white/20 text-white hover:bg-white/20 border-none text-[9px] px-1 py-0">
-              IA
-            </Badge>
-          </Button>
-
-          <Button
-            onClick={handleOrganizarComIA}
-            disabled={organizando || pendentes.length === 0}
-            className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-9 px-4 font-medium shadow-sm gap-2"
-          >
-            {organizando ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Organizando com IA...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                Organizar com IA & Finalizar Sessão
-              </>
-            )}
-          </Button>
+        {/* Barra de contagens da sessão (pendentes / processados / sementes / fixados) */}
+        <div className="flex flex-wrap items-center gap-2 mt-2">
+          <span className="text-[11px] font-medium text-[#5B6470] bg-white border border-[#E5E1D8] px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-2xs">
+            <CheckSquare className="w-3 h-3 text-[#0F766E]" />
+            Pendentes: <strong className="text-[#0F766E] font-bold">{pendentes.length}</strong>
+          </span>
+          <span className="text-[11px] font-medium text-[#5B6470] bg-white border border-[#E5E1D8] px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-2xs">
+            <CheckCircle2 className="w-3 h-3 text-blue-600" />
+            Processados: <strong className="text-blue-700 font-bold">{processados.length}</strong>
+          </span>
+          <span className="text-[11px] font-medium text-[#5B6470] bg-white border border-[#E5E1D8] px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-2xs">
+            <Sprout className="w-3 h-3 text-emerald-600" />
+            Sementes: <strong className="text-emerald-700 font-bold">{totalSementes}</strong>
+          </span>
+          {totalFixados > 0 && (
+            <span className="text-[11px] font-medium text-[#5B6470] bg-white border border-[#E5E1D8] px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-2xs">
+              <Pin className="w-3 h-3 text-amber-600" />
+              Fixados: <strong className="text-amber-700 font-bold">{totalFixados}</strong>
+            </span>
+          )}
         </div>
       </div>
+
+      {/* Captura Rápida: Enter lança o assunto direto na Folha, sem abrir o formulário completo */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          handleCapturaRapidaEnter()
+        }}
+        className="flex items-center gap-2 bg-white border border-[#E5E1D8] rounded-xl shadow-xs px-3 py-2.5"
+      >
+        <Sparkles className="w-4 h-4 text-[#0F766E] shrink-0" />
+        <Input
+          value={textoCapturaRapida}
+          onChange={(e) => setTextoCapturaRapida(e.target.value)}
+          placeholder="Lançar assunto rápido… Enter para salvar"
+          disabled={salvandoCapturaRapida}
+          className="border-none shadow-none focus-visible:ring-0 text-sm"
+        />
+        {salvandoCapturaRapida ? (
+          <Loader2 className="w-4 h-4 animate-spin text-[#0F766E] shrink-0" />
+        ) : (
+          <Button
+            type="submit"
+            size="sm"
+            disabled={!textoCapturaRapida.trim()}
+            className="h-8 text-xs bg-[#0F766E] hover:bg-[#0D5C56] gap-1.5 shrink-0"
+          >
+            <Send className="w-3.5 h-3.5" />
+            Lançar
+          </Button>
+        )}
+      </form>
 
       {/* Banner de Consumo e Limite do Plano */}
       {limites && (
@@ -2294,17 +2459,6 @@ export default function Folha() {
                     <Plus className="w-4 h-4" />
                     Adicionar Outro Assunto
                   </Button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setModoCaptura('gravador')}
-                    className="text-xs h-9 text-red-700 border-red-200 hover:bg-red-50 gap-1.5 w-full sm:w-auto"
-                  >
-                    <Mic className="w-4 h-4 text-red-600" />
-                    Gravar Reunião
-                  </Button>
                 </div>
 
                 <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
@@ -2630,7 +2784,7 @@ export default function Folha() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {itensFiltrados.map((item, idx) => {
+            {itensAgrupadosPorData.map(({ item, idx, cabecalho }) => {
               const numeroDisplay = item.ordem || idx + 1
               const temDemanda = verificarTemDemanda(item)
               const isFixado = Boolean(item.fixado)
@@ -2638,380 +2792,392 @@ export default function Folha() {
               const isDestaque = Boolean(destaqueParam && item.id === destaqueParam)
 
               return (
-                <div
-                  key={item.id}
-                  id={`assunto-${item.id}`}
-                  className={`p-4 rounded-xl border transition-all shadow-2xs flex flex-col justify-between space-y-3 ${
-                    isDestaque
-                      ? 'bg-emerald-50/60 border-emerald-500 ring-2 ring-emerald-500/50 shadow-md'
-                      : isFixado
-                        ? 'bg-amber-50/40 border-amber-300 ring-1 ring-amber-300/60'
-                        : isArquivado
-                          ? 'bg-[#FAFAF9] border-[#E5E1D8] opacity-75'
-                          : 'bg-white border-[#E5E1D8] hover:border-[#0F766E]/40'
-                  }`}
-                >
-                  <div>
-                    {/* Header do card com numeração, fixação, arquivamento e controles */}
-                    <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-[#E5E1D8]/60">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-bold ${
-                            isFixado
-                              ? 'bg-amber-500 text-white'
-                              : item.is_reuniao
-                                ? 'bg-red-100 text-red-700'
-                                : 'bg-[#0F766E]/15 text-[#0F766E]'
-                          }`}
-                        >
-                          {numeroDisplay}
-                        </span>
-                        <div className="flex items-center gap-1.5 text-[11px] text-[#5B6470]">
-                          {getOrigemIcon(item.tipo_origem, item.is_reuniao)}
-                          {item.is_reuniao ? (
-                            <Badge className="bg-red-50 text-red-700 hover:bg-red-50 border border-red-200 text-[10px] font-bold px-1.5 py-0">
-                              REUNIÃO GRAVADA
-                            </Badge>
-                          ) : item.tipo_origem === 'whatsapp' ? (
-                            <Badge className="bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300 text-[10px] font-bold px-1.5 py-0 gap-1">
-                              <MessageSquare className="w-2.5 h-2.5 text-emerald-600" />
-                              WHATSAPP
-                            </Badge>
-                          ) : (
-                            <span className="capitalize font-medium">{item.tipo_origem}</span>
-                          )}
-                          {item.origem_ref && <span>• {item.origem_ref}</span>}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        {/* Botão Fixar / Desafixar */}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleToggleFixar(item)}
-                          className={`h-7 px-1.5 text-[11px] gap-1 ${
-                            isFixado
-                              ? 'text-amber-700 bg-amber-100/70 hover:bg-amber-200/70 font-semibold'
-                              : 'text-[#5B6470] hover:text-amber-700'
-                          }`}
-                          title={isFixado ? 'Desafixar do topo' : 'Fixar no topo'}
-                        >
-                          {isFixado ? (
-                            <>
-                              <PinOff className="w-3.5 h-3.5 fill-amber-600" />
-                              <span className="hidden sm:inline">Fixado</span>
-                            </>
-                          ) : (
-                            <>
-                              <Pin className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Fixar</span>
-                            </>
-                          )}
-                        </Button>
-
-                        {/* Botão Arquivar / Desarquivar */}
-                        {/* Se for Semente: Botão Reativar direto */}
-                        {item.estado_semente ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => handleReativarSemente(item)}
-                            className="h-7 px-2 text-[11px] gap-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-2xs"
-                            title="Reativar semente e devolver à Folha ativa"
+                <React.Fragment key={item.id}>
+                  {cabecalho && (
+                    <div className="md:col-span-2 flex items-center gap-2 pt-3 first:pt-0">
+                      <span className="text-xs font-bold text-[#1A1D21] uppercase tracking-wide">
+                        {cabecalho.label}
+                      </span>
+                      <span className="text-[10px] font-semibold text-[#5B6470] bg-white border border-[#E5E1D8] px-2 py-0.5 rounded-full">
+                        {cabecalho.count} {cabecalho.count === 1 ? 'assunto' : 'assuntos'}
+                      </span>
+                      <span className="flex-1 h-px bg-[#E5E1D8]" />
+                    </div>
+                  )}
+                  <div
+                    id={`assunto-${item.id}`}
+                    className={`p-4 rounded-xl border transition-all shadow-2xs flex flex-col justify-between space-y-3 ${
+                      isDestaque
+                        ? 'bg-emerald-50/60 border-emerald-500 ring-2 ring-emerald-500/50 shadow-md'
+                        : isFixado
+                          ? 'bg-amber-50/40 border-amber-300 ring-1 ring-amber-300/60'
+                          : isArquivado
+                            ? 'bg-[#FAFAF9] border-[#E5E1D8] opacity-75'
+                            : 'bg-white border-[#E5E1D8] hover:border-[#0F766E]/40'
+                    }`}
+                  >
+                    <div>
+                      {/* Header do card com numeração, fixação, arquivamento e controles */}
+                      <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-[#E5E1D8]/60">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-bold ${
+                              isFixado
+                                ? 'bg-amber-500 text-white'
+                                : item.is_reuniao
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-[#0F766E]/15 text-[#0F766E]'
+                            }`}
                           >
-                            <Sprout className="w-3.5 h-3.5" />
-                            <span>Reativar</span>
-                          </Button>
-                        ) : (
-                          /* Botão Arquivar / Desarquivar */
+                            {numeroDisplay}
+                          </span>
+                          <div className="flex items-center gap-1.5 text-[11px] text-[#5B6470]">
+                            {getOrigemIcon(item.tipo_origem, item.is_reuniao)}
+                            {item.is_reuniao ? (
+                              <Badge className="bg-red-50 text-red-700 hover:bg-red-50 border border-red-200 text-[10px] font-bold px-1.5 py-0">
+                                REUNIÃO GRAVADA
+                              </Badge>
+                            ) : item.tipo_origem === 'whatsapp' ? (
+                              <Badge className="bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300 text-[10px] font-bold px-1.5 py-0 gap-1">
+                                <MessageSquare className="w-2.5 h-2.5 text-emerald-600" />
+                                WHATSAPP
+                              </Badge>
+                            ) : (
+                              <span className="capitalize font-medium">{item.tipo_origem}</span>
+                            )}
+                            {item.origem_ref && <span>• {item.origem_ref}</span>}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          {/* Botão Fixar / Desafixar */}
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleToggleArquivar(item)}
+                            onClick={() => handleToggleFixar(item)}
                             className={`h-7 px-1.5 text-[11px] gap-1 ${
-                              isArquivado
-                                ? 'text-blue-700 bg-blue-50 hover:bg-blue-100 font-semibold'
-                                : 'text-[#5B6470] hover:text-[#1A1D21]'
+                              isFixado
+                                ? 'text-amber-700 bg-amber-100/70 hover:bg-amber-200/70 font-semibold'
+                                : 'text-[#5B6470] hover:text-amber-700'
                             }`}
-                            title={
-                              isArquivado
-                                ? 'Desarquivar (voltar para a lista principal)'
-                                : 'Arquivar assunto'
-                            }
+                            title={isFixado ? 'Desafixar do topo' : 'Fixar no topo'}
                           >
-                            {isArquivado ? (
+                            {isFixado ? (
                               <>
-                                <ArchiveRestore className="w-3.5 h-3.5" />
-                                <span className="hidden sm:inline">Desarquivar</span>
+                                <PinOff className="w-3.5 h-3.5 fill-amber-600" />
+                                <span className="hidden sm:inline">Fixado</span>
                               </>
                             ) : (
                               <>
-                                <Archive className="w-3.5 h-3.5" />
-                                <span className="hidden sm:inline">Arquivar</span>
+                                <Pin className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Fixar</span>
                               </>
                             )}
                           </Button>
-                        )}
 
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={idx === 0}
-                          onClick={() => handleReordenarPersistido(idx, 'cima')}
-                          className="h-6 w-6 p-0 text-[#5B6470] hover:text-[#1A1D21]"
-                          title="Subir ordem"
-                        >
-                          <ArrowUp className="w-3 h-3" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={idx === itensFiltrados.length - 1}
-                          onClick={() => handleReordenarPersistido(idx, 'baixo')}
-                          className="h-6 w-6 p-0 text-[#5B6470] hover:text-[#1A1D21]"
-                          title="Descer ordem"
-                        >
-                          <ArrowDown className="w-3 h-3" />
-                        </Button>
-
-                        {/* Menu de 3 pontinhos com ação 'Arquivar como Semente' */}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
+                          {/* Botão Arquivar / Desarquivar */}
+                          {/* Se for Semente: Botão Reativar direto */}
+                          {item.estado_semente ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => handleReativarSemente(item)}
+                              className="h-7 px-2 text-[11px] gap-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-2xs"
+                              title="Reativar semente e devolver à Folha ativa"
+                            >
+                              <Sprout className="w-3.5 h-3.5" />
+                              <span>Reativar</span>
+                            </Button>
+                          ) : (
+                            /* Botão Arquivar / Desarquivar */
                             <Button
                               type="button"
                               variant="ghost"
                               size="sm"
-                              className="h-6 w-6 p-0 text-[#5B6470] hover:text-[#1A1D21]"
-                              title="Mais opções do assunto"
-                            >
-                              <MoreVertical className="w-3.5 h-3.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="text-xs w-48">
-                            {!item.estado_semente ? (
-                              <DropdownMenuItem
-                                onClick={() => handleAbrirModalSemente(item)}
-                                className="cursor-pointer gap-2 text-emerald-800 font-medium"
-                              >
-                                <Sprout className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>Arquivar como Semente</span>
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem
-                                onClick={() => handleReativarSemente(item)}
-                                className="cursor-pointer gap-2 text-emerald-800 font-medium"
-                              >
-                                <Sprout className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>Reativar Semente</span>
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => handleToggleFixar(item)}
-                              className="cursor-pointer gap-2"
-                            >
-                              <Pin className="w-3.5 h-3.5 text-amber-600" />
-                              <span>{isFixado ? 'Desafixar do topo' : 'Fixar no topo'}</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
                               onClick={() => handleToggleArquivar(item)}
-                              className="cursor-pointer gap-2"
+                              className={`h-7 px-1.5 text-[11px] gap-1 ${
+                                isArquivado
+                                  ? 'text-blue-700 bg-blue-50 hover:bg-blue-100 font-semibold'
+                                  : 'text-[#5B6470] hover:text-[#1A1D21]'
+                              }`}
+                              title={
+                                isArquivado
+                                  ? 'Desarquivar (voltar para a lista principal)'
+                                  : 'Arquivar assunto'
+                              }
                             >
-                              <Archive className="w-3.5 h-3.5 text-[#5B6470]" />
-                              <span>{isArquivado ? 'Desarquivar' : 'Arquivar comum'}</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => handleExcluirRegistro(item.id)}
-                              className="cursor-pointer gap-2 text-red-600 focus:text-red-700"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span>Excluir assunto</span>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
+                              {isArquivado ? (
+                                <>
+                                  <ArchiveRestore className="w-3.5 h-3.5" />
+                                  <span className="hidden sm:inline">Desarquivar</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Archive className="w-3.5 h-3.5" />
+                                  <span className="hidden sm:inline">Arquivar</span>
+                                </>
+                              )}
+                            </Button>
+                          )}
 
-                    {/* Data e Hora do Assunto + Badges de Status */}
-                    <div className="flex flex-wrap items-center justify-between gap-1 mb-1.5">
-                      <div className="flex items-center gap-1.5 text-[11px] text-[#0F766E] font-medium">
-                        <Clock className="w-3 h-3" />
-                        <span>
-                          Data e hora:{' '}
-                          {item.data_hora
-                            ? item.data_hora.replace('T', ' ')
-                            : item.data || item.created?.slice(0, 16).replace('T', ' ')}
-                        </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={idx === 0}
+                            onClick={() => handleReordenarPersistido(idx, 'cima')}
+                            className="h-6 w-6 p-0 text-[#5B6470] hover:text-[#1A1D21]"
+                            title="Subir ordem"
+                          >
+                            <ArrowUp className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={idx === itensFiltrados.length - 1}
+                            onClick={() => handleReordenarPersistido(idx, 'baixo')}
+                            className="h-6 w-6 p-0 text-[#5B6470] hover:text-[#1A1D21]"
+                            title="Descer ordem"
+                          >
+                            <ArrowDown className="w-3 h-3" />
+                          </Button>
+
+                          {/* Menu de 3 pontinhos com ação 'Arquivar como Semente' */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-[#5B6470] hover:text-[#1A1D21]"
+                                title="Mais opções do assunto"
+                              >
+                                <MoreVertical className="w-3.5 h-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="text-xs w-48">
+                              {!item.estado_semente ? (
+                                <DropdownMenuItem
+                                  onClick={() => handleAbrirModalSemente(item)}
+                                  className="cursor-pointer gap-2 text-emerald-800 font-medium"
+                                >
+                                  <Sprout className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>Arquivar como Semente</span>
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  onClick={() => handleReativarSemente(item)}
+                                  className="cursor-pointer gap-2 text-emerald-800 font-medium"
+                                >
+                                  <Sprout className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>Reativar Semente</span>
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => handleToggleFixar(item)}
+                                className="cursor-pointer gap-2"
+                              >
+                                <Pin className="w-3.5 h-3.5 text-amber-600" />
+                                <span>{isFixado ? 'Desafixar do topo' : 'Fixar no topo'}</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleToggleArquivar(item)}
+                                className="cursor-pointer gap-2"
+                              >
+                                <Archive className="w-3.5 h-3.5 text-[#5B6470]" />
+                                <span>{isArquivado ? 'Desarquivar' : 'Arquivar comum'}</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => handleExcluirRegistro(item.id)}
+                                className="cursor-pointer gap-2 text-red-600 focus:text-red-700"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Excluir assunto</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-1">
-                        {item.estado_semente && (
-                          <Badge className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold gap-1 shadow-2xs">
-                            <Sprout className="w-3 h-3 text-emerald-700" />
-                            <span>Semente 🌱</span>
-                          </Badge>
-                        )}
-                        {item.reativada_em && !item.estado_semente && (
-                          <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[9px] font-semibold gap-1">
-                            🌱 Reativada ({item.reativada_em.slice(0, 10)})
-                          </Badge>
-                        )}
-                        {temDemanda ? (
-                          <Badge className="bg-emerald-100 text-emerald-800 border-none text-[9px] font-semibold gap-1">
-                            <CheckCircle2 className="w-2.5 h-2.5" />
-                            Demanda criada
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-gray-100 text-gray-600 border-none text-[9px]">
-                            Sem demanda
-                          </Badge>
-                        )}
-                        {item.status === 'processado' && (
-                          <Badge className="bg-blue-100 text-blue-800 border-none text-[9px] font-semibold">
-                            Processado
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Caixa de Contexto da Semente */}
-                    {item.estado_semente && (
-                      <div className="mb-2.5 p-2.5 rounded-lg bg-amber-50/80 border border-amber-200/90 text-xs text-amber-900 space-y-1">
-                        <div className="flex items-center justify-between font-semibold text-[11px] text-amber-800">
-                          <span className="flex items-center gap-1.5">
-                            <Sprout className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>Semente em germinação</span>
-                            {item.data_hora || item.created ? (
-                              <span className="font-normal text-amber-700">
-                                ({formatarTempoDecorrido(item.data_hora || item.created)})
-                              </span>
-                            ) : null}
+                      {/* Data e Hora do Assunto + Badges de Status */}
+                      <div className="flex flex-wrap items-center justify-between gap-1 mb-1.5">
+                        <div className="flex items-center gap-1.5 text-[11px] text-[#0F766E] font-medium">
+                          <Clock className="w-3 h-3" />
+                          <span>
+                            Data e hora:{' '}
+                            {item.data_hora
+                              ? item.data_hora.replace('T', ' ')
+                              : item.data || item.created?.slice(0, 16).replace('T', ' ')}
                           </span>
-                          {item.data_revisao_semente && (
-                            <span className="text-[10px] bg-amber-200/70 text-amber-900 px-1.5 py-0.2 rounded font-medium">
-                              Revisão: {item.data_revisao_semente.slice(0, 10)}
-                            </span>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          {item.estado_semente && (
+                            <Badge className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold gap-1 shadow-2xs">
+                              <Sprout className="w-3 h-3 text-emerald-700" />
+                              <span>Semente 🌱</span>
+                            </Badge>
+                          )}
+                          {item.reativada_em && !item.estado_semente && (
+                            <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[9px] font-semibold gap-1">
+                              🌱 Reativada ({item.reativada_em.slice(0, 10)})
+                            </Badge>
+                          )}
+                          {temDemanda ? (
+                            <Badge className="bg-emerald-100 text-emerald-800 border-none text-[9px] font-semibold gap-1">
+                              <CheckCircle2 className="w-2.5 h-2.5" />
+                              Demanda criada
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-gray-100 text-gray-600 border-none text-[9px]">
+                              Sem demanda
+                            </Badge>
+                          )}
+                          {item.status === 'processado' && (
+                            <Badge className="bg-blue-100 text-blue-800 border-none text-[9px] font-semibold">
+                              Processado
+                            </Badge>
                           )}
                         </div>
-                        {item.condicao_reativacao ? (
-                          <p className="text-[11px] text-amber-950/90">
-                            <strong>Condição de reativação:</strong> {item.condicao_reativacao}
-                          </p>
-                        ) : (
-                          <p className="text-[11px] text-amber-800 italic">
-                            Sem condição específica — reativa por contato no WhatsApp ou revisão.
-                          </p>
-                        )}
                       </div>
-                    )}
 
-                    {/* Player de áudio e indicadores de reunião gravada */}
-                    {item.is_reuniao && (
-                      <div className="mb-2 p-2.5 rounded-lg bg-red-50/60 border border-red-200/80 space-y-2">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="font-semibold text-red-800 flex items-center gap-1.5">
-                            <Mic className="w-3.5 h-3.5 text-red-600" />
-                            Áudio da Reunião ({formatarSegundos(item.duracao_gravacao)})
-                          </span>
-                          <span className="text-[10px] text-red-700 font-medium">
-                            {item.status_transcricao === 'processado'
-                              ? '✓ Síntese organizada'
-                              : 'Aguardando transcrição'}
-                          </span>
-                        </div>
-
-                        {item.audio_gravacao && (
-                          <div className="pt-1">
-                            <audio
-                              controls
-                              className="w-full h-8"
-                              src={
-                                diamondApi.getAudioUrl({
-                                  id: item.id,
-                                  audio_gravacao: item.audio_gravacao,
-                                }) || undefined
-                              }
-                            />
+                      {/* Caixa de Contexto da Semente */}
+                      {item.estado_semente && (
+                        <div className="mb-2.5 p-2.5 rounded-lg bg-amber-50/80 border border-amber-200/90 text-xs text-amber-900 space-y-1">
+                          <div className="flex items-center justify-between font-semibold text-[11px] text-amber-800">
+                            <span className="flex items-center gap-1.5">
+                              <Sprout className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Semente em germinação</span>
+                              {item.data_hora || item.created ? (
+                                <span className="font-normal text-amber-700">
+                                  ({formatarTempoDecorrido(item.data_hora || item.created)})
+                                </span>
+                              ) : null}
+                            </span>
+                            {item.data_revisao_semente && (
+                              <span className="text-[10px] bg-amber-200/70 text-amber-900 px-1.5 py-0.2 rounded font-medium">
+                                Revisão: {item.data_revisao_semente.slice(0, 10)}
+                              </span>
+                            )}
                           </div>
-                        )}
-
-                        <div className="flex items-center justify-between pt-1">
-                          <button
-                            type="button"
-                            onClick={() => handleAbrirDetalhesReuniao(item)}
-                            className="text-[11px] font-semibold text-[#0F766E] hover:underline flex items-center gap-1"
-                          >
-                            <CalendarCheck className="w-3 h-3" />
-                            Ver Ata & Detalhes da Reunião
-                          </button>
+                          {item.condicao_reativacao ? (
+                            <p className="text-[11px] text-amber-950/90">
+                              <strong>Condição de reativação:</strong> {item.condicao_reativacao}
+                            </p>
+                          ) : (
+                            <p className="text-[11px] text-amber-800 italic">
+                              Sem condição específica — reativa por contato no WhatsApp ou revisão.
+                            </p>
+                          )}
                         </div>
+                      )}
+
+                      {/* Player de áudio e indicadores de reunião gravada */}
+                      {item.is_reuniao && (
+                        <div className="mb-2 p-2.5 rounded-lg bg-red-50/60 border border-red-200/80 space-y-2">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="font-semibold text-red-800 flex items-center gap-1.5">
+                              <Mic className="w-3.5 h-3.5 text-red-600" />
+                              Áudio da Reunião ({formatarSegundos(item.duracao_gravacao)})
+                            </span>
+                            <span className="text-[10px] text-red-700 font-medium">
+                              {item.status_transcricao === 'processado'
+                                ? '✓ Síntese organizada'
+                                : 'Aguardando transcrição'}
+                            </span>
+                          </div>
+
+                          {item.audio_gravacao && (
+                            <div className="pt-1">
+                              <audio
+                                controls
+                                className="w-full h-8"
+                                src={
+                                  diamondApi.getAudioUrl({
+                                    id: item.id,
+                                    audio_gravacao: item.audio_gravacao,
+                                  }) || undefined
+                                }
+                              />
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between pt-1">
+                            <button
+                              type="button"
+                              onClick={() => handleAbrirDetalhesReuniao(item)}
+                              className="text-[11px] font-semibold text-[#0F766E] hover:underline flex items-center gap-1"
+                            >
+                              <CalendarCheck className="w-3 h-3" />
+                              Ver Ata & Detalhes da Reunião
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Conteúdo do Assunto */}
+                      <p className="text-xs text-[#1A1D21] whitespace-pre-wrap leading-relaxed">
+                        {item.registro}
+                      </p>
+                    </div>
+
+                    {/* Vínculos e Ação Criar Demanda */}
+                    <div className="pt-2 border-t border-[#E5E1D8]/60 space-y-2">
+                      <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-[#5B6470]">
+                        {item.fluxo && getFluxoBadge(item.fluxo)}
+                        {(item.expand?.projeto ||
+                          (item.projeto && projetos.find((p) => p.id === item.projeto))) && (
+                          <span className="bg-[#F4F2EE] px-2 py-0.5 rounded font-medium truncate max-w-[140px]">
+                            📁{' '}
+                            {item.expand?.projeto?.nome ||
+                              projetos.find((p) => p.id === item.projeto)?.nome}
+                          </span>
+                        )}
+                        {(item.expand?.contato ||
+                          (item.contato && contatos.find((c) => c.id === item.contato))) && (
+                          <span className="bg-[#F4F2EE] px-2 py-0.5 rounded font-medium truncate max-w-[140px]">
+                            👤{' '}
+                            {item.expand?.contato?.nome ||
+                              contatos.find((c) => c.id === item.contato)?.nome}
+                          </span>
+                        )}
+                        {item.timeline && (
+                          <span className="bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded truncate max-w-[120px]">
+                            ⏳ {item.timeline}
+                          </span>
+                        )}
                       </div>
-                    )}
-
-                    {/* Conteúdo do Assunto */}
-                    <p className="text-xs text-[#1A1D21] whitespace-pre-wrap leading-relaxed">
-                      {item.registro}
-                    </p>
-                  </div>
-
-                  {/* Vínculos e Ação Criar Demanda */}
-                  <div className="pt-2 border-t border-[#E5E1D8]/60 space-y-2">
-                    <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-[#5B6470]">
-                      {item.fluxo && getFluxoBadge(item.fluxo)}
-                      {(item.expand?.projeto ||
-                        (item.projeto && projetos.find((p) => p.id === item.projeto))) && (
-                        <span className="bg-[#F4F2EE] px-2 py-0.5 rounded font-medium truncate max-w-[140px]">
-                          📁{' '}
-                          {item.expand?.projeto?.nome ||
-                            projetos.find((p) => p.id === item.projeto)?.nome}
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-[10px] text-[#5B6470]">
+                          Salvo em {item.created?.slice(11, 16)}
                         </span>
-                      )}
-                      {(item.expand?.contato ||
-                        (item.contato && contatos.find((c) => c.id === item.contato))) && (
-                        <span className="bg-[#F4F2EE] px-2 py-0.5 rounded font-medium truncate max-w-[140px]">
-                          👤{' '}
-                          {item.expand?.contato?.nome ||
-                            contatos.find((c) => c.id === item.contato)?.nome}
-                        </span>
-                      )}
-                      {item.timeline && (
-                        <span className="bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded truncate max-w-[120px]">
-                          ⏳ {item.timeline}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between pt-1">
-                      <span className="text-[10px] text-[#5B6470]">
-                        Salvo em {item.created?.slice(11, 16)}
-                      </span>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          handleAbrirCriarDemanda({
-                            id: item.id,
-                            numero: numeroDisplay,
-                            texto: item.registro,
-                            projetoId: item.projeto,
-                            contatoId: item.contato,
-                            timeline: item.timeline,
-                          })
-                        }
-                        className="h-6 px-2 text-[11px] text-[#0F766E] border-[#0F766E]/30 hover:bg-[#0F766E]/10 gap-1"
-                      >
-                        <CheckSquare className="w-3 h-3" />
-                        Criar demanda
-                      </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            handleAbrirCriarDemanda({
+                              id: item.id,
+                              numero: numeroDisplay,
+                              texto: item.registro,
+                              projetoId: item.projeto,
+                              contatoId: item.contato,
+                              timeline: item.timeline,
+                            })
+                          }
+                          className="h-6 px-2 text-[11px] text-[#0F766E] border-[#0F766E]/30 hover:bg-[#0F766E]/10 gap-1"
+                        >
+                          <CheckSquare className="w-3 h-3" />
+                          Criar demanda
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
+                </React.Fragment>
               )
             })}
           </div>
