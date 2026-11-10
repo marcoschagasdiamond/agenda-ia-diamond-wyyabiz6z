@@ -43,6 +43,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -55,7 +62,11 @@ import {
 import { useToast } from '@/hooks/use-toast'
 
 export default function Equipe() {
-  const { user, isMaster } = useAuth()
+  const { user, isMaster, isAdmin } = useAuth()
+  // Membro comum vê a página em modo somente leitura (sem ações de gestão)
+  const podeGerenciar = Boolean(isMaster || isAdmin)
+  const EMAIL_FUNDADOR = 'marcoschagasdiamond@icloud.com'
+  const isProprietario = (m: MembroEquipe) => Boolean(m.is_master) || m.email === EMAIL_FUNDADOR
   const { toast } = useToast()
   const {
     membrosEquipe,
@@ -75,6 +86,11 @@ export default function Equipe() {
   const [membroParaConfirmarAdmin, setMembroParaConfirmarAdmin] = useState<{
     membro: MembroEquipe
     acao: 'eleger' | 'remover'
+  } | null>(null)
+  const [membroParaDesativar, setMembroParaDesativar] = useState<MembroEquipe | null>(null)
+  const [mudancaFuncao, setMudancaFuncao] = useState<{
+    membro: MembroEquipe
+    novaFuncao: 'admin' | 'membro' | 'visualizador'
   } | null>(null)
 
   useEffect(() => {
@@ -291,6 +307,123 @@ export default function Equipe() {
     } finally {
       setProcessandoAcao(null)
       setMembroParaConfirmarAdmin(null)
+    }
+  }
+
+  // Trocar a função do membro pelo seletor (dono → master, admin, membro, portal cliente).
+  // Ninguém altera a própria função; apenas o Master elege administrador.
+  const ROTULOS_FUNCAO_SELETOR: Record<'admin' | 'membro' | 'visualizador', string> = {
+    admin: 'Administrador',
+    membro: 'Membro',
+    visualizador: 'Portal do Cliente',
+  }
+  const handleMudarFuncao = async (
+    membro: MembroEquipe,
+    novaFuncao: 'admin' | 'membro' | 'visualizador',
+  ) => {
+    if (membro.email === user?.email) {
+      toast({
+        title: 'Ação não permitida',
+        description: 'Você não pode alterar a sua própria função.',
+        variant: 'destructive',
+      })
+      setMudancaFuncao(null)
+      return
+    }
+    if (isProprietario(membro)) {
+      toast({
+        title: 'Ação não permitida',
+        description: 'A função do proprietário da conta não pode ser alterada.',
+        variant: 'destructive',
+      })
+      setMudancaFuncao(null)
+      return
+    }
+    if (novaFuncao === 'admin' && !isMaster) {
+      toast({
+        title: 'Ação restrita ao Administrador Master',
+        description: 'Apenas o Administrador Master pode eleger administradores na conta.',
+        variant: 'destructive',
+      })
+      setMudancaFuncao(null)
+      return
+    }
+    setProcessandoAcao(membro.id)
+    try {
+      if (novaFuncao === 'admin') {
+        await diamondApi.elegerAdmin(membro.id)
+      } else if (novaFuncao === 'visualizador') {
+        await diamondApi.updateMembroEquipe(membro.id, {
+          funcao: 'visualizador',
+          nivel_acesso: 'leitura',
+          is_master: false,
+        })
+      } else {
+        await diamondApi.removerAdmin(membro.id)
+      }
+      await recarregarDadosGlobais()
+      toast({
+        title: 'Função atualizada com sucesso!',
+        description: `${membro.nome || membro.email} agora é ${ROTULOS_FUNCAO_SELETOR[novaFuncao]}.`,
+      })
+    } catch {
+      toast({ title: 'Erro ao atualizar função', variant: 'destructive' })
+    } finally {
+      setProcessandoAcao(null)
+      setMudancaFuncao(null)
+    }
+  }
+
+  // Desativar membro: status 'suspenso' em membros_equipe — o membro deixa de acessar a conta
+  const handleDesativarMembro = async (membro: MembroEquipe) => {
+    if (isProprietario(membro)) {
+      toast({
+        title: 'Ação não permitida',
+        description: 'O proprietário da conta não pode ser desativado.',
+        variant: 'destructive',
+      })
+      setMembroParaDesativar(null)
+      return
+    }
+    if (membro.email === user?.email) {
+      toast({
+        title: 'Ação não permitida',
+        description: 'Você não pode desativar a sua própria conta.',
+        variant: 'destructive',
+      })
+      setMembroParaDesativar(null)
+      return
+    }
+    setProcessandoAcao(membro.id)
+    try {
+      await diamondApi.updateMembroEquipe(membro.id, { status: 'suspenso' })
+      await recarregarDadosGlobais()
+      toast({
+        title: 'Membro desativado',
+        description: `${membro.nome || membro.email} não poderá mais acessar a conta.`,
+      })
+    } catch {
+      toast({ title: 'Erro ao desativar membro', variant: 'destructive' })
+    } finally {
+      setProcessandoAcao(null)
+      setMembroParaDesativar(null)
+    }
+  }
+
+  // Reativar membro desativado
+  const handleReativarMembro = async (membro: MembroEquipe) => {
+    setProcessandoAcao(membro.id)
+    try {
+      await diamondApi.updateMembroEquipe(membro.id, { status: 'ativo' })
+      await recarregarDadosGlobais()
+      toast({
+        title: 'Membro reativado',
+        description: `${membro.nome || membro.email} voltou a ter acesso à conta.`,
+      })
+    } catch {
+      toast({ title: 'Erro ao reativar membro', variant: 'destructive' })
+    } finally {
+      setProcessandoAcao(null)
     }
   }
 
@@ -651,6 +784,21 @@ export default function Equipe() {
                       )}
                     </div>
 
+                    {/* Status (ativo / desativado) */}
+                    <div className="flex items-center shrink-0">
+                      {membro.status === 'suspenso' ? (
+                        <Badge className="bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold px-2 py-0.5 gap-1">
+                          <Ban className="w-3 h-3" />
+                          Desativado
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 gap-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          Ativo
+                        </Badge>
+                      )}
+                    </div>
+
                     {/* Nível de Acesso / Função */}
                     <div className="flex items-center gap-2 shrink-0">
                       <Badge
@@ -666,8 +814,37 @@ export default function Equipe() {
                         {membro.nivel_acesso || 'Edição'}
                       </Badge>
 
+                      {/* Seletor de função (com confirmação) — gestão apenas */}
+                      {podeGerenciar && !isFundador && membro.email !== user?.email && (
+                        <Select
+                          value={
+                            membro.funcao === 'admin' || membro.nivel_acesso === 'admin'
+                              ? 'admin'
+                              : membro.funcao === 'visualizador'
+                                ? 'visualizador'
+                                : 'membro'
+                          }
+                          onValueChange={(v) =>
+                            setMudancaFuncao({
+                              membro,
+                              novaFuncao: v as 'admin' | 'membro' | 'visualizador',
+                            })
+                          }
+                          disabled={processandoAcao === membro.id}
+                        >
+                          <SelectTrigger className="h-7 text-[11px] w-[130px] border-[#E5E1D8]">
+                            <SelectValue placeholder="Função" />
+                          </SelectTrigger>
+                          <SelectContent className="text-xs">
+                            <SelectItem value="membro">Membro</SelectItem>
+                            <SelectItem value="visualizador">Portal do Cliente</SelectItem>
+                            {isMaster && <SelectItem value="admin">Administrador</SelectItem>}
+                          </SelectContent>
+                        </Select>
+                      )}
+
                       {/* Botões Rápidos e Dropdown de Ações */}
-                      {!isFundador && (
+                      {!isFundador && podeGerenciar && (
                         <div className="flex items-center gap-1.5">
                           {/* Ação de Eleger / Remover Administrador (Visível para o Master) */}
                           {isMaster &&
@@ -759,6 +936,24 @@ export default function Equipe() {
                                 </>
                               )}
 
+                              <DropdownMenuSeparator />
+                              {membro.status === 'suspenso' ? (
+                                <DropdownMenuItem
+                                  onClick={() => handleReativarMembro(membro)}
+                                  className="text-xs text-emerald-700 focus:text-emerald-800 cursor-pointer font-medium"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5 mr-2" />
+                                  Reativar Acesso
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  onClick={() => setMembroParaDesativar(membro)}
+                                  className="text-xs text-amber-700 focus:text-amber-800 cursor-pointer font-medium"
+                                >
+                                  <Ban className="w-3.5 h-3.5 mr-2" />
+                                  Desativar Membro
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 onClick={() => handleRemoverMembro(membro)}
@@ -1117,6 +1312,113 @@ export default function Equipe() {
           </CardContent>
         </Card>
       )}
+
+      {/* Modal de confirmação de Desativar Membro */}
+      <AlertDialog
+        open={!!membroParaDesativar}
+        onOpenChange={(open) => {
+          if (!open) setMembroParaDesativar(null)
+        }}
+      >
+        <AlertDialogContent className="bg-white border-[#E5E1D8] max-w-md">
+          <AlertDialogHeader>
+            <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center mb-2">
+              <Ban className="w-5 h-5" />
+            </div>
+            <AlertDialogTitle className="text-base font-bold text-[#1A1D21]">
+              Desativar membro?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-[#5B6470] space-y-1.5">
+              <span>
+                <strong className="text-[#1A1D21] font-semibold">
+                  {membroParaDesativar?.nome || membroParaDesativar?.email}
+                </strong>{' '}
+                perderá o acesso à conta imediatamente. O acesso poderá ser restaurado a qualquer
+                momento com a ação &quot;Reativar Acesso&quot;.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel
+              disabled={!!processandoAcao}
+              className="text-xs h-9 border-[#E5E1D8] hover:bg-[#F4F2EE]"
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!!processandoAcao}
+              onClick={(e) => {
+                e.preventDefault()
+                if (membroParaDesativar) handleDesativarMembro(membroParaDesativar)
+              }}
+              className="text-xs h-9 bg-amber-600 hover:bg-amber-700 text-white font-semibold"
+            >
+              {processandoAcao ? 'Desativando...' : 'Desativar membro'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Modal de confirmação de mudança de função (seletor) */}
+      <AlertDialog
+        open={!!mudancaFuncao}
+        onOpenChange={(open) => {
+          if (!open) setMudancaFuncao(null)
+        }}
+      >
+        <AlertDialogContent className="bg-white border-[#E5E1D8] max-w-md">
+          <AlertDialogHeader>
+            <div
+              className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 ${
+                mudancaFuncao?.novaFuncao === 'admin'
+                  ? 'bg-purple-50 text-purple-700'
+                  : 'bg-[#0F766E]/10 text-[#0F766E]'
+              }`}
+            >
+              {mudancaFuncao?.novaFuncao === 'admin' ? (
+                <ShieldCheck className="w-5 h-5" />
+              ) : (
+                <Users className="w-5 h-5" />
+              )}
+            </div>
+            <AlertDialogTitle className="text-base font-bold text-[#1A1D21]">
+              Alterar função para{' '}
+              {mudancaFuncao ? ROTULOS_FUNCAO_SELETOR[mudancaFuncao.novaFuncao] : ''}?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-[#5B6470] space-y-1.5">
+              <span>
+                Você está alterando a função de{' '}
+                <strong className="text-[#1A1D21] font-semibold">
+                  {mudancaFuncao?.membro.nome || mudancaFuncao?.membro.email}
+                </strong>{' '}
+                para{' '}
+                <strong className="text-[#1A1D21] font-semibold">
+                  {mudancaFuncao ? ROTULOS_FUNCAO_SELETOR[mudancaFuncao.novaFuncao] : ''}
+                </strong>
+                . As permissões da nova função são aplicadas imediatamente.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel
+              disabled={!!processandoAcao}
+              className="text-xs h-9 border-[#E5E1D8] hover:bg-[#F4F2EE]"
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!!processandoAcao}
+              onClick={(e) => {
+                e.preventDefault()
+                if (mudancaFuncao) handleMudarFuncao(mudancaFuncao.membro, mudancaFuncao.novaFuncao)
+              }}
+              className="text-xs h-9 bg-[#0F766E] hover:bg-[#0D5C56] text-white font-semibold"
+            >
+              {processandoAcao ? 'Aplicando...' : 'Confirmar alteração'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Modal de Desbloqueio Comercial */}
       <ModalDesbloqueioPlano

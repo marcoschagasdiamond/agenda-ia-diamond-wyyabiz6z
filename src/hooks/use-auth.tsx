@@ -1,12 +1,14 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import pb from '@/lib/pocketbase/client'
 import type { User, Profile, Cliente, MembroEquipe, EscopoItem } from '@/types'
+import { funcaoDoRegistro, isMembroAtivo, type FuncaoAcesso } from '@/lib/permissoes'
 
 interface AuthContextType {
   user: User | null
   profile: Profile | null
   clienteProfile: Cliente | null
   membroEquipe: MembroEquipe | null
+  funcaoEquipe: FuncaoAcesso
   meusEscopos: EscopoItem[]
   isConvidadoExterno: boolean
   escopoPrincipal: EscopoItem | null
@@ -57,14 +59,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .catch(() => null)
       setClienteProfile(c)
 
-      // 3. Tentar buscar registro em membros_equipe
+      // 3. Tentar buscar registro em membros_equipe — APENAS membros ativos.
+      // Membro desativado (suspenso) não recupera o registro: é tratado como
+      // sem vínculo e é deslogado pelo efeito de sessão abaixo.
       const m = await pb
         .collection('membros_equipe')
         .getFirstListItem<MembroEquipe>(
           `usuario = "${currentUser.id}" || email = "${currentUser.email}"`,
         )
         .catch(() => null)
-      if (m) {
+      if (m && isMembroAtivo(m)) {
         let parsed: EscopoItem[] = []
         if (typeof m.escopos === 'string') {
           try {
@@ -105,6 +109,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       unsubscribe()
     }
   }, [])
+
+  // Membro desativado (status='suspenso' em membros_equipe) não pode permanecer logado:
+  // se o registro existir mas estiver suspenso, a sessão é encerrada.
+  useEffect(() => {
+    if (loading || !user) return
+    const verificarStatusMembro = async () => {
+      try {
+        const m = await pb
+          .collection('membros_equipe')
+          .getFirstListItem<MembroEquipe>(`usuario = "${user.id}" || email = "${user.email}"`)
+          .catch(() => null)
+        if (m && !isMembroAtivo(m)) {
+          pb.authStore.clear()
+        }
+      } catch {
+        /* best-effort */
+      }
+    }
+    verificarStatusMembro()
+  }, [user, loading])
 
   const signIn = async (email: string, pass: string) => {
     try {
@@ -216,6 +240,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
   const escopoPrincipal = isConvidadoExterno ? meusEscopos[0] || null : null
 
+  // Função de acesso derivada do registro da equipe (dono → master, admin → admin,
+  // membro/visualizador → membro). Consumida pelo ProtectedRoute e pelo menu lateral.
+  const funcaoEquipe: FuncaoAcesso = funcaoDoRegistro(membroEquipe)
+
   return (
     <AuthContext.Provider
       value={{
@@ -223,6 +251,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         profile,
         clienteProfile,
         membroEquipe,
+        funcaoEquipe,
         meusEscopos,
         isConvidadoExterno,
         escopoPrincipal,

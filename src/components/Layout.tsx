@@ -34,13 +34,14 @@ import BlocoUsuario from '@/components/BlocoUsuario'
 import SinoNotificacoes from '@/components/SinoNotificacoes'
 import CommandPaletteGlobal from '@/components/CommandPaletteGlobal'
 import BotaoFeedbackFlutuante from '@/components/comercial/BotaoFeedbackFlutuante'
+import { itensMenuPermitidos } from '@/lib/permissoes'
 
 interface LayoutProps {
   children?: React.ReactNode
 }
 
 export default function Layout({ children }: LayoutProps) {
-  const { isClientPortal, isMaster, isConvidadoExterno, meusEscopos } = useAuth()
+  const { isClientPortal, isMaster, isConvidadoExterno, meusEscopos, funcaoEquipe } = useAuth()
   const {
     colunaSecundariaAberta,
     setColunaSecundariaAberta,
@@ -111,6 +112,9 @@ export default function Layout({ children }: LayoutProps) {
     })
   }
 
+  // Menu lateral filtrado pela função da equipe (membro comum não vê Equipe nem Configurações)
+  const navItemsPermitidos = itensMenuPermitidos(funcaoEquipe, navItemsInternal)
+
   // Se for Convidado Externo, o menu lateral do rail filtra APENAS o recurso do escopo dele
   const escopoPrincipal = isConvidadoExterno ? meusEscopos[0] : null
   const navItemsConvidado: NavRailItem[] = []
@@ -154,7 +158,7 @@ export default function Layout({ children }: LayoutProps) {
     ? navItemsClient
     : isConvidadoExterno
       ? navItemsConvidado
-      : navItemsInternal
+      : navItemsPermitidos
 
   const isAuthRoute =
     [

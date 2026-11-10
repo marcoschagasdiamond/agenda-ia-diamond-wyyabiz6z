@@ -38,6 +38,25 @@ import Perfil from '@/pages/Perfil'
 import MinhaConta from '@/pages/MinhaConta'
 import NotFound from '@/pages/NotFound'
 import { TelaAcessoRestrito } from '@/components/comercial/TelaAcessoRestrito'
+import { podeAcessarRecurso, type RecursoApp } from '@/lib/permissoes'
+
+const ROTULOS_RECURSO: Record<RecursoApp, string> = {
+  dashboard: 'Dashboard',
+  folha: 'Folha do Dia',
+  calendario: 'Calendário',
+  fluxo: 'Fluxo Kanban',
+  projetos: 'Projetos',
+  contatos: 'Contatos',
+  arquivos: 'Arquivos & Pastas',
+  listas: 'Listas & Demandas',
+  clientes: 'Clientes & Portal',
+  equipe: 'Equipe & Convites',
+  agente: 'Agente IA Diamond',
+  resumos: 'Resumos do Dia',
+  config: 'Configurações',
+  master: 'Painel Master',
+  portal: 'Portal do Cliente',
+}
 
 function ProtectedRoute({
   children,
@@ -61,7 +80,7 @@ function ProtectedRoute({
     | 'config'
     | 'dashboard'
 }) {
-  const { user, loading, isMaster, isConvidadoExterno, meusEscopos } = useAuth()
+  const { user, loading, isMaster, isConvidadoExterno, meusEscopos, funcaoEquipe } = useAuth()
 
   if (loading) {
     return (
@@ -72,6 +91,18 @@ function ProtectedRoute({
   }
   if (!user) {
     return <Navigate to="/login" replace />
+  }
+
+  // Cerco por função da equipe: membro comum não acessa Equipe nem Configurações;
+  // portal do cliente não acessa módulos internos. Aplica a TelaAcessoRestrito.
+  if (recursoTipo && !podeAcessarRecurso(funcaoEquipe, recursoTipo)) {
+    return (
+      <TelaAcessoRestrito
+        escopos={meusEscopos}
+        rotaTentada={ROTULOS_RECURSO[recursoTipo] || recursoTipo.toUpperCase()}
+        userEmail={user.email}
+      />
+    )
   }
 
   // Trava de Administrador Master

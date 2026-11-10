@@ -31,9 +31,10 @@ export const ROTULOS_FUNCAO: Record<FuncaoAcesso, string> = {
 }
 
 // O que cada função pode acessar. Membro vê a equipe em modo somente leitura (a
-// página trata isso); Configurações é restrita a admin/Master; /master só Master.
+// página trata isso); Configurações e Equipe são restritas a admin/Master;
+// /master só Master; o portal do cliente só acessa o próprio portal.
 const ACESSO_POR_RECURSO: Record<RecursoApp, FuncaoAcesso[]> = {
-  dashboard: ['master', 'admin', 'membro', 'portal_cliente'],
+  dashboard: ['master', 'admin', 'membro'],
   folha: ['master', 'admin', 'membro'],
   calendario: ['master', 'admin', 'membro'],
   fluxo: ['master', 'admin', 'membro'],
@@ -42,7 +43,7 @@ const ACESSO_POR_RECURSO: Record<RecursoApp, FuncaoAcesso[]> = {
   arquivos: ['master', 'admin', 'membro'],
   listas: ['master', 'admin', 'membro'],
   clientes: ['master', 'admin', 'membro'],
-  equipe: ['master', 'admin', 'membro'],
+  equipe: ['master', 'admin'],
   agente: ['master', 'admin', 'membro'],
   resumos: ['master', 'admin', 'membro'],
   config: ['master', 'admin'],
@@ -68,6 +69,15 @@ export function funcaoAtivaDoUsuario(
   return 'membro'
 }
 
+// Função de acesso de um registro da equipe: dono → master, admin eleito → admin,
+// demais (inclusive visualizador/somente leitura) → membro.
+export function funcaoDoRegistro(m: MembroEquipe | null): FuncaoAcesso {
+  if (!m) return 'membro'
+  if (isMembroProprietario(m)) return 'master'
+  if (m.funcao === 'admin' || m.nivel_acesso === 'admin') return 'admin'
+  return 'membro'
+}
+
 // Admin e Master podem gerenciar a equipe; membro vê somente leitura.
 export function podeGerenciarEquipe(funcao: FuncaoAcesso): boolean {
   return funcao === 'master' || funcao === 'admin'
@@ -88,6 +98,12 @@ export const STATUS_MEMBRO_ROTULO: Record<string, string> = {
   ativo: 'Ativo',
   pendente: 'Convite Pendente',
   suspenso: 'Desativado',
+}
+
+// Membros suspensos (desativados) não podem entrar nem continuar logados.
+export function isMembroAtivo(m: MembroEquipe | null | undefined): boolean {
+  if (!m) return true
+  return m.status !== 'suspenso'
 }
 
 // Mapa rota base do menu lateral -> recurso protegido
@@ -127,4 +143,12 @@ export function itensMenuPermitidos<T extends { path: string }>(
   itens: T[],
 ): T[] {
   return itens.filter((item) => podeAcessarRota(funcao, item.path))
+}
+
+// Rotas acessíveis a qualquer usuário autenticado (sem recursoTipo no ProtectedRoute).
+export function rotaSemRestricao(path: string): boolean {
+  const semRestricao = ['/perfil', '/conta', '/portal', '/portal/demandas', '/onboarding']
+  if (semRestricao.includes(path)) return true
+  const base = '/' + (path.split('/')[1] || '')
+  return semRestricao.includes(base)
 }
