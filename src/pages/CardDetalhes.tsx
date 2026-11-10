@@ -46,6 +46,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { ModalCardFluxo } from './fluxo/ModalCardFluxo'
 import { ModalCardArquivos } from './fluxo/ModalCardArquivos'
 import { ModalCardFamilia } from './fluxo/ModalCardFamilia'
+import PainelCamposPersonalizados from '@/components/campos/PainelCamposPersonalizados'
 
 export default function CardDetalhes() {
   const { id } = useParams<{ id: string }>()
@@ -475,6 +476,9 @@ export default function CardDetalhes() {
           </div>
         </div>
 
+        {/* Campos Personalizados (categoria Card) */}
+        <PainelCamposPersonalizados categoria="card" alvo={{ card: card.id }} />
+
         {/* COLUNA DIREITA (1/3): METADADOS & CLASSIFICAÇÃO */}
         <div className="space-y-4">
           <div className="bg-white p-4 rounded-xl border border-[#E5E1D8] shadow-xs space-y-3.5">
@@ -612,6 +616,9 @@ export default function CardDetalhes() {
           </div>
         </div>
       </form>
+
+      {/* Campos Personalizados (categoria Card) */}
+      <PainelCamposPersonalizados categoria="card" alvo={{ card: card.id }} />
 
       {/* MODAL 1: FLUXOS (REVINCULAR & STATUS) */}
       <ModalCardFluxo

@@ -21,6 +21,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/com
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
 import { ModalEditarContato } from '@/components/contatos/ModalEditarContato'
+import PainelCamposPersonalizados from '@/components/campos/PainelCamposPersonalizados'
 
 export default function ContatoDetalhes() {
   const { id } = useParams<{ id: string }>()
@@ -207,6 +208,12 @@ export default function ContatoDetalhes() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Campos Personalizados (categoria Pessoa e/ou Empresa) */}
+      <PainelCamposPersonalizados categoria="pessoa" alvo={{ contato: contato.id }} />
+      {contato.empresa && (
+        <PainelCamposPersonalizados categoria="empresa" alvo={{ contato: contato.id }} />
+      )}
 
       {/* Cards Vinculados */}
       <Card className="border-[#E5E1D8] bg-white shadow-xs">

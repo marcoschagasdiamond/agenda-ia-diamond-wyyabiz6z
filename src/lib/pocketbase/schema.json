@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-10T17:35:43.529Z",
+  "generatedAt": "2026-11-10T18:48:25.776Z",
   "collections": [
     {
       "name": "users",
@@ -3701,6 +3701,252 @@
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_cfg_email_user ON config_email_usuario (usuario)"]
+    },
+    {
+      "name": "listas_selecao",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "itens",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "criado_por",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_listas_selecao_nome ON listas_selecao (nome)"]
+    },
+    {
+      "name": "campos_personalizados",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "categoria",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["card", "pessoa", "empresa"]
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "texto_curto",
+            "texto_longo",
+            "numero",
+            "select",
+            "radio",
+            "checkbox",
+            "lista_checkbox",
+            "seletor_horario",
+            "seletor_data",
+            "upload",
+            "lista_selecao",
+            "moeda"
+          ]
+        },
+        {
+          "name": "mascara",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["cpf", "cnpj", "rg", "passaporte", "outros"]
+        },
+        {
+          "name": "mascara_outros",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome_interno",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "rotulo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "mensagem_ajuda",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "legenda",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "opcoes",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lista_selecao",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "listas_selecao"
+        },
+        {
+          "name": "obrigatorio",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ativo",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "criado_por",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_campos_pers_categoria ON campos_personalizados (categoria)",
+        "CREATE INDEX idx_campos_pers_ativo ON campos_personalizados (ativo)",
+        "CREATE INDEX idx_campos_pers_lista ON campos_personalizados (lista_selecao)"
+      ]
+    },
+    {
+      "name": "valores_campos_personalizados",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "campo",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "campos_personalizados"
+        },
+        {
+          "name": "card",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "cards"
+        },
+        {
+          "name": "contato",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "contatos"
+        },
+        {
+          "name": "valor",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "criado_por",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_valor_campo_alvo ON valores_campos_personalizados (campo, card, contato)",
+        "CREATE INDEX idx_valor_campo ON valores_campos_personalizados (campo)"
+      ]
     }
   ]
 }
