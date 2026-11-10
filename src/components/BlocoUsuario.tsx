@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Settings, LogOut, ChevronUp, UserRound, Building2 } from 'lucide-react'
+import { Settings, LogOut, ChevronUp, UserRound, Building2, BadgeCheck } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { cn } from '@/lib/utils'
 
@@ -136,6 +136,16 @@ export default function BlocoUsuario({ compacto = false, onAcao }: BlocoUsuarioP
           >
             <UserRound className="w-4 h-4 text-[#0F766E]" />
             Meu Perfil
+          </button>
+
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => irPara('/conta')}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors"
+          >
+            <BadgeCheck className="w-4 h-4 text-[#0F766E]" />
+            Minha Conta
           </button>
 
           <button

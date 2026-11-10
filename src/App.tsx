@@ -35,6 +35,7 @@ import Master from '@/pages/Master'
 import AceitarConvite from '@/pages/AceitarConvite'
 import PortalCliente from '@/pages/PortalCliente'
 import Perfil from '@/pages/Perfil'
+import MinhaConta from '@/pages/MinhaConta'
 import NotFound from '@/pages/NotFound'
 import { TelaAcessoRestrito } from '@/components/comercial/TelaAcessoRestrito'
 
@@ -293,6 +294,16 @@ export default function App() {
               <Route
                 path="/config/formularios"
                 element={<Navigate to="/config?aba=formularios" replace />}
+              />
+
+              {/* Minha Conta — todos os perfis autenticados, incluindo portal do cliente */}
+              <Route
+                path="/conta"
+                element={
+                  <ProtectedRoute>
+                    <MinhaConta />
+                  </ProtectedRoute>
+                }
               />
 
               {/* Portal do Cliente */}
