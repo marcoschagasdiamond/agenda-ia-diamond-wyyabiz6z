@@ -20,6 +20,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import PainelCamposPersonalizados from '@/components/campos/PainelCamposPersonalizados'
 import TimelineCard from '@/components/fluxo/TimelineCard'
 import SecaoTarefasCard from '@/components/fluxo/SecaoTarefasCard'
+import BarraTagsCard from '@/components/fluxo/BarraTagsCard'
 import {
   listarEventosCard,
   criarEventoCard,
@@ -322,15 +323,12 @@ export default function CardDetalhes() {
               />
             </div>
 
-            {/* Tags */}
-            <div className="flex items-center gap-3">
-              <Tag className="w-4 h-4 text-[#8A93A0] shrink-0" />
-              <Input
-                value={tagsTexto}
-                onChange={(e) => handleTagsChange(e.target.value)}
-                placeholder="Tags"
-                className="text-xs text-[#1A1D21] border-[#E5E1D8]"
-              />
+            {/* Tags: modelos prontos + criar tag com paleta de cores */}
+            <div className="flex items-start gap-3">
+              <Tag className="w-4 h-4 text-[#8A93A0] shrink-0 mt-2.5" />
+              <div className="flex-1 min-w-0">
+                <BarraTagsCard tagsTexto={tagsTexto} onTagsTextoChange={handleTagsChange} />
+              </div>
             </div>
 
             {/* Contatos vinculados (busca por nome/e-mail) */}

@@ -330,7 +330,7 @@ export default function Fluxo() {
 
   useEffect(() => {
     if (globalModalNovoCard) {
-      abrirModalCriarCard(globalModalNovoCardChave)
+      criarCardRascunho(globalModalNovoCardChave)
       setGlobalModalNovoCard(false)
     }
   }, [globalModalNovoCard, globalModalNovoCardChave])
@@ -515,22 +515,37 @@ export default function Fluxo() {
   // ==========================================
   // HANDLERS DE CARDS
   // ==========================================
-  const abrirModalCriarCard = (defaultStatus?: string, defaultFamiliaId?: string) => {
-    setEditingCard(null)
-    setFormTitulo('')
-    setFormDescricao('')
-    setFormProjeto('none')
-    setFormNegocio('none')
-    setFormContato('none')
-    setFormFamilia(defaultFamiliaId || 'none')
-    setFormPrioridade('media')
-    setFormStatus(defaultStatus || (colunasFiltradas[0]?.chave ?? 'backlog'))
-    setFormProximoPasso('')
-    setFormTags('')
-    setFormDataPrazo('')
-    setFormLembreteModo('padrao')
-    setFormLembreteAntecedencias(['1h', '1d'])
-    setModalCardOpen(true)
+  // '+ Novo Card': cria o card imediatamente (rascunho com título temporário)
+  // e navega direto para /card/:id — o modal antigo de criação foi aposentado.
+  const criarCardRascunho = async (defaultStatus?: string, defaultFamiliaId?: string) => {
+    const statusInicial = defaultStatus || colunasFiltradas[0]?.chave || 'backlog'
+    try {
+      const cardCriado = await diamondApi.createCard({
+        titulo: 'Novo card',
+        status: statusInicial,
+        prioridade: 'media',
+        grupo_familia: defaultFamiliaId || undefined,
+        fluxo_id: fluxoAtivo?.id || undefined,
+      })
+      // Timeline: registra a criação do card + entrada inicial no fluxo/coluna
+      await criarEventoCard(cardCriado.id, 'sistema', textoEventoCriacao())
+      const nomeColunaInicial = colunasPorChave.get(statusInicial)?.titulo || statusInicial
+      await criarEventoCard(
+        cardCriado.id,
+        'movimento',
+        textoEventoMovimento(
+          { fluxo_nome: fluxoAtivo?.nome || 'Fluxo', coluna_nome: nomeColunaInicial },
+          'Fluxo',
+        ),
+      )
+      navigate(`/card/${cardCriado.id}`)
+    } catch (err) {
+      toast({
+        title: 'Erro ao criar card',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    }
   }
 
   const abrirModalEditarCard = (card: CardType) => {
@@ -1903,7 +1918,7 @@ export default function Fluxo() {
                   </span>
                 </div>
               )}
-              <DropdownMenuItem onClick={() => abrirModalCriarCard()}>
+              <DropdownMenuItem onClick={() => criarCardRascunho()}>
                 <Plus className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
                 Novo Card
               </DropdownMenuItem>
@@ -2067,7 +2082,7 @@ export default function Fluxo() {
           )}
 
           <Button
-            onClick={() => abrirModalCriarCard()}
+            onClick={() => criarCardRascunho()}
             size="sm"
             className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-8 px-3 font-medium shadow-sm gap-1.5"
           >
@@ -2340,7 +2355,7 @@ export default function Fluxo() {
                                         const primeiraFase = colunas.find(
                                           (c) => c.fluxo_id === fluxo.id,
                                         )?.chave
-                                        abrirModalCriarCard(primeiraFase)
+                                        criarCardRascunho(primeiraFase)
                                       }}
                                     >
                                       <Plus className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />+ Card
@@ -2584,7 +2599,7 @@ export default function Fluxo() {
               <div className="shrink-0 pt-7">
                 <button
                   type="button"
-                  onClick={() => abrirModalCriarCard()}
+                  onClick={() => criarCardRascunho()}
                   title="Criar novo card no fluxo"
                   className="w-10 h-10 rounded-xl bg-white border border-[#E5E1D8] text-[#5B6470] hover:text-[#0F766E] hover:border-[#0F766E] hover:shadow-xs flex items-center justify-center transition-all"
                 >
@@ -2686,7 +2701,7 @@ export default function Fluxo() {
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="text-xs">
-                            <DropdownMenuItem onClick={() => abrirModalCriarCard(col.chave)}>
+                            <DropdownMenuItem onClick={() => criarCardRascunho(col.chave)}>
                               <Plus className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />+ Card nesta
                               coluna
                             </DropdownMenuItem>
@@ -2710,7 +2725,7 @@ export default function Fluxo() {
                     {!isColunaFinalizado ? (
                       <button
                         type="button"
-                        onClick={() => abrirModalCriarCard(col.chave)}
+                        onClick={() => criarCardRascunho(col.chave)}
                         title={`Adicionar novo card em ${col.titulo}`}
                         className="w-full h-9 rounded-xl bg-white hover:bg-white/90 border border-[#E5E1D8] shadow-2xs hover:shadow-xs flex items-center justify-center text-[#2563EB] hover:text-[#1D4ED8] mb-3 transition-all group"
                       >

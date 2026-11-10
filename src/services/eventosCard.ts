@@ -38,14 +38,13 @@ export interface TarefaCard {
   }
 }
 
-export type AbaTimeline = 'todos' | 'anotacoes' | 'minhas' | 'registros' | 'conecta'
+export type AbaTimeline = 'todos' | 'anotacoes' | 'minhas' | 'registros'
 
 export const ROTULOS_ABA_TIMELINE: Record<AbaTimeline, string> = {
   todos: 'TODOS',
   anotacoes: 'ANOTAÇÕES',
   minhas: 'MINHAS ANOTAÇÕES',
   registros: 'REGISTROS',
-  conecta: 'CONECTA',
 }
 
 // ---------- Ajustes de textos dos eventos (texto já salvo no banco) ----------
@@ -118,13 +117,18 @@ export async function criarEventoCard(
   }
 }
 
-export async function criarAnotacaoCard(cardId: string, texto: string): Promise<EventoCard | null> {
+export async function criarAnotacaoCard(
+  cardId: string,
+  texto: string,
+  dados?: Record<string, unknown>,
+): Promise<EventoCard | null> {
   try {
     const rec = await pb.collection('eventos_card').create<EventoCard>({
       card: cardId,
       tipo_evento: 'anotacao',
       texto,
       autor: pb.authStore.record?.id,
+      dados: dados ? JSON.stringify(dados) : undefined,
     })
     return rec
   } catch (err) {

@@ -1,12 +1,27 @@
 // Timeline do card (coluna direita do painel de detalhes) — modelo Ummense.
-// Caixa de anotação com menções @ (usuário/equipe), abas de filtro e feed
+// Caixa de anotação com menções @ (usuário/equipe), anexos (upload do computador
+// ou vínculo de arquivos já enviados na Agenda), abas de filtro e feed
 // cronológico dos eventos (anotações e registros de sistema).
-import { useState, useMemo } from 'react'
-import { Paperclip, Smile, Send, Loader2, Trash2, Circle, Clock, HelpCircle } from 'lucide-react'
+import { useEffect, useRef, useState, useMemo } from 'react'
+import {
+  Paperclip,
+  Smile,
+  Send,
+  Loader2,
+  Trash2,
+  Circle,
+  Clock,
+  HelpCircle,
+  File,
+  FolderOpen,
+  ExternalLink,
+} from 'lucide-react'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from '@/hooks/use-toast'
+import { diamondApi } from '@/services/diamondApi'
 import {
   ROTULOS_ABA_TIMELINE,
   criarAnotacaoCard,
@@ -18,9 +33,9 @@ import {
   type AbaTimeline,
   type EventoCard,
 } from '@/services/eventosCard'
-import type { MembroEquipe } from '@/types'
+import type { CardArquivo, MembroEquipe } from '@/types'
 
-const ABAS: AbaTimeline[] = ['todos', 'anotacoes', 'minhas', 'registros', 'conecta']
+const ABAS: AbaTimeline[] = ['todos', 'anotacoes', 'minhas', 'registros']
 
 interface Props {
   cardId: string
@@ -35,12 +50,32 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
   const [textoAnotacao, setTextoAnotacao] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [excluindoId, setExcluindoId] = useState<string | null>(null)
+  // Anexos da anotação: arquivos novos (upload) e arquivos já enviados na Agenda
+  const [anexosPendentes, setAnexosPendentes] = useState<File[]>([])
+  const [anexosAgenda, setAnexosAgenda] = useState<CardArquivo[]>([])
+  const [enviandoAnexo, setEnviandoAnexo] = useState(false)
+  const [menuAnexoAberto, setMenuAnexoAberto] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Arquivos do card já enviados (para vínculo) — carregados quando o menu abre
+  useEffect(() => {
+    if (!menuAnexoAberto || !cardId) return
+    let cancelado = false
+    diamondApi
+      .listCardArquivos(cardId)
+      .then((lista) => {
+        if (!cancelado) setAnexosAgenda(lista)
+      })
+      .catch(() => {})
+    return () => {
+      cancelado = true
+    }
+  }, [menuAnexoAberto, cardId])
 
   const meusMembros = useMemo(
     () => membros.filter((m) => m.usuario === user?.id),
     [membros, user?.id],
   )
-  const ehMembroLogado = meusMembros.length > 0
 
   const eventosFiltrados = useMemo(() => {
     switch (aba) {
@@ -50,21 +85,83 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
         return eventos.filter((e) => e.tipo_evento === 'anotacao' && e.autor === user?.id)
       case 'registros':
         return eventos.filter((e) => e.tipo_evento !== 'anotacao')
-      case 'conecta':
-        return [] // estrutura pronta: sem eventos "conecta" por ora
       default:
         return eventos
     }
   }, [eventos, aba, user?.id])
 
+  const adicionarAnexos = (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setAnexosPendentes((prev) => [...prev, ...Array.from(files)])
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const removerAnexoPendente = (nome: string) => {
+    setAnexosPendentes((prev) => prev.filter((f) => f.name !== nome))
+  }
+
+  const vincularAnexoAgenda = (arq: CardArquivo) => {
+    setAnexosAgenda((prev) => prev.filter((a) => a.id !== arq.id))
+    setAnexosPendentes((prev) => [
+      ...prev,
+      new File([], arq.nome, { type: `__agenda__:${arq.id}:${arq.arquivo}` }),
+    ])
+    toast({ title: `Arquivo "${arq.nome}" vinculado à anotação.` })
+  }
+
   const handleEnviarAnotacao = async () => {
     const texto = textoAnotacao.trim()
-    if (!texto || !cardId) return
+    if ((!texto && anexosPendentes.length === 0) || !cardId) return
     setEnviando(true)
     try {
-      const criada = await criarAnotacaoCard(cardId, texto)
+      // 1. Upload real dos arquivos novos do computador (coleção card_arquivos)
+      const anexados: Array<{ id: string; nome: string; url: string }> = []
+      for (const file of anexosPendentes) {
+        const marcador = (file as File & { type?: string }).type || ''
+        if (marcador.startsWith('__agenda__:')) {
+          // 2. Vínculo de arquivo já enviado na Agenda
+          const [, idArq, campo] = marcador.split(':')
+          const rec = { id: idArq, arquivo: campo }
+          anexados.push({
+            id: idArq,
+            nome: file.name,
+            url: diamondApi.getCardArquivoUrl(rec),
+          })
+          continue
+        }
+        try {
+          const fd = new FormData()
+          fd.append('card', cardId)
+          fd.append('nome', file.name)
+          fd.append('arquivo', file)
+          fd.append('tamanho', String(file.size))
+          fd.append('tipo', file.type || 'application/octet-stream')
+          if (user?.id) fd.append('criado_por', user.id)
+          const criado = await diamondApi.uploadCardArquivo(fd)
+          anexados.push({
+            id: criado.id,
+            nome: criado.nome || file.name,
+            url: diamondApi.getCardArquivoUrl(criado),
+          })
+        } catch (err) {
+          console.error('Falha no upload do anexo da timeline:', file.name, err)
+          toast({
+            title: `Falha ao enviar o arquivo "${file.name}"`,
+            variant: 'destructive',
+          })
+        }
+      }
+
+      // 3. Anotação com o texto + links dos anexos embutidos
+      const linhasAnexo = anexados.map((a) => `📎 [${a.nome}](${a.url})`).join('\n')
+      const textoFinal = [texto, linhasAnexo].filter(Boolean).join('\n')
+      const criada = await criarAnotacaoCard(cardId, textoFinal, {
+        anexos: anexados.map((a) => ({ id: a.id, nome: a.nome, url: a.url })),
+      })
       if (criada) {
         setTextoAnotacao('')
+        setAnexosPendentes([])
+        setMenuAnexoAberto(false)
         await onRecarregar()
         toast({ title: 'Anotação registrada na timeline!' })
       } else {
@@ -106,18 +203,40 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
     )
   }
 
+  /** Links de anexo embutidos no texto da anotação (📎 [nome](url)) varam clicáveis. */
+  const renderTextoComAnexos = (texto: string) => {
+    const partes = texto.split(/(📎 \[[^\]]+\]\([^)]+\))/g)
+    return partes.map((parte, i) => {
+      const m = parte.match(/^📎 \[([^\]]+)\]\(([^)]+)\)$/)
+      if (m) {
+        return (
+          <a
+            key={i}
+            href={m[2]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-[#0F766E] font-semibold hover:underline mr-1"
+          >
+            <Paperclip className="w-3 h-3" />
+            {m[1]}
+            <ExternalLink className="w-2.5 h-2.5" />
+          </a>
+        )
+      }
+      return <span key={i}>{parte}</span>
+    })
+  }
+
   const renderFeed = () => {
     if (eventosFiltrados.length === 0) {
       const msg =
-        aba === 'conecta'
-          ? 'Conecta: estrutura pronta — sem eventos nesta aba por ora.'
-          : aba === 'minhas'
-            ? 'Você ainda não escreveu nenhuma anotação neste card.'
-            : aba === 'anotacoes'
-              ? 'Nenhuma anotação neste card ainda.'
-              : aba === 'registros'
-                ? 'Nenhum registro de sistema ainda.'
-                : 'Nada por aqui ainda.'
+        aba === 'minhas'
+          ? 'Você ainda não escreveu nenhuma anotação neste card.'
+          : aba === 'anotacoes'
+            ? 'Nenhuma anotação neste card ainda.'
+            : aba === 'registros'
+              ? 'Nenhum registro de sistema ainda.'
+              : 'Nada por aqui ainda.'
       return <p className="text-xs text-[#8A93A0] py-6 text-center">{msg}</p>
     }
 
@@ -170,6 +289,22 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
     )
   }
 
+  const renderTextoComMencaoEAnexos = (texto: string) => {
+    // divide por anexos primeiro, depois aplica menções dentro de cada trecho de texto
+    const partes = texto.split(/(📎 \[[^\]]+\]\([^)]+\))/g)
+    return partes.map((parte, i) => {
+      const m = parte.match(/^📎 \[([^\]]+)\]\(([^)]+)\)$/)
+      if (m) {
+        return (
+          <span key={i} className="inline-flex mr-1">
+            {renderTextoComAnexos(parte)}
+          </span>
+        )
+      }
+      return <span key={i}>{renderTextoComMencao(parte, membros, user)}</span>
+    })
+  }
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-1 pb-3">
@@ -180,7 +315,7 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
         </div>
       </div>
 
-      {/* Caixa de anotação com menções @ */}
+      {/* Caixa de anotação com menções @ e anexos */}
       <div className="rounded-xl border border-[#E5E1D8] bg-white p-3 shadow-xs">
         <Textarea
           rows={3}
@@ -189,15 +324,87 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
           placeholder="Escreva uma anotação neste card. Use @ para mencionar um usuário ou uma equipe."
           className="text-xs border-0 p-0 shadow-none focus-visible:ring-0 resize-none text-[#1A1D21]"
         />
+
+        {/* Anexos pendentes da anotação */}
+        {anexosPendentes.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {anexosPendentes.map((f) => (
+              <span
+                key={f.name}
+                className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#F4F2EE] text-[#1A1D21] max-w-[180px]"
+              >
+                <File className="w-3 h-3 text-[#0F766E] shrink-0" />
+                <span className="truncate">{f.name}</span>
+                <button
+                  type="button"
+                  onClick={() => removerAnexoPendente(f.name)}
+                  className="text-[#8A93A0] hover:text-red-500 shrink-0"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-center justify-end gap-1.5 pt-2.5 border-t border-[#F1EFEA] mt-2">
-          <button
-            type="button"
-            title="Anexar arquivo"
-            onClick={() => toast({ title: 'Anexos na timeline ainda não implementados.' })}
-            className="w-7 h-7 rounded-md hover:bg-[#F4F2EE] flex items-center justify-center text-[#8A93A0]"
-          >
-            <Paperclip className="w-3.5 h-3.5" />
-          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => adicionarAnexos(e.target.files)}
+          />
+          <Popover open={menuAnexoAberto} onOpenChange={setMenuAnexoAberto}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                title="Anexar arquivo"
+                className="w-7 h-7 rounded-md hover:bg-[#F4F2EE] flex items-center justify-center text-[#8A93A0]"
+              >
+                {enviandoAnexo ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Paperclip className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-72 p-3" align="end">
+              <p className="text-[10px] font-semibold text-[#8A93A0] uppercase tracking-wider mb-2">
+                Anexar arquivo
+              </p>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left text-xs text-[#1A1D21] hover:bg-[#F4F2EE]"
+              >
+                <File className="w-4 h-4 text-[#0F766E]" />
+                Enviar arquivo do computador…
+              </button>
+              <p className="text-[10px] font-semibold text-[#8A93A0] uppercase tracking-wider mt-2 mb-1">
+                Arquivos já enviados neste card
+              </p>
+              {anexosAgenda.length === 0 ? (
+                <p className="text-[11px] text-[#8A93A0] px-2 py-1">
+                  Nenhum arquivo enviado ainda neste card.
+                </p>
+              ) : (
+                <div className="max-h-40 overflow-y-auto">
+                  {anexosAgenda.map((arq) => (
+                    <button
+                      key={arq.id}
+                      type="button"
+                      onClick={() => vincularAnexoAgenda(arq)}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-xs text-[#1A1D21] hover:bg-[#F4F2EE]"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5 text-[#5B6470] shrink-0" />
+                      <span className="truncate">{arq.nome}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
           <button
             type="button"
             title="Emoji"

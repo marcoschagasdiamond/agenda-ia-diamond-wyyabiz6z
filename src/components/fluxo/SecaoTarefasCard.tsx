@@ -12,11 +12,19 @@ import {
   ChevronDown,
   ChevronRight,
   Circle,
+  MoreVertical,
+  Pencil,
   Trash2,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { toast } from '@/hooks/use-toast'
 import {
@@ -48,6 +56,9 @@ export default function SecaoTarefasCard({
   const [expandida, setExpandida] = useState(false)
   const [criando, setCriando] = useState(false)
   const [tarefaExpandidaId, setTarefaExpandidaId] = useState<string | null>(null)
+  // Menu 3 pontinhos por tarefa: edição inline de texto
+  const [editandoId, setEditandoId] = useState<string | null>(null)
+  const [textoEdicao, setTextoEdicao] = useState('')
   // Campos extras da linha de adição rápida (ícones data/descrição/responsável)
   const [comPrazo, setComPrazo] = useState('')
   const [comDescricao, setComDescricao] = useState('')
@@ -88,6 +99,7 @@ export default function SecaoTarefasCard({
   }
 
   const remover = async (t: TarefaCard) => {
+    if (!confirm(`Deseja realmente excluir a tarefa "${t.titulo}"?`)) return
     const ok = await excluirTarefaCard(t.id)
     if (ok) {
       await onRecarregar()
@@ -95,6 +107,20 @@ export default function SecaoTarefasCard({
     } else {
       toast({ title: 'Erro ao remover tarefa', variant: 'destructive' })
     }
+  }
+
+  const salvarEdicao = async (t: TarefaCard) => {
+    const titulo = textoEdicao.trim()
+    if (!titulo) return
+    const ok = await atualizarTarefaCard(t.id, { titulo })
+    if (ok) {
+      await onRecarregar()
+      toast({ title: 'Tarefa atualizada.' })
+    } else {
+      toast({ title: 'Erro ao atualizar tarefa', variant: 'destructive' })
+    }
+    setEditandoId(null)
+    setTextoEdicao('')
   }
 
   return (
@@ -147,11 +173,42 @@ export default function SecaoTarefasCard({
                 )}
               </button>
               <div className="flex-1 min-w-0">
-                <p
-                  className={`text-xs ${t.concluida ? 'line-through text-[#8A93A0]' : 'text-[#1A1D21]'}`}
-                >
-                  {t.titulo}
-                </p>
+                {editandoId === t.id ? (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      salvarEdicao(t)
+                    }}
+                    className="flex items-center gap-1.5"
+                  >
+                    <input
+                      autoFocus
+                      value={textoEdicao}
+                      onChange={(e) => setTextoEdicao(e.target.value)}
+                      onBlur={() => salvarEdicao(t)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          setEditandoId(null)
+                          setTextoEdicao('')
+                        }
+                      }}
+                      className="flex-1 min-w-0 text-xs text-[#1A1D21] bg-white border border-[#0F766E] rounded-md px-2 py-1 outline-none"
+                    />
+                    <Button
+                      type="submit"
+                      size="sm"
+                      className="h-6 px-2 text-[10px] bg-[#0F766E] hover:bg-[#0D5C56] text-white"
+                    >
+                      Salvar
+                    </Button>
+                  </form>
+                ) : (
+                  <p
+                    className={`text-xs ${t.concluida ? 'line-through text-[#8A93A0]' : 'text-[#1A1D21]'}`}
+                  >
+                    {t.titulo}
+                  </p>
+                )}
                 {(t.data_limite || t.responsavel) && (
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     {t.data_limite && (
@@ -169,14 +226,35 @@ export default function SecaoTarefasCard({
                   </div>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => remover(t)}
-                className="opacity-0 group-hover:opacity-100 text-[#CBD5E1] hover:text-red-500 transition-opacity"
-                title="Remover tarefa"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              {/* Menu 3 pontinhos: editar texto / excluir tarefa */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    title="Opções da tarefa"
+                    className="opacity-0 group-hover:opacity-100 text-[#CBD5E1] hover:text-[#5B6470] transition-opacity shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MoreVertical className="w-3.5 h-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setEditandoId(t.id)
+                      setTextoEdicao(t.titulo)
+                    }}
+                  >
+                    <Pencil className="w-3.5 h-3.5 mr-2" /> Editar texto
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => remover(t)}
+                    className="text-red-600 focus:text-red-600"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 mr-2" /> Excluir tarefa
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </li>
           ))}
         </ul>
