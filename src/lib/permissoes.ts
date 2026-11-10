@@ -89,3 +89,42 @@ export const STATUS_MEMBRO_ROTULO: Record<string, string> = {
   pendente: 'Convite Pendente',
   suspenso: 'Desativado',
 }
+
+// Mapa rota base do menu lateral -> recurso protegido
+const RECURSO_POR_ROTA: Record<string, RecursoApp> = {
+  '/': 'dashboard',
+  '/folha': 'folha',
+  '/calendario': 'calendario',
+  '/fluxo': 'fluxo',
+  '/projetos': 'projetos',
+  '/contatos': 'contatos',
+  '/arquivos': 'arquivos',
+  '/listas': 'listas',
+  '/clientes': 'clientes',
+  '/equipe': 'equipe',
+  '/agente': 'agente',
+  '/resumos': 'resumos',
+  '/config': 'config',
+  '/master': 'master',
+  '/portal': 'portal',
+}
+
+export function recursoDaRota(path: string): RecursoApp | null {
+  if (RECURSO_POR_ROTA[path]) return RECURSO_POR_ROTA[path]
+  const base = '/' + (path.split('/')[1] || '')
+  return RECURSO_POR_ROTA[base] ?? null
+}
+
+export function podeAcessarRota(funcao: FuncaoAcesso, path: string): boolean {
+  const recurso = recursoDaRota(path)
+  if (!recurso) return true
+  return podeAcessarRecurso(funcao, recurso)
+}
+
+// Filtra os itens do menu lateral conforme a função do usuário logado.
+export function itensMenuPermitidos<T extends { path: string }>(
+  funcao: FuncaoAcesso,
+  itens: T[],
+): T[] {
+  return itens.filter((item) => podeAcessarRota(funcao, item.path))
+}
