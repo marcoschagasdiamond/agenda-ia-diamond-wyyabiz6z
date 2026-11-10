@@ -186,3 +186,5 @@ export function BarraTagsCard({ tags, onChange }: BarraTagsCardProps) {
 export function LoaderTags() {
   return <Loader2 className="w-3.5 h-3.5 animate-spin" />
 }
+
+export default BarraTagsCard

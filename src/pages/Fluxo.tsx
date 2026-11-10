@@ -2777,7 +2777,7 @@ export default function Fluxo() {
                                   <div className="flex items-center gap-1">
                                     <button
                                       type="button"
-                                      onClick={() => abrirModalCriarCard(col.chave, fam.id)}
+                                      onClick={() => criarCardRascunho(col.chave, fam.id)}
                                       title="Adicionar card nesta família"
                                       className="text-[#5B6470] hover:text-[#0F766E] p-0.5"
                                     >
@@ -3136,7 +3136,7 @@ export default function Fluxo() {
                   <div className="p-8 text-center text-xs text-[#5B6470] space-y-2">
                     <p>Nenhum card encontrado com os filtros aplicados.</p>
                     <Button
-                      onClick={() => abrirModalCriarCard()}
+                      onClick={() => criarCardRascunho()}
                       size="sm"
                       className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-8"
                     >
@@ -3160,7 +3160,7 @@ export default function Fluxo() {
               projetos={projetos}
               contatos={contatos}
               onEditarCard={abrirModalEditarCard}
-              onCriarCard={() => abrirModalCriarCard()}
+              onCriarCard={() => criarCardRascunho()}
             />
           )}
 

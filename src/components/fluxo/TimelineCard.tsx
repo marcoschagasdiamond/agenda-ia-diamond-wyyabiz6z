@@ -12,7 +12,7 @@ import {
   Circle,
   Clock,
   HelpCircle,
-  File,
+  File as FileIcon,
   FolderOpen,
   ExternalLink,
 } from 'lucide-react'
@@ -333,7 +333,7 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
                 key={f.name}
                 className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#F4F2EE] text-[#1A1D21] max-w-[180px]"
               >
-                <File className="w-3 h-3 text-[#0F766E] shrink-0" />
+                <FileIcon className="w-3 h-3 text-[#0F766E] shrink-0" />
                 <span className="truncate">{f.name}</span>
                 <button
                   type="button"
@@ -378,7 +378,7 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
                 onClick={() => fileInputRef.current?.click()}
                 className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left text-xs text-[#1A1D21] hover:bg-[#F4F2EE]"
               >
-                <File className="w-4 h-4 text-[#0F766E]" />
+                <FileIcon className="w-4 h-4 text-[#0F766E]" />
                 Enviar arquivo do computador…
               </button>
               <p className="text-[10px] font-semibold text-[#8A93A0] uppercase tracking-wider mt-2 mb-1">

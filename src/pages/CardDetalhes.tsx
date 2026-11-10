@@ -51,7 +51,7 @@ export default function CardDetalhes() {
   const [tarefas, setTarefas] = useState<TarefaCard[]>([])
 
   const [detalhes, setDetalhes] = useState('')
-  const [tagsTexto, setTagsTexto] = useState('')
+  const [tagsTexto, setTagsTexto] = useState<string[]>([])
   const [buscaContato, setBuscaContato] = useState('')
   const [salvandoDetalhes, setSalvandoDetalhes] = useState(false)
   const [carregando, setCarregando] = useState(true)
@@ -66,7 +66,7 @@ export default function CardDetalhes() {
       const c = await diamondApi.getCard(id)
       setCard(c)
       setDetalhes(c.descricao || '')
-      setTagsTexto(Array.isArray(c.tags) ? c.tags.join(', ') : '')
+      setTagsTexto(Array.isArray(c.tags) ? c.tags : [])
 
       const [listaContatos, listaMembros, listaEventos, listaTarefas] = await Promise.all([
         diamondApi.listContatos().catch(() => [] as Contato[]),
@@ -134,12 +134,8 @@ export default function CardDetalhes() {
     agendarSalvarCard({ descricao: v })
   }
 
-  const handleTagsChange = (v: string) => {
-    setTagsTexto(v)
-    const arr = v
-      .split(',')
-      .map((t) => t.trim().toLowerCase())
-      .filter(Boolean)
+  const handleTagsChange = (arr: string[]) => {
+    setTagsTexto(arr)
     agendarSalvarCard({ tags: arr })
   }
 
@@ -327,7 +323,7 @@ export default function CardDetalhes() {
             <div className="flex items-start gap-3">
               <Tag className="w-4 h-4 text-[#8A93A0] shrink-0 mt-2.5" />
               <div className="flex-1 min-w-0">
-                <BarraTagsCard tagsTexto={tagsTexto} onTagsTextoChange={handleTagsChange} />
+                <BarraTagsCard tags={tagsTexto} onChange={handleTagsChange} />
               </div>
             </div>
 
