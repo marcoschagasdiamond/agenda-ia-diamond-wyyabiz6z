@@ -86,6 +86,10 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/hooks/use-toast'
 import SinoNotificacoes from '@/components/SinoNotificacoes'
+import PainelCamposPersonalizados, {
+  type PainelCamposPersonalizadosHandle,
+} from '@/components/campos/PainelCamposPersonalizados'
+import { useRef } from 'react'
 
 export default function Fluxo() {
   const navigate = useNavigate()
@@ -172,6 +176,7 @@ export default function Fluxo() {
   // Modais de Criação e Edição
   // 1. Modal Card
   const [modalCardOpen, setModalCardOpen] = useState(false)
+  const camposPersonalizadosRef = useRef<PainelCamposPersonalizadosHandle>(null)
   const [editingCard, setEditingCard] = useState<CardType | null>(null)
   const [formTitulo, setFormTitulo] = useState('')
   const [formDescricao, setFormDescricao] = useState('')
@@ -554,6 +559,15 @@ export default function Fluxo() {
   const handleSalvarCard = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formTitulo.trim()) return
+    // Campos personalizados obrigatórios da categoria Card bloqueiam o salvamento
+    if (editingCard && camposPersonalizadosRef.current?.validarObrigatorios() === false) {
+      toast({
+        title: 'Campos obrigatórios não preenchidos',
+        description: 'Preencha os campos personalizados obrigatórios antes de salvar o card.',
+        variant: 'destructive',
+      })
+      return
+    }
     setSalvandoCard(true)
 
     const tagsArray = formTags
@@ -3364,6 +3378,16 @@ export default function Fluxo() {
                 </div>
               )}
             </div>
+
+            {/* Campos Personalizados (categoria Card) — apenas na edição de um card existente */}
+            {editingCard && (
+              <PainelCamposPersonalizados
+                ref={camposPersonalizadosRef}
+                categoria="card"
+                alvo={{ card: editingCard.id }}
+                titulo="Campos Personalizados do Card"
+              />
+            )}
 
             <DialogFooter className="flex justify-between items-center pt-4 border-t border-[#E5E1D8]">
               {editingCard ? (

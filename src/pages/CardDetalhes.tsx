@@ -617,9 +617,6 @@ export default function CardDetalhes() {
         </div>
       </form>
 
-      {/* Campos Personalizados (categoria Card) */}
-      <PainelCamposPersonalizados categoria="card" alvo={{ card: card.id }} />
-
       {/* MODAL 1: FLUXOS (REVINCULAR & STATUS) */}
       <ModalCardFluxo
         open={modalFluxoOpen}
