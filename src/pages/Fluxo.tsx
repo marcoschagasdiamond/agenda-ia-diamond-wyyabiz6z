@@ -90,6 +90,7 @@ import PainelCamposPersonalizados, {
   type PainelCamposPersonalizadosHandle,
 } from '@/components/campos/PainelCamposPersonalizados'
 import { useRef } from 'react'
+import { criarEventoCard, textoEventoCriacao, textoEventoMovimento } from '@/services/eventosCard'
 
 export default function Fluxo() {
   const navigate = useNavigate()
@@ -598,7 +599,18 @@ export default function Fluxo() {
         await diamondApi.updateCard(editingCard.id, payload)
         toast({ title: 'Card atualizado com sucesso!' })
       } else {
-        await diamondApi.createCard(payload)
+        const cardCriado = await diamondApi.createCard(payload)
+        // Timeline: registra a criação do card + entrada inicial no fluxo/coluna
+        await criarEventoCard(cardCriado.id, 'sistema', textoEventoCriacao())
+        const nomeColunaInicial = colunasPorChave.get(formStatus)?.titulo || formStatus
+        await criarEventoCard(
+          cardCriado.id,
+          'movimento',
+          textoEventoMovimento(
+            { fluxo_nome: fluxoAtivo?.nome || 'Fluxo', coluna_nome: nomeColunaInicial },
+            'Fluxo',
+          ),
+        )
         toast({ title: 'Card criado com sucesso!' })
       }
       setModalCardOpen(false)
@@ -629,8 +641,22 @@ export default function Fluxo() {
     // Atualização otimista
     setCards((prev) => prev.map((c) => (c.id === cardId ? { ...c, status: novoStatus } : c)))
     try {
+      const cardAnterior = cards.find((c) => c.id === cardId)
+      const statusAnterior = cardAnterior?.status as string | undefined
       await diamondApi.updateCard(cardId, { status: novoStatus })
       const nomeColuna = colunasPorChave.get(novoStatus)?.titulo || novoStatus
+      // Timeline: registra a movimentação (coluna origem → destino)
+      if (statusAnterior && statusAnterior !== novoStatus) {
+        const de = colunasPorChave.get(statusAnterior)?.titulo || statusAnterior
+        await criarEventoCard(
+          cardId,
+          'movimento',
+          textoEventoMovimento(
+            { fluxo_nome: fluxoAtivo?.nome || 'Fluxo', coluna_nome: nomeColuna },
+            de,
+          ),
+        )
+      }
       toast({ title: `Card movido para "${nomeColuna}"` })
     } catch (err) {
       toast({
@@ -1248,6 +1274,20 @@ export default function Fluxo() {
       }
       await diamondApi.updateCard(id, updateData)
       const nomeColuna = colunasPorChave.get(targetStatus)?.titulo || targetStatus
+      // Timeline: registra a movimentação no drag & drop (origem → destino)
+      const cardAntes = cards.find((c) => c.id === id)
+      const statusAntes = cardAntes?.status as string | undefined
+      if (statusAntes && statusAntes !== targetStatus) {
+        const de = colunasPorChave.get(statusAntes)?.titulo || statusAntes
+        await criarEventoCard(
+          id,
+          'movimento',
+          textoEventoMovimento(
+            { fluxo_nome: fluxoAtivo?.nome || 'Fluxo', coluna_nome: nomeColuna },
+            de,
+          ),
+        )
+      }
       toast({
         title: `Card movido para "${nomeColuna}"`,
       })

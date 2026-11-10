@@ -1,653 +1,429 @@
-import { useState, useEffect } from 'react'
-import { useParams, useNavigate, useLocation } from 'react-router-dom'
+// Painel de detalhes do card (página /card/:id) — reformado no layout Ummense:
+// DUAS COLUNAS —
+//   esquerda: Líder + Equipe, textarea grande de detalhes, Tags, contatos
+//   vinculados (busca por nome/e-mail), Campos personalizados (categoria card)
+//   e Tarefas do card (contador + adição rápida);
+//   direita: Timeline (anotações com menções @, abas e feed cronológico).
+// Em tela estreita a Timeline cai para baixo da coluna esquerda.
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { diamondApi } from '@/services/diamondApi'
-import { useToast } from '@/hooks/use-toast'
-import type {
-  Card,
-  CategoriaFluxo,
-  FluxoKanban,
-  ColunaFluxo,
-  GrupoFamilia,
-  Projeto,
-  Negocio,
-  Contato,
-  CardPrioridade,
-} from '@/types'
-import {
-  ArrowLeft,
-  Copy,
-  ExternalLink,
-  GitBranch,
-  Paperclip,
-  Users,
-  Calendar,
-  Building,
-  User,
-  Tag,
-  CheckCircle2,
-  Trash2,
-  Save,
-  Loader2,
-  Sparkles,
-  Layers,
-} from 'lucide-react'
+import type { Contato, Card as CardType, Projeto } from '@/types'
+import { ArrowLeft, AlignLeft, Tag, Users, Search, X, Loader2, Lock, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
+import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
+import { useToast } from '@/hooks/use-toast'
+import { useAuth } from '@/hooks/use-auth'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { ModalCardFluxo } from './fluxo/ModalCardFluxo'
-import { ModalCardArquivos } from './fluxo/ModalCardArquivos'
-import { ModalCardFamilia } from './fluxo/ModalCardFamilia'
 import PainelCamposPersonalizados from '@/components/campos/PainelCamposPersonalizados'
+import TimelineCard from '@/components/fluxo/TimelineCard'
+import SecaoTarefasCard from '@/components/fluxo/SecaoTarefasCard'
+import {
+  listarEventosCard,
+  criarEventoCard,
+  listarTarefasCard,
+  filtrarContatosPorBusca,
+  iniciais,
+  textoEventoCriacao,
+  textoEventoMembro,
+  meuNome,
+  type EventoCard,
+  type TarefaCard,
+} from '@/services/eventosCard'
+import type { MembroEquipe } from '@/types'
 
 export default function CardDetalhes() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const location = useLocation()
   const { toast } = useToast()
+  const { user } = useAuth()
 
-  const [card, setCard] = useState<Card | null>(null)
-  const [carregando, setCarregando] = useState(true)
-  const [salvando, setSalvando] = useState(false)
-
-  // Dados auxiliares
-  const [categorias, setCategorias] = useState<CategoriaFluxo[]>([])
-  const [fluxos, setFluxos] = useState<FluxoKanban[]>([])
-  const [colunas, setColunas] = useState<ColunaFluxo[]>([])
-  const [familias, setFamilias] = useState<GrupoFamilia[]>([])
+  const [card, setCard] = useState<CardType | null>(null)
+  const [contato, setContato] = useState<Contato | null>(null)
   const [projetos, setProjetos] = useState<Projeto[]>([])
-  const [negocios, setNegocios] = useState<Negocio[]>([])
   const [contatos, setContatos] = useState<Contato[]>([])
-  const [todosCards, setTodosCards] = useState<Card[]>([])
+  const [contatosVinculados, setContatosVinculados] = useState<Contato[]>([])
+  const [membros, setMembros] = useState<MembroEquipe[]>([])
+  const [eventos, setEventos] = useState<EventoCard[]>([])
+  const [tarefas, setTarefas] = useState<TarefaCard[]>([])
 
-  // Formulário editável do card
-  const [formTitulo, setFormTitulo] = useState('')
-  const [formDescricao, setFormDescricao] = useState('')
-  const [formProximoPasso, setFormProximoPasso] = useState('')
-  const [formPrioridade, setFormPrioridade] = useState<CardPrioridade>('media')
-  const [formStatus, setFormStatus] = useState('')
-  const [formProjeto, setFormProjeto] = useState('none')
-  const [formNegocio, setFormNegocio] = useState('none')
-  const [formContato, setFormContato] = useState('none')
-  const [formFamilia, setFormFamilia] = useState('none')
-  const [formDataPrazo, setFormDataPrazo] = useState('')
-  const [formTags, setFormTags] = useState('')
+  const [detalhes, setDetalhes] = useState('')
+  const [tagsTexto, setTagsTexto] = useState('')
+  const [buscaContato, setBuscaContato] = useState('')
+  const [salvandoDetalhes, setSalvandoDetalhes] = useState(false)
+  const [carregando, setCarregando] = useState(true)
 
-  // Modais dos 3 ícones
-  const [modalFluxoOpen, setModalFluxoOpen] = useState(false)
-  const [modalArquivosOpen, setModalArquivosOpen] = useState(false)
-  const [modalFamiliaOpen, setModalFamiliaOpen] = useState(false)
+  const timeoutSalvar = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const carregarEventosRef = useRef<() => Promise<void> | void>(async () => {})
 
-  const carregarDadosCompletos = async () => {
+  // ---------- Carregamento ----------
+  const carregar = useCallback(async () => {
     if (!id) return
-    setCarregando(true)
     try {
-      const [
-        cardData,
-        catsData,
-        flxsData,
-        colsData,
-        famsData,
-        projsData,
-        negsData,
-        contsData,
-        allCardsData,
-      ] = await Promise.all([
-        diamondApi.getCard(id),
-        diamondApi.listCategoriasFluxo(),
-        diamondApi.listFluxosKanban(),
-        diamondApi.listColunasFluxo(),
-        diamondApi.listGruposFamilia(),
-        diamondApi.listProjetos(),
-        diamondApi.listNegocios(),
-        diamondApi.listContatos(),
-        diamondApi.listCards(),
+      const c = await diamondApi.getCard(id)
+      setCard(c)
+      setDetalhes(c.descricao || '')
+      setTagsTexto(Array.isArray(c.tags) ? c.tags.join(', ') : '')
+
+      const [listaContatos, listaMembros, listaEventos, listaTarefas] = await Promise.all([
+        diamondApi.listContatos().catch(() => [] as Contato[]),
+        diamondApi.listMembrosEquipe().catch(() => [] as MembroEquipe[]),
+        listarEventosCard(id),
+        listarTarefasCard(id),
       ])
+      setContatos(listaContatos)
+      setMembros(listaMembros)
+      setEventos(listaEventos)
+      setTarefas(listaTarefas)
 
-      setCard(cardData)
-      setCategorias(catsData)
-      setFluxos(flxsData)
-      setColunas(colsData)
-      setFamilias(famsData)
-      setProjetos(projsData)
-      setNegocios(negsData)
-      setContatos(contsData)
-      setTodosCards(allCardsData)
-
-      // Inicializa form
-      setFormTitulo(cardData.titulo || '')
-      setFormDescricao(cardData.descricao || '')
-      setFormProximoPasso(cardData.proximo_passo || '')
-      setFormPrioridade(cardData.prioridade || 'media')
-      setFormStatus(cardData.status || '')
-      setFormProjeto(cardData.projeto || 'none')
-      setFormNegocio(cardData.negocio || 'none')
-      setFormContato(cardData.contato || 'none')
-      setFormFamilia(cardData.grupo_familia || 'none')
-      setFormDataPrazo(cardData.data_prazo ? cardData.data_prazo.slice(0, 10) : '')
-      setFormTags(Array.isArray(cardData.tags) ? cardData.tags.join(', ') : '')
+      if (c.contato) {
+        try {
+          const ct = await diamondApi.getContato(c.contato)
+          setContato(ct)
+          setContatosVinculados(ct ? [ct] : [])
+        } catch {
+          setContato(null)
+        }
+      } else {
+        setContato(null)
+        setContatosVinculados([])
+      }
     } catch (err) {
-      console.error('Erro ao carregar card:', err)
-      toast({
-        title: 'Erro ao carregar card',
-        description: (err as Error)?.message,
-        variant: 'destructive',
-      })
+      console.error(err)
+      toast({ title: 'Erro ao carregar card', variant: 'destructive' })
     } finally {
       setCarregando(false)
     }
-  }
+  }, [id, toast])
 
   useEffect(() => {
-    carregarDadosCompletos()
+    carregar()
+  }, [carregar])
+
+  const recarregarEventos = useCallback(async () => {
+    if (!id) return
+    const evs = await listarEventosCard(id)
+    setEventos(evs)
   }, [id])
+  carregarEventosRef.current = recarregarEventos
 
-  // Botão Voltar: usa history ou volta para /fluxo com fallback inteligente
-  const handleVoltar = () => {
-    if (window.history.length > 1) {
-      navigate(-1)
-    } else {
-      navigate('/fluxo')
-    }
+  // ---------- Salvamento de detalhes / tags (debounce) ----------
+  const agendarSalvarCard = useCallback(
+    (payload: Partial<CardType>) => {
+      if (!id) return
+      if (timeoutSalvar.current) clearTimeout(timeoutSalvar.current)
+      timeoutSalvar.current = setTimeout(async () => {
+        try {
+          setSalvandoDetalhes(true)
+          await diamondApi.updateCard(id, payload)
+        } catch {
+          toast({ title: 'Erro ao salvar detalhes do card', variant: 'destructive' })
+        } finally {
+          setSalvandoDetalhes(false)
+        }
+      }, 900)
+    },
+    [id, toast],
+  )
+
+  const handleDetalhesChange = (v: string) => {
+    setDetalhes(v)
+    agendarSalvarCard({ descricao: v })
   }
 
-  // Copiar URL do card
-  const handleCopiarUrl = () => {
-    const url = window.location.href
-    navigator.clipboard.writeText(url)
-    toast({
-      title: 'URL copiada!',
-      description: 'Link direto deste card copiado para a área de transferência.',
-    })
+  const handleTagsChange = (v: string) => {
+    setTagsTexto(v)
+    const arr = v
+      .split(',')
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean)
+    agendarSalvarCard({ tags: arr })
   }
 
-  // Abrir em nova aba
-  const handleAbrirNovaAba = () => {
-    window.open(window.location.href, '_blank')
+  // ---------- Membros (Líder/Equipe) ----------
+  const lider = card?.responsavel ? membros.find((m) => m.usuario === card.responsavel) : null
+  const liderNome = lider
+    ? lider.nome || lider.email
+    : membros.find((m) => m.usuario === card?.responsavel)?.email || 'Sem líder'
+  const equipe = membros.filter((m) => m.usuario && m.usuario !== card?.responsavel)
+
+  const adicionarMembroEquipe = async (m: MembroEquipe) => {
+    if (!card) return
+    // Equipe do card é deduzida (por ora) do responsável; registrar evento é o que persiste a ação
+    await criarEventoCard(card.id, 'membro', textoEventoMembro(m.nome || m.email))
+    await recarregarEventos()
+    toast({ title: `${m.nome || m.email} adicionado à equipe do card.` })
   }
 
-  // Salvar alterações
-  const handleSalvarCard = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!id || !formTitulo.trim()) return
+  // ---------- Contatos vinculados ----------
+  const contatosFiltrados = useMemo(
+    () => filtrarContatosPorBusca(contatos, buscaContato),
+    [contatos, buscaContato],
+  )
+  const idsVinculados = new Set(contatosVinculados.map((c) => c.id))
 
-    setSalvando(true)
+  const vincularContato = async (ct: Contato) => {
+    if (!card) return
     try {
-      const tagsArray = formTags
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean)
-
-      const payload: Partial<Card> = {
-        titulo: formTitulo.trim(),
-        descricao: formDescricao.trim() || undefined,
-        proximo_passo: formProximoPasso.trim() || undefined,
-        prioridade: formPrioridade,
-        status: formStatus,
-        projeto: formProjeto !== 'none' ? formProjeto : undefined,
-        negocio: formNegocio !== 'none' ? formNegocio : undefined,
-        contato: formContato !== 'none' ? formContato : undefined,
-        grupo_familia: formFamilia !== 'none' ? formFamilia : undefined,
-        data_prazo: formDataPrazo ? new Date(formDataPrazo).toISOString() : undefined,
-        tags: tagsArray,
-      }
-
-      const atualizado = await diamondApi.updateCard(id, payload)
-      setCard(atualizado)
-      toast({
-        title: 'Card salvo com sucesso!',
-      })
-    } catch (err) {
-      toast({
-        title: 'Erro ao salvar alterações',
-        description: (err as Error)?.message,
-        variant: 'destructive',
-      })
-    } finally {
-      setSalvando(false)
+      await diamondApi.updateCard(card.id, { contato: ct.id })
+      setContatosVinculados((prev) => (prev.some((x) => x.id === ct.id) ? prev : [...prev, ct]))
+      setBuscaContato('')
+      toast({ title: `${ct.nome} vinculado ao card.` })
+    } catch {
+      toast({ title: 'Erro ao vincular contato', variant: 'destructive' })
     }
   }
 
-  // Excluir card
-  const handleExcluirCard = async () => {
-    if (!id || !card) return
-    if (
-      !confirm(`Deseja realmente excluir o card "${card.titulo}"? Esta ação não pode ser desfeita.`)
-    ) {
-      return
-    }
-
+  const desvincularContato = async (ct: Contato) => {
+    if (!card) return
     try {
-      await diamondApi.deleteCard(id)
-      toast({
-        title: 'Card excluído com sucesso.',
-      })
-      navigate('/fluxo')
-    } catch (err) {
-      toast({
-        title: 'Erro ao excluir card',
-        description: (err as Error)?.message,
-        variant: 'destructive',
-      })
+      await diamondApi.updateCard(card.id, { contato: undefined })
+      setContatosVinculados((prev) => prev.filter((x) => x.id !== ct.id))
+      toast({ title: `${ct.nome} desvinculado do card.` })
+    } catch {
+      toast({ title: 'Erro ao desvincular contato', variant: 'destructive' })
     }
   }
 
-  if (carregando) {
+  // ---------- Render ----------
+  if (carregando)
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] text-xs text-[#5B6470] gap-3">
-        <Loader2 className="w-6 h-6 animate-spin text-[#0F766E]" />
-        <span>Carregando detalhes do card...</span>
+      <div className="p-10 flex items-center justify-center text-xs text-[#5B6470] gap-2">
+        <Loader2 className="w-4 h-4 animate-spin" /> Carregando card...
       </div>
     )
-  }
+  if (!card)
+    return <div className="p-10 text-center text-xs text-red-600">Card não encontrado.</div>
 
-  if (!card) {
-    return (
-      <div className="bg-white rounded-xl border border-[#E5E1D8] p-8 text-center space-y-4">
-        <h3 className="text-base font-bold text-[#1A1D21]">Card não encontrado</h3>
-        <p className="text-xs text-[#5B6470]">
-          O card solicitado pode ter sido excluído ou você não tem acesso.
-        </p>
-        <Button
-          type="button"
-          onClick={() => navigate('/fluxo')}
-          className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-8"
-        >
-          Voltar para Fluxos
-        </Button>
-      </div>
-    )
-  }
-
-  // Relações do card atual
-  const fluxoAtual = fluxos.find((f) => f.id === card.fluxo_id)
-  const categoriaAtual = categorias.find((c) => c.id === fluxoAtual?.categoria)
-  const colunaAtual = colunas.find((c) => c.chave === formStatus || c.chave === card.status)
-  const familiaAtual = familias.find((f) => f.id === formFamilia)
-  const cardPai = todosCards.find((c) => c.id === card.card_pai)
+  const contatoPrincipal = contatosVinculados[0]
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto pb-12">
-      {/* 1. BARRA SUPERIOR: BOTÃO VOLTAR + AÇÕES DO CARD (FLUXOS, ARQUIVOS, FAMÍLIA, URL) */}
-      <div className="bg-white px-4 py-3 rounded-xl border border-[#E5E1D8] shadow-xs flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5 min-w-0">
+    <div className="max-w-[1400px] mx-auto p-4 md:p-6 space-y-4">
+      {/* Cabeçalho compacto */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
           <Button
-            type="button"
-            variant="outline"
+            variant="ghost"
             size="sm"
-            onClick={handleVoltar}
-            className="h-8 px-3 text-xs font-semibold gap-1.5 border-[#E5E1D8] text-[#1A1D21] hover:bg-[#F4F2EE]"
+            onClick={() => navigate('/fluxo')}
+            className="text-xs p-2 h-8 text-[#5B6470]"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Voltar
+            <ArrowLeft className="w-4 h-4" /> Voltar ao Fluxo
           </Button>
-
-          <span className="text-[#CBD5E1]">/</span>
-
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span
-              className="w-2.5 h-2.5 rounded-full shrink-0"
-              style={{ backgroundColor: fluxoAtual?.cor || '#0F766E' }}
-            />
-            <span className="text-xs font-semibold text-[#5B6470] truncate">
-              {categoriaAtual ? `${categoriaAtual.nome} › ` : ''}
-              {fluxoAtual?.nome || fluxoAtual?.titulo || 'Sem Fluxo'}
-            </span>
-          </div>
+          <h1 className="text-lg font-bold text-[#1A1D21] truncate ml-1">{card.titulo}</h1>
         </div>
-
-        {/* 3 ÍCONES PRINCIPAIS + AÇÕES DE URL E ABA */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {/* Ícone Fluxos */}
+        <div className="flex items-center gap-2">
+          {salvandoDetalhes && (
+            <span className="inline-flex items-center gap-1 text-[10px] text-[#8A93A0]">
+              <Loader2 className="w-3 h-3 animate-spin" /> salvando...
+            </span>
+          )}
           <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setModalFluxoOpen(true)}
-            className="h-8 px-2.5 text-xs font-semibold gap-1.5 border-[#E5E1D8] text-[#0F766E] hover:bg-[#0F766E]/10"
-            title="Fluxos: Ver fluxo vinculado e revincular"
-          >
-            <GitBranch className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Fluxos</span>
-          </Button>
-
-          {/* Ícone Arquivos */}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setModalArquivosOpen(true)}
-            className="h-8 px-2.5 text-xs font-semibold gap-1.5 border-[#E5E1D8] text-[#2563EB] hover:bg-[#2563EB]/10"
-            title="Arquivos: Ver e anexar documentos"
-          >
-            <Paperclip className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Arquivos</span>
-          </Button>
-
-          {/* Ícone Família */}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setModalFamiliaOpen(true)}
-            className="h-8 px-2.5 text-xs font-semibold gap-1.5 border-[#E5E1D8] text-purple-600 hover:bg-purple-50"
-            title="Família: Relações, duplicação e hierarquia"
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Família</span>
-          </Button>
-
-          <span className="text-[#CBD5E1] mx-0.5">|</span>
-
-          {/* Copiar URL */}
-          <Button
-            type="button"
             variant="ghost"
             size="sm"
-            onClick={handleCopiarUrl}
-            className="h-8 px-2.5 text-xs text-[#5B6470] hover:text-[#1A1D21]"
-            title="Copiar URL deste card"
-          >
-            <Copy className="w-3.5 h-3.5 mr-1" />
-            <span className="hidden md:inline">Copiar URL</span>
-          </Button>
-
-          {/* Abrir em nova aba */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={handleAbrirNovaAba}
-            className="h-8 w-8 p-0 text-[#5B6470] hover:text-[#1A1D21]"
-            title="Abrir em nova aba"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-          </Button>
-
-          {/* Excluir Card */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={handleExcluirCard}
-            className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-            title="Excluir card"
+            onClick={async () => {
+              if (!confirm('Deseja realmente excluir este card?')) return
+              try {
+                await diamondApi.deleteCard(card.id)
+                toast({ title: 'Card excluído com sucesso.' })
+                navigate('/fluxo')
+              } catch {
+                toast({ title: 'Erro ao excluir card', variant: 'destructive' })
+              }
+            }}
+            className="text-xs p-2 h-8 text-red-600 hover:bg-red-50"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </Button>
         </div>
       </div>
 
-      {/* 2. FORMULÁRIO PRINCIPAL E PAINEL LATERAL DO CARD */}
-      <form onSubmit={handleSalvarCard} className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* COLUNA ESQUERDA (2/3): TÍTULO, DESCRIÇÃO, PRÓXIMO PASSO */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="bg-white p-5 rounded-xl border border-[#E5E1D8] shadow-xs space-y-4">
-            {/* Título do Card */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#1A1D21] uppercase tracking-wider block">
-                Título do Card
-              </label>
-              <Input
-                required
-                value={formTitulo}
-                onChange={(e) => setFormTitulo(e.target.value)}
-                placeholder="Título da demanda..."
-                className="text-base font-bold text-[#1A1D21] h-10 border-[#E5E1D8]"
-              />
-            </div>
-
-            {/* Descrição / Conteúdo */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#5B6470]">Descrição / Contexto</label>
-              <Textarea
-                rows={5}
-                value={formDescricao}
-                onChange={(e) => setFormDescricao(e.target.value)}
-                placeholder="Detalhes, especificações e anotações deste card..."
-                className="text-xs border-[#E5E1D8] leading-relaxed resize-y"
-              />
-            </div>
-
-            {/* Próximo Passo */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#0F766E] flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                Próximo Passo Imediato
-              </label>
-              <Input
-                value={formProximoPasso}
-                onChange={(e) => setFormProximoPasso(e.target.value)}
-                placeholder="Ex: Entrar em contato com o cliente até às 15h..."
-                className="text-xs border-[#E5E1D8] bg-[#0F766E]/5 text-[#1A1D21]"
-              />
-            </div>
-
-            {/* Hierarquia Pai (se houver) */}
-            {cardPai && (
-              <div className="p-3 rounded-lg border border-[#0F766E]/20 bg-[#0F766E]/5 flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <span className="text-[10px] font-bold text-[#5B6470] uppercase tracking-wider">
-                    Subtarefa de (Card Pai)
-                  </span>
-                  <p className="text-xs font-bold text-[#1A1D21] uppercase">{cardPai.titulo}</p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate(`/card/${cardPai.id}`)}
-                  className="h-7 text-xs text-[#0F766E] border-[#0F766E]/30 gap-1"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  Ver Pai
-                </Button>
+      {/* DUAS COLUNAS: esquerda detalhes / direita Timeline */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start">
+        {/* ===================== COLUNA ESQUERDA ===================== */}
+        <div className="lg:col-span-3 space-y-4">
+          <div className="rounded-2xl bg-white border border-[#E5E1D8] p-5 shadow-xs space-y-4">
+            {/* Líder + Equipe */}
+            <div className="flex items-center gap-6 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-[#5B6470]">Líder</span>
+                <Avatar className="w-9 h-9 ring-1 ring-black/5">
+                  <AvatarImage
+                    src={`https://img.usecurling.com/ppl/128?seed=${encodeURIComponent(liderNome)}`}
+                    alt={liderNome}
+                  />
+                  <AvatarFallback className="bg-gradient-to-br from-[#1E40AF] to-[#0F766E] text-white text-[10px] font-bold">
+                    {iniciais(liderNome)}
+                  </AvatarFallback>
+                </Avatar>
               </div>
-            )}
-
-            {/* Botão de Salvar Alterações */}
-            <div className="flex justify-end pt-2 border-t border-[#E5E1D8]">
-              <Button
-                type="submit"
-                disabled={salvando || !formTitulo.trim()}
-                className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-9 px-5 font-semibold gap-1.5 shadow-2xs"
-              >
-                {salvando ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Salvando...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-3.5 h-3.5" />
-                    Salvar Alterações
-                  </>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-[#5B6470]">Equipe</span>
+                <div className="flex -space-x-2 items-center">
+                  {equipe.slice(0, 4).map((m) => {
+                    const nome = m.nome || m.email
+                    return (
+                      <Avatar key={m.id} className="w-8 h-8 ring-2 ring-white" title={nome}>
+                        <AvatarImage
+                          src={`https://img.usecurling.com/ppl/128?seed=${encodeURIComponent(nome)}`}
+                          alt={nome}
+                        />
+                        <AvatarFallback className="bg-gradient-to-br from-[#0F766E] to-[#1E40AF] text-white text-[9px] font-bold">
+                          {iniciais(nome)}
+                        </AvatarFallback>
+                      </Avatar>
+                    )
+                  })}
+                  {equipe.length === 0 && (
+                    <span className="text-[11px] text-[#8A93A0]">Ninguém ainda</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  title="Equipe privada"
+                  className="text-[#8A93A0] hover:text-[#5B6470]"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                </button>
+                {/* Adicionar membro (menu de membros ainda não na equipe do card) */}
+                {membros.length > equipe.length && (
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const m = membros.find((x) => x.id === e.target.value)
+                      if (m) adicionarMembroEquipe(m)
+                    }}
+                    className="text-[11px] text-[#5B6470] border border-[#E5E1D8] rounded-md px-1.5 py-0.5 bg-white"
+                  >
+                    <option value="">+ Adicionar</option>
+                    {membros
+                      .filter((m) => !equipe.some((e) => e.id === m.id))
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.nome || m.email}
+                        </option>
+                      ))}
+                  </select>
                 )}
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Campos Personalizados (categoria Card) */}
-        <PainelCamposPersonalizados categoria="card" alvo={{ card: card.id }} />
-
-        {/* COLUNA DIREITA (1/3): METADADOS & CLASSIFICAÇÃO */}
-        <div className="space-y-4">
-          <div className="bg-white p-4 rounded-xl border border-[#E5E1D8] shadow-xs space-y-3.5">
-            <h4 className="text-xs font-bold text-[#1A1D21] uppercase tracking-wider pb-2 border-b border-[#E5E1D8]">
-              Informações do Card
-            </h4>
-
-            {/* Fase / Coluna */}
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-[#5B6470]">Fase / Status</label>
-              <Select value={formStatus} onValueChange={setFormStatus}>
-                <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {colunas
-                    .filter((c) => !card.fluxo_id || c.fluxo_id === card.fluxo_id)
-                    .map((col) => (
-                      <SelectItem key={col.chave} value={col.chave}>
-                        <span className="flex items-center gap-1.5">
-                          <span
-                            className="w-2 h-2 rounded-full shrink-0"
-                            style={{ backgroundColor: col.cor || '#0F766E' }}
-                          />
-                          {col.titulo}
-                        </span>
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              </div>
             </div>
 
-            {/* Prioridade */}
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-[#5B6470]">Prioridade</label>
-              <Select
-                value={formPrioridade}
-                onValueChange={(v) => setFormPrioridade(v as CardPrioridade)}
-              >
-                <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="baixa">Baixa</SelectItem>
-                  <SelectItem value="media">Média</SelectItem>
-                  <SelectItem value="alta">Alta</SelectItem>
-                  <SelectItem value="urgente">Urgente</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Grupo de Família */}
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-[#5B6470]">Grupo de Família</label>
-              <Select value={formFamilia} onValueChange={setFormFamilia}>
-                <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
-                  <SelectValue placeholder="Nenhuma" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Nenhum (Sem Família)</SelectItem>
-                  {familias.map((f) => (
-                    <SelectItem key={f.id} value={f.id}>
-                      {f.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Projeto Vinculado */}
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-[#5B6470]">Projeto</label>
-              <Select value={formProjeto} onValueChange={setFormProjeto}>
-                <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
-                  <SelectValue placeholder="Nenhum" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Nenhum</SelectItem>
-                  {projetos.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Contato Vinculado */}
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-[#5B6470]">Contato</label>
-              <Select value={formContato} onValueChange={setFormContato}>
-                <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
-                  <SelectValue placeholder="Nenhum" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Nenhum</SelectItem>
-                  {contatos.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Prazo Limite */}
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-[#5B6470]">Data Prazo</label>
-              <Input
-                type="date"
-                value={formDataPrazo}
-                onChange={(e) => setFormDataPrazo(e.target.value)}
-                className="text-xs h-8 border-[#E5E1D8]"
+            {/* Detalhes do card (textarea grande) */}
+            <div className="flex items-start gap-3">
+              <AlignLeft className="w-4 h-4 text-[#8A93A0] mt-3 shrink-0" />
+              <Textarea
+                rows={6}
+                value={detalhes}
+                onChange={(e) => handleDetalhesChange(e.target.value)}
+                placeholder="Escrever detalhes do card..."
+                className="text-xs text-[#1A1D21] border-[#E5E1D8] resize-y"
               />
             </div>
 
             {/* Tags */}
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-[#5B6470]">
-                Tags (separadas por vírgula)
-              </label>
+            <div className="flex items-center gap-3">
+              <Tag className="w-4 h-4 text-[#8A93A0] shrink-0" />
               <Input
-                placeholder="comercial, prioridade, homologar"
-                value={formTags}
-                onChange={(e) => setFormTags(e.target.value)}
-                className="text-xs h-8 border-[#E5E1D8]"
+                value={tagsTexto}
+                onChange={(e) => handleTagsChange(e.target.value)}
+                placeholder="Tags"
+                className="text-xs text-[#1A1D21] border-[#E5E1D8]"
               />
             </div>
 
-            {/* Metadados automáticos */}
-            <div className="pt-2 border-t border-[#E5E1D8] text-[10px] text-[#5B6470] space-y-1">
-              <div>Criado em: {new Date(card.created).toLocaleDateString('pt-BR')}</div>
-              <div>Atualizado em: {new Date(card.updated).toLocaleDateString('pt-BR')}</div>
+            {/* Contatos vinculados (busca por nome/e-mail) */}
+            <div className="flex items-center gap-3 relative">
+              <Users className="w-4 h-4 text-[#8A93A0] shrink-0" />
+              <div className="flex-1 relative">
+                <Input
+                  value={buscaContato}
+                  onChange={(e) => setBuscaContato(e.target.value)}
+                  placeholder="Pesquise pelo nome ou pelo email do contato ou adicione tags de contatos."
+                  className="text-xs text-[#1A1D21] border-[#E5E1D8] pr-8"
+                />
+                {buscaContato && (
+                  <button
+                    type="button"
+                    onClick={() => setBuscaContato('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[#B3BAC4] hover:text-[#5B6470]"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                {buscaContato && contatosFiltrados.length > 0 && (
+                  <div className="absolute z-20 top-full mt-1 w-full rounded-lg border border-[#E5E1D8] bg-white shadow-md max-h-52 overflow-y-auto">
+                    {contatosFiltrados.slice(0, 30).map((ct) => (
+                      <button
+                        key={ct.id}
+                        type="button"
+                        onClick={() => vincularContato(ct)}
+                        className="w-full text-left px-3 py-2 hover:bg-[#F4F2EE] text-xs text-[#1A1D21] flex items-center gap-2"
+                      >
+                        <Avatar className="w-5 h-5">
+                          <AvatarImage
+                            src={`https://img.usecurling.com/ppl/128?seed=${encodeURIComponent(ct.nome)}`}
+                            alt={ct.nome}
+                          />
+                          <AvatarFallback className="bg-gradient-to-br from-[#1E40AF] to-[#0F766E] text-white text-[7px] font-bold">
+                            {iniciais(ct.nome)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="truncate">{ct.nome}</span>
+                        {ct.email && (
+                          <span className="text-[10px] text-[#8A93A0] truncate">{ct.email}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
+            {contatosVinculados.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pl-7">
+                {contatosVinculados.map((ct) => (
+                  <span
+                    key={ct.id}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full bg-[#F4F2EE] text-[#1A1D21]"
+                  >
+                    {ct.nome}
+                    <button
+                      type="button"
+                      onClick={() => desvincularContato(ct)}
+                      className="text-[#8A93A0] hover:text-red-500"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Campos personalizados (categoria card) — reaproveita o painel existente */}
+            <PainelCamposPersonalizados categoria="card" alvo={{ card: card.id }} />
           </div>
+
+          {/* Tarefas do card (seção própria, fora da caixa principal) */}
+          <SecaoTarefasCard
+            cardId={card.id}
+            tarefas={tarefas}
+            membros={membros}
+            onRecarregar={recarregarEventos}
+            onTarefaCriada={() => recarregarEventos()}
+          />
         </div>
-      </form>
 
-      {/* MODAL 1: FLUXOS (REVINCULAR & STATUS) */}
-      <ModalCardFluxo
-        open={modalFluxoOpen}
-        onOpenChange={setModalFluxoOpen}
-        card={card}
-        categorias={categorias}
-        fluxos={fluxos}
-        colunas={colunas}
-        onAtualizado={carregarDadosCompletos}
-      />
-
-      {/* MODAL 2: ARQUIVOS VINCULADOS */}
-      <ModalCardArquivos
-        open={modalArquivosOpen}
-        onOpenChange={setModalArquivosOpen}
-        card={card}
-        onAtualizado={carregarDadosCompletos}
-      />
-
-      {/* MODAL 3: FAMÍLIA, RELAÇÕES E AÇÕES */}
-      <ModalCardFamilia
-        open={modalFamiliaOpen}
-        onOpenChange={setModalFamiliaOpen}
-        card={card}
-        todosCards={todosCards}
-        categorias={categorias}
-        fluxos={fluxos}
-        colunas={colunas}
-        onAtualizado={carregarDadosCompletos}
-        onExcluirCard={handleExcluirCard}
-      />
+        {/* ===================== COLUNA DIREITA: TIMELINE ===================== */}
+        <div className="lg:col-span-2 rounded-2xl bg-white border border-[#E5E1D8] p-5 shadow-xs lg:sticky lg:top-4 max-h-[calc(100vh-2rem)] overflow-hidden flex flex-col">
+          <TimelineCard
+            cardId={card.id}
+            eventos={eventos}
+            membros={membros}
+            onRecarregar={recarregarEventos}
+          />
+        </div>
+      </div>
     </div>
   )
 }
