@@ -42,6 +42,15 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { diamondApi } from '@/services/diamondApi'
 import { useAudioRecorder } from '@/hooks/use-audio-recorder'
+import {
+  detectarNavegador,
+  estaEmIframe,
+  instrucaoPorNavegador,
+  consultarPermissaoMicrofone,
+  type NavegadorDetectado,
+  type EstadoPermissaoMicrofone,
+} from '@/lib/permissoesMicrofone'
+import { AvisoPermissaoMicrofone } from '@/components/folha/AvisoPermissaoMicrofone'
 import { Projeto, Contato, FluxoKanban } from '@/types'
 import { Link } from 'react-router-dom'
 
@@ -78,6 +87,8 @@ export function ModalNovaReuniaoFolha({
     pararGravacao,
     descartarGravacao,
     erroGravacao,
+    erroGravacaoNome,
+    solicitarPermissaoProativa,
   } = useAudioRecorder()
 
   const [etapa, setEtapa] = useState<EtapaReuniao>('gravando')
@@ -110,6 +121,13 @@ export function ModalNovaReuniaoFolha({
   const [salvandoTudo, setSalvandoTudo] = useState(false)
   const [eventoCriadoId, setEventoCriadoId] = useState<string | null>(null)
   const [cardsCriadosCount, setCardsCriadosCount] = useState(0)
+
+  // Estado da permissão de microfone + detecção de navegador/iframe
+  const [estadoPermissaoMic, setEstadoPermissaoMic] =
+    useState<EstadoPermissaoMicrofone>('indeterminado')
+  const [navegador, setNavegador] = useState<NavegadorDetectado>('outro')
+  const [emIframe, setEmIframe] = useState(false)
+  const [solicitandoPermissao, setSolicitandoPermissao] = useState(false)
 
   // Duração máxima sugerida: 25 min (1500 seg)
   const MAX_SEGUNDOS = 1500
@@ -147,7 +165,66 @@ export function ModalNovaReuniaoFolha({
         descartarGravacao()
       }
     }
-  }, [open])
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Ao ABRIR o modal: pede o microfone proativamente (getUserMedia), para o
+  // popup de autorização do navegador aparecer no primeiro uso — sem esperar o
+  // clique em gravar. Também detecta navegador e iframe (Safari em iframe não
+  // chega a oferecer a permissão). O stream obtido fica guardado no hook e é
+  // reusado pelo iniciarGravacao (não abre o stream duas vezes).
+  useEffect(() => {
+    if (!open) return
+    setNavegador(detectarNavegador())
+    setEmIframe(estaEmIframe())
+
+    let cancelado = false
+    const solicitar = async () => {
+      setSolicitandoPermissao(true)
+      try {
+        const estado = await solicitarPermissaoProativa()
+        if (!cancelado) setEstadoPermissaoMic(estado)
+      } catch {
+        if (!cancelado) setEstadoPermissaoMic('indeterminado')
+      } finally {
+        if (!cancelado) setSolicitandoPermissao(false)
+      }
+    }
+    solicitar()
+    return () => {
+      cancelado = true
+    }
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Tenta novamente após o usuário ajustar a permissão no navegador
+  const handleTentarNovamentePermissao = async () => {
+    setSolicitandoPermissao(true)
+    try {
+      const estado = await solicitarPermissaoProativa()
+      setEstadoPermissaoMic(estado)
+    } catch {
+      setEstadoPermissaoMic('indeterminado')
+    } finally {
+      setSolicitandoPermissao(false)
+    }
+  }
+
+  // Tenta de novo consultando a Permissions API (caso o usuário tenha liberado
+  // em Ajustes e não haja como pedir de novo via getUserMedia sem recarregar).
+  const handleVerificarPermissaoNovamente = async () => {
+    setSolicitandoPermissao(true)
+    try {
+      const estado = await consultarPermissaoMicrofone()
+      setEstadoPermissaoMic(estado === 'indeterminado' ? 'negada' : estado)
+      if (estado === 'concedida') {
+        const estadoStream = await solicitarPermissaoProativa()
+        setEstadoPermissaoMic(estadoStream)
+      }
+    } catch {
+      setEstadoPermissaoMic('indeterminado')
+    } finally {
+      setSolicitandoPermissao(false)
+    }
+  }
 
   // Iniciar gravação de microfone
   const handleIniciarGravacao = async () => {
@@ -632,6 +709,24 @@ export function ModalNovaReuniaoFolha({
                 </div>
 
                 {erroGravacao && <p className="text-xs text-red-600 font-medium">{erroGravacao}</p>}
+
+                {estadoPermissaoMic === 'negada' && !gravando && !audioUrl && (
+                  <div className="w-full max-w-md pt-2">
+                    <AvisoPermissaoMicrofone
+                      navegador={navegador}
+                      emIframe={emIframe}
+                      solicitando={solicitandoPermissao}
+                      onTentarNovamente={handleTentarNovamentePermissao}
+                      onVerificarNovamente={handleVerificarPermissaoNovamente}
+                    />
+                  </div>
+                )}
+
+                {estadoPermissaoMic === 'nao_pedida' && !gravando && !audioUrl && (
+                  <p className="text-xs text-zinc-500 pt-1">
+                    Autorize o microfone na janela do navegador para gravar a reunião.
+                  </p>
+                )}
               </div>
 
               {/* Dica de Uso */}

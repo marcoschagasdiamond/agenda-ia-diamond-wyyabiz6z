@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { pedirPermissaoMicrofone, type EstadoPermissaoMicrofone } from '@/lib/permissoesMicrofone'
 
 export interface UseAudioRecorderReturn {
   gravando: boolean
@@ -15,6 +16,22 @@ export interface UseAudioRecorderReturn {
   descartarGravacao: () => void
   setTranscricaoParcial: (texto: string) => void
   erroGravacao: string | null
+  /** Nome do erro da última falha de getUserMedia (NotAllowedError etc.). */
+  erroGravacaoNome: string | null
+  /**
+   * Pede o microfone proativamente SEM começar a gravar (chamado ao abrir o
+   * modal, para o popup de autorização aparecer no primeiro uso). Se o usuário
+   * conceder, o stream fica guardado e o próximo iniciarGravacao() o reusa —
+   * sem abrir uma segunda vez. Devolve o estado da permissão.
+   */
+  solicitarPermissaoProativa: () => Promise<EstadoPermissaoMicrofone>
+}
+
+/** Estado em que o stream proativo ficou guardado (para reuso pelo iniciarGravacao). */
+interface StreamProativo {
+  stream: MediaStream | null
+  /** true se o stream guardado ainda tem tracks vivas. */
+  valido: boolean
 }
 
 export function useAudioRecorder(): UseAudioRecorderReturn {
@@ -25,12 +42,15 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [transcricaoParcial, setTranscricaoParcial] = useState('')
   const [erroGravacao, setErroGravacao] = useState<string | null>(null)
+  const [erroGravacaoNome, setErroGravacaoNome] = useState<string | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<BlobPart[]>([])
   const timerIntervalRef = useRef<number | null>(null)
   const speechRecognitionRef = useRef<any>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  // Stream obtido na permissão proativa (ao abrir o modal) — reusado pelo iniciarGravacao.
+  const streamProativoRef = useRef<StreamProativo>({ stream: null, valido: false })
 
   const [suportaSpeech, setSuportaSpeech] = useState(false)
 
@@ -60,6 +80,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
 
   const iniciarGravacao = useCallback(async () => {
     setErroGravacao(null)
+    setErroGravacaoNome(null)
     setAudioBlob(null)
     if (audioUrl) {
       URL.revokeObjectURL(audioUrl)
@@ -69,13 +90,30 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     chunksRef.current = []
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      })
+      // Reusa o stream proativo obtido ao abrir o modal (se ainda estiver vivo)
+      // em vez de abrir uma segunda permissão/stream.
+      let stream: MediaStream | null = null
+      const proativo = streamProativoRef.current
+      if (
+        proativo.stream &&
+        proativo.stream.getAudioTracks().some((t) => t.readyState === 'live')
+      ) {
+        stream = proativo.stream
+      } else if (proativo.stream) {
+        // Stream guardado ficou morto (tracks encerradas): não guarda mais.
+        streamProativoRef.current = { stream: null, valido: false }
+      }
+
+      if (!stream) {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        })
+      }
+      streamProativoRef.current = { stream: null, valido: false }
       streamRef.current = stream
 
       // Seleciona mimeType suportado
@@ -145,11 +183,15 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       }
     } catch (err: any) {
       console.error('Erro ao acessar microfone:', err)
-      const msg =
-        err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError'
-          ? 'Permissão de microfone negada. Autorize o acesso ao microfone no navegador.'
-          : 'Não foi possível acessar o dispositivo de áudio/microfone.'
+      const negado =
+        err.name === 'NotAllowedError' ||
+        err.name === 'PermissionDeniedError' ||
+        err.name === 'SecurityError'
+      const msg = negado
+        ? 'Permissão de microfone negada. Autorize o acesso ao microfone no navegador.'
+        : 'Não foi possível acessar o dispositivo de áudio/microfone.'
       setErroGravacao(msg)
+      setErroGravacaoNome(err.name || 'ErroDesconhecido')
       throw new Error(msg)
     }
   }, [audioUrl])
@@ -183,6 +225,45 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       }
     }
   }, [])
+
+  /**
+   * Pede o microfone proativamente SEM começar a gravar (chamado ao abrir o
+   * modal da Nova Reunião, para o popup de autorização aparecer no primeiro
+   * uso). Se o usuário conceder, o stream fica guardado em streamProativoRef
+   * e o próximo iniciarGravacao() o reusa — sem abrir getUserMedia 2x.
+   */
+  const solicitarPermissaoProativa = useCallback(async (): Promise<EstadoPermissaoMicrofone> => {
+    // Já gravando ou já com stream vivo: nada a pedir, permissão concedida.
+    if (
+      gravando ||
+      (streamRef.current && streamRef.current.getAudioTracks().some((t) => t.readyState === 'live'))
+    ) {
+      return 'concedida'
+    }
+    // Stream proativo vivo guardado de uma abertura anterior: reuso sem novo prompt.
+    const proativo = streamProativoRef.current
+    if (proativo.stream && proativo.stream.getAudioTracks().some((t) => t.readyState === 'live')) {
+      return 'concedida'
+    }
+    // Descarta stream guardado que tenha morrido entre aberturas.
+    if (proativo.stream) {
+      streamProativoRef.current = { stream: null, valido: false }
+    }
+
+    setErroGravacao(null)
+    setErroGravacaoNome(null)
+
+    const resultado = await pedirPermissaoMicrofone()
+    if (resultado.stream) {
+      streamProativoRef.current = { stream: resultado.stream, valido: true }
+      return 'concedida'
+    }
+    if (resultado.estado === 'negada') {
+      setErroGravacaoNome(resultado.erroNome || 'NotAllowedError')
+      return 'negada'
+    }
+    return resultado.estado
+  }, [gravando])
 
   const pararGravacao = useCallback(async (): Promise<Blob | null> => {
     return new Promise((resolve) => {
@@ -256,6 +337,10 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       streamRef.current.getTracks().forEach((track) => track.stop())
       streamRef.current = null
     }
+    if (streamProativoRef.current.stream) {
+      streamProativoRef.current.stream.getTracks().forEach((track) => track.stop())
+      streamProativoRef.current = { stream: null, valido: false }
+    }
 
     if (audioUrl) {
       URL.revokeObjectURL(audioUrl)
@@ -268,6 +353,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     setAudioUrl(null)
     setTranscricaoParcial('')
     setErroGravacao(null)
+    setErroGravacaoNome(null)
     chunksRef.current = []
   }, [audioUrl])
 
@@ -284,6 +370,9 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop())
+      }
+      if (streamProativoRef.current.stream) {
+        streamProativoRef.current.stream.getTracks().forEach((track) => track.stop())
       }
     }
   }, [])
@@ -303,5 +392,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     descartarGravacao,
     setTranscricaoParcial,
     erroGravacao,
+    erroGravacaoNome,
+    solicitarPermissaoProativa,
   }
 }
