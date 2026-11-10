@@ -389,6 +389,9 @@ export interface CardArquivo {
   arquivo: string
   tamanho?: number
   tipo?: string
+  tipo_origem?: 'local' | 'drive'
+  drive_file_id?: string
+  drive_url?: string
   criado_por?: string
   created: string
   updated: string
@@ -451,6 +454,9 @@ export interface Arquivo {
   arquivo: string
   pasta?: string
   projeto?: string
+  tipo_origem?: 'local' | 'drive'
+  drive_file_id?: string
+  drive_url?: string
   created: string
   updated: string
   expand?: {

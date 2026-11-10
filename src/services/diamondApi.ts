@@ -635,6 +635,24 @@ export const diamondApi = {
     return pb.files.getURL(record as any, record.arquivo)
   },
 
+  // Google Drive — cria um anexo de card do tipo vínculo (sem upload local)
+  async vincularCardArquivoDrive(dados: {
+    card: string
+    nome: string
+    drive_file_id: string
+    drive_url: string
+    criado_por?: string
+  }): Promise<CardArquivo> {
+    return await pb.collection('card_arquivos').create<CardArquivo>({
+      card: dados.card,
+      nome: dados.nome,
+      tipo_origem: 'drive',
+      drive_file_id: dados.drive_file_id,
+      drive_url: dados.drive_url,
+      ...(dados.criado_por ? { criado_por: dados.criado_por } : {}),
+    } as any)
+  },
+
   // Cards - Hierarquia Pais e Filhos
   async listCardsFilhos(cardPaiId: string): Promise<Card[]> {
     try {
@@ -718,6 +736,24 @@ export const diamondApi = {
 
   async deleteArquivo(id: string): Promise<boolean> {
     return await pb.collection('arquivos').delete(id)
+  },
+
+  // Google Drive — cria/atualiza um registro de vínculo (arquivo do Drive, sem upload local)
+  async vincularArquivoDrive(dados: {
+    nome: string
+    drive_file_id: string
+    drive_url: string
+    pasta?: string
+    projeto?: string
+  }): Promise<Arquivo> {
+    return await pb.collection('arquivos').create<Arquivo>({
+      nome: dados.nome,
+      tipo_origem: 'drive',
+      drive_file_id: dados.drive_file_id,
+      drive_url: dados.drive_url,
+      ...(dados.pasta ? { pasta: dados.pasta } : {}),
+      ...(dados.projeto ? { projeto: dados.projeto } : {}),
+    } as any)
   },
 
   // Resumos do Dia

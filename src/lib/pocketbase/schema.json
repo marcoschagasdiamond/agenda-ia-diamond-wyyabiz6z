@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-10T22:54:04.413Z",
+  "generatedAt": "2026-11-10T23:46:49.379Z",
   "collections": [
     {
       "name": "users",
@@ -977,6 +977,25 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "tipo_origem",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["local", "drive"]
+        },
+        {
+          "name": "drive_file_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "drive_url",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE INDEX idx_arquivos_pasta ON arquivos (pasta)"]
@@ -2898,6 +2917,25 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "tipo_origem",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["local", "drive"]
+        },
+        {
+          "name": "drive_file_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "drive_url",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

@@ -1,7 +1,7 @@
 // Timeline do card (coluna direita do painel de detalhes) — modelo Ummense.
-// Caixa de anotação com menções @ (usuário/equipe), anexos (upload do computador
-// ou vínculo de arquivos já enviados na Agenda), abas de filtro e feed
-// cronológico dos eventos (anotações e registros de sistema).
+// Caixa de anotação com menções @ (usuário/equipe), anexos (upload do computador,
+// vínculo de arquivos já enviados na Agenda ou arquivos do Google Drive do
+// usuário — conectores de app), abas de filtro e feed cronológico dos eventos.
 import { useEffect, useRef, useState, useMemo } from 'react'
 import {
   Paperclip,
@@ -15,6 +15,7 @@ import {
   File as FileIcon,
   FolderOpen,
   ExternalLink,
+  HardDrive,
 } from 'lucide-react'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -33,6 +34,8 @@ import {
   type AbaTimeline,
   type EventoCard,
 } from '@/services/eventosCard'
+import { PickerArquivosDrive } from '@/components/fluxo/PickerArquivosDrive'
+import { linkAbrirDrive, type ArquivoDrive } from '@/services/driveService'
 import type { CardArquivo, MembroEquipe } from '@/types'
 
 const ABAS: AbaTimeline[] = ['todos', 'anotacoes', 'minhas', 'registros']
