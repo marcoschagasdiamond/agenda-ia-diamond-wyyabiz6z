@@ -21,11 +21,14 @@ import {
   File,
   Loader2,
   ExternalLink,
+  HardDrive,
 } from 'lucide-react'
 import type { Card, CardArquivo } from '@/types'
 import { diamondApi } from '@/services/diamondApi'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/use-auth'
+import { PickerArquivosDrive } from '@/components/fluxo/PickerArquivosDrive'
+import { linkAbrirDrive, type ArquivoDrive } from '@/services/driveService'
 
 interface ModalCardArquivosProps {
   open: boolean
@@ -84,6 +87,8 @@ export function ModalCardArquivos({
   const [carregando, setCarregando] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [excluindoId, setExcluindoId] = useState<string | null>(null)
+  const [pickerDriveAberto, setPickerDriveAberto] = useState(false)
+  const [vinculandoDrive, setVinculandoDrive] = useState(false)
 
   const carregarArquivos = async () => {
     if (!card) return
@@ -158,6 +163,35 @@ export function ModalCardArquivos({
     setEnviando(false)
   }
 
+  // Google Drive: vincula o arquivo escolhido no picker (registro em card_arquivos
+  // com tipo_origem='drive', sem upload local)
+  const handleVincularDrive = async (arq: ArquivoDrive) => {
+    if (!card) return
+    setVinculandoDrive(true)
+    try {
+      await diamondApi.vincularCardArquivoDrive({
+        card: card.id,
+        nome: arq.nome,
+        drive_file_id: arq.id,
+        drive_url: linkAbrirDrive(arq),
+        criado_por: user?.id,
+      })
+      toast({ title: `Arquivo "${arq.nome}" do Drive vinculado!` })
+      setPickerDriveAberto(false)
+      await carregarArquivos()
+      if (onAtualizado) await onAtualizado()
+    } catch (err) {
+      console.error('Falha ao vincular arquivo do Drive:', arq.nome, err)
+      toast({
+        title: `Falha ao vincular o arquivo "${arq.nome}" do Drive`,
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setVinculandoDrive(false)
+    }
+  }
+
   const handleExcluir = async (arquivo: CardArquivo) => {
     if (!confirm(`Deseja realmente remover o arquivo "${arquivo.nome}"?`)) return
 
@@ -229,7 +263,26 @@ export function ModalCardArquivos({
             />
             <Button
               type="button"
-              disabled={enviando}
+              disabled={enviando || vinculandoDrive}
+              onClick={() => setPickerDriveAberto(true)}
+              variant="outline"
+              className="text-[#2563EB] border-[#2563EB]/40 hover:bg-[#2563EB]/10 hover:text-[#2563EB] text-xs h-8 px-3.5 font-semibold gap-1.5"
+            >
+              {vinculandoDrive ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Vinculando...
+                </>
+              ) : (
+                <>
+                  <HardDrive className="w-3.5 h-3.5" />
+                  Google Drive
+                </>
+              )}
+            </Button>
+            <Button
+              type="button"
+              disabled={enviando || vinculandoDrive}
               onClick={() => fileInputRef.current?.click()}
               className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-8 px-3.5 font-semibold gap-1.5 shadow-2xs"
             >
@@ -269,7 +322,8 @@ export function ModalCardArquivos({
             ) : (
               <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1">
                 {arquivos.map((arq) => {
-                  const url = diamondApi.getCardArquivoUrl(arq)
+                  const ehDrive = arq.tipo_origem === 'drive'
+                  const url = ehDrive ? arq.drive_url || '#' : diamondApi.getCardArquivoUrl(arq)
                   return (
                     <div
                       key={arq.id}
@@ -277,7 +331,11 @@ export function ModalCardArquivos({
                     >
                       <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
                         <div className="shrink-0 p-1.5 rounded-md bg-white border border-[#E5E1D8]">
-                          {getIconeArquivo(arq.nome, arq.tipo)}
+                          {ehDrive ? (
+                            <HardDrive className="w-5 h-5 text-[#2563EB]" />
+                          ) : (
+                            getIconeArquivo(arq.nome, arq.tipo)
+                          )}
                         </div>
                         <div className="min-w-0 flex-1">
                           <p
@@ -287,9 +345,17 @@ export function ModalCardArquivos({
                             {arq.nome}
                           </p>
                           <div className="flex items-center gap-2 text-[10px] text-[#5B6470]">
-                            <span>{formatarTamanho(arq.tamanho)}</span>
-                            <span>•</span>
+                            {!ehDrive && <span>{formatarTamanho(arq.tamanho)}</span>}
+                            {!ehDrive && <span>•</span>}
                             <span>{new Date(arq.created).toLocaleDateString('pt-BR')}</span>
+                            {ehDrive && (
+                              <Badge
+                                variant="outline"
+                                className="ml-1 text-[9px] font-bold uppercase tracking-wide text-[#2563EB] border-[#2563EB]/40 bg-[#2563EB]/10 px-1.5 py-0"
+                              >
+                                Google Drive
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -300,23 +366,25 @@ export function ModalCardArquivos({
                           variant="ghost"
                           size="sm"
                           className="h-7 w-7 p-0 text-[#5B6470] hover:text-[#0F766E]"
-                          title="Abrir em nova aba"
+                          title={ehDrive ? 'Abrir no Google Drive' : 'Abrir em nova aba'}
                         >
                           <a href={url} target="_blank" rel="noopener noreferrer">
                             <ExternalLink className="w-3.5 h-3.5" />
                           </a>
                         </Button>
-                        <Button
-                          asChild
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 text-[#5B6470] hover:text-[#0F766E]"
-                          title="Baixar arquivo"
-                        >
-                          <a href={url} download={arq.nome}>
-                            <Download className="w-3.5 h-3.5" />
-                          </a>
-                        </Button>
+                        {!ehDrive && (
+                          <Button
+                            asChild
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-[#5B6470] hover:text-[#0F766E]"
+                            title="Baixar arquivo"
+                          >
+                            <a href={url} download={arq.nome}>
+                              <Download className="w-3.5 h-3.5" />
+                            </a>
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           variant="ghost"
@@ -324,7 +392,7 @@ export function ModalCardArquivos({
                           disabled={excluindoId === arq.id}
                           onClick={() => handleExcluir(arq)}
                           className="h-7 w-7 p-0 text-[#5B6470] hover:text-red-600"
-                          title="Excluir anexo"
+                          title={ehDrive ? 'Remover vínculo do Drive' : 'Excluir anexo'}
                         >
                           {excluindoId === arq.id ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -352,6 +420,24 @@ export function ModalCardArquivos({
             </Button>
           </div>
         </div>
+
+        {/* Picker de arquivos do Google Drive (conectores de app) */}
+        <Dialog open={pickerDriveAberto} onOpenChange={setPickerDriveAberto}>
+          <DialogContent className="max-w-md bg-white border border-[#E5E1D8]">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold text-[#1A1D21] flex items-center gap-2">
+                <HardDrive className="w-5 h-5 text-[#2563EB]" />
+                Google Drive
+              </DialogTitle>
+              <DialogDescription className="text-xs text-[#5B6470]">
+                Escolha um arquivo do seu Drive para vincular a este card.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="pt-1">
+              <PickerArquivosDrive onSelecionar={handleVincularDrive} />
+            </div>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   )

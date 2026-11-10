@@ -11,6 +11,8 @@ import {
   Download,
   Loader2,
   ArrowRight,
+  HardDrive,
+  ExternalLink,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,6 +33,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
+import { PickerArquivosDrive } from '@/components/fluxo/PickerArquivosDrive'
+import { linkAbrirDrive, type ArquivoDrive } from '@/services/driveService'
 
 export default function Arquivos() {
   const { toast } = useToast()
@@ -50,6 +54,10 @@ export default function Arquivos() {
   const [nomeArquivo, setNomeArquivo] = useState('')
   const [uploadPastaId, setUploadPastaId] = useState<string>('none')
   const [modalUploadOpen, setModalUploadOpen] = useState(false)
+
+  // Google Drive (conectores de app)
+  const [pickerDriveAberto, setPickerDriveAberto] = useState(false)
+  const [vinculandoDrive, setVinculandoDrive] = useState(false)
 
   // Síntese de Arquivo com IA
   const [modalResumoOpen, setModalResumoOpen] = useState(false)
@@ -138,6 +146,31 @@ export default function Arquivos() {
     }
   }
 
+  // Google Drive: vincula o arquivo escolhido no picker (registro em arquivos
+  // com tipo_origem='drive', sem upload local)
+  const handleVincularDrive = async (arq: ArquivoDrive) => {
+    setVinculandoDrive(true)
+    try {
+      await diamondApi.vincularArquivoDrive({
+        nome: arq.nome,
+        drive_file_id: arq.id,
+        drive_url: linkAbrirDrive(arq),
+      })
+      toast({ title: `Arquivo "${arq.nome}" do Drive vinculado!` })
+      setPickerDriveAberto(false)
+      await carregar()
+    } catch (err) {
+      console.error('Falha ao vincular arquivo do Drive:', arq.nome, err)
+      toast({
+        title: `Falha ao vincular o arquivo "${arq.nome}" do Drive`,
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setVinculandoDrive(false)
+    }
+  }
+
   const handleResumirDocumento = async (file: File) => {
     setResumindo(true)
     setModalResumoOpen(true)
@@ -184,6 +217,20 @@ export default function Arquivos() {
           >
             <FolderPlus className="w-4 h-4 text-[#5B6470]" />
             Nova Pasta
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={vinculandoDrive}
+            onClick={() => setPickerDriveAberto(true)}
+            className="text-xs h-9 border-[#2563EB]/40 text-[#2563EB] hover:bg-[#2563EB]/10 hover:text-[#2563EB] gap-1.5"
+          >
+            {vinculandoDrive ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <HardDrive className="w-4 h-4" />
+            )}
+            Google Drive
           </Button>
           <Button
             size="sm"
@@ -251,7 +298,10 @@ export default function Arquivos() {
         <CardContent className="p-0">
           <div className="divide-y divide-[#E5E1D8]">
             {arquivosFiltrados.map((arq) => {
-              const fileUrl = `${import.meta.env.VITE_POCKETBASE_URL}/api/files/arquivos/${arq.id}/${arq.arquivo}`
+              const ehDrive = arq.tipo_origem === 'drive'
+              const fileUrl = ehDrive
+                ? arq.drive_url || '#'
+                : `${import.meta.env.VITE_POCKETBASE_URL}/api/files/arquivos/${arq.id}/${arq.arquivo}`
 
               return (
                 <div
@@ -259,13 +309,29 @@ export default function Arquivos() {
                   className="p-3.5 flex items-center justify-between hover:bg-[#FAFAF9] transition-colors"
                 >
                   <div className="flex items-center gap-3 truncate">
-                    <div className="w-8 h-8 rounded-lg bg-[#F4F2EE] text-[#0F766E] flex items-center justify-center shrink-0">
-                      <File className="w-4 h-4" />
+                    <div
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                        ehDrive ? 'bg-[#2563EB]/10 text-[#2563EB]' : 'bg-[#F4F2EE] text-[#0F766E]'
+                      }`}
+                    >
+                      {ehDrive ? <HardDrive className="w-4 h-4" /> : <File className="w-4 h-4" />}
                     </div>
                     <div className="truncate">
                       <h4 className="text-xs font-bold text-[#1A1D21] truncate">{arq.nome}</h4>
-                      <p className="text-[10px] text-[#5B6470]">
-                        Salvo em {arq.created?.slice(0, 10)}
+                      <p className="text-[10px] text-[#5B6470] flex items-center gap-1.5">
+                        {ehDrive ? (
+                          <>
+                            Vinculado do Google Drive
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] font-bold uppercase tracking-wide text-[#2563EB] border-[#2563EB]/40 bg-[#2563EB]/10 px-1.5 py-0"
+                            >
+                              Drive
+                            </Badge>
+                          </>
+                        ) : (
+                          <>Salvo em {arq.created?.slice(0, 10)}</>
+                        )}
                       </p>
                     </div>
                   </div>
@@ -276,14 +342,24 @@ export default function Arquivos() {
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center gap-1 text-xs text-[#0F766E] hover:underline px-2 py-1 rounded bg-[#F4F2EE]"
+                      title={ehDrive ? 'Abrir no Google Drive' : 'Abrir/Baixar arquivo'}
                     >
-                      <Download className="w-3.5 h-3.5" />
-                      Baixar
+                      {ehDrive ? (
+                        <>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          Abrir no Drive
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-3.5 h-3.5" />
+                          Baixar
+                        </>
+                      )}
                     </a>
                     <button
                       onClick={() => handleExcluirArquivo(arq.id)}
                       className="p-1.5 text-[#5B6470] hover:text-red-600 transition-colors"
-                      title="Excluir arquivo"
+                      title={ehDrive ? 'Remover vínculo do Drive' : 'Excluir arquivo'}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -428,6 +504,24 @@ export default function Arquivos() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Picker de arquivos do Google Drive (conectores de app) */}
+      <Dialog open={pickerDriveAberto} onOpenChange={setPickerDriveAberto}>
+        <DialogContent className="max-w-md bg-white border border-[#E5E1D8]">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-[#1A1D21] flex items-center gap-2">
+              <HardDrive className="w-5 h-5 text-[#2563EB]" />
+              Google Drive
+            </DialogTitle>
+            <p className="text-xs text-[#5B6470]">
+              Escolha um arquivo do seu Drive para vincular à área de Arquivos.
+            </p>
+          </DialogHeader>
+          <div className="pt-1">
+            <PickerArquivosDrive onSelecionar={handleVincularDrive} />
+          </div>
         </DialogContent>
       </Dialog>
 

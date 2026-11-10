@@ -20,6 +20,13 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from '@/hooks/use-toast'
 import { diamondApi } from '@/services/diamondApi'
@@ -57,23 +64,27 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
   const [anexosPendentes, setAnexosPendentes] = useState<File[]>([])
   const [anexosAgenda, setAnexosAgenda] = useState<CardArquivo[]>([])
   const [enviandoAnexo, setEnviandoAnexo] = useState(false)
+  // Anexos do Google Drive escolhidos no picker (vínculo, sem upload local)
+  const [anexosDrive, setAnexosDrive] = useState<ArquivoDrive[]>([])
+  const [pickerDriveAberto, setPickerDriveAberto] = useState(false)
   const [menuAnexoAberto, setMenuAnexoAberto] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Arquivos do card já enviados (para vínculo) — carregados quando o menu abre
+  // Arquivos do card já enviados (para vínculo) — carregados na montagem
   useEffect(() => {
-    if (!menuAnexoAberto || !cardId) return
+    if (!cardId) return
     let cancelado = false
     diamondApi
       .listCardArquivos(cardId)
       .then((lista) => {
-        if (!cancelado) setAnexosAgenda(lista)
+        // registros do Drive não têm arquivo local para reanexar
+        if (!cancelado) setAnexosAgenda(lista.filter((a) => a.tipo_origem !== 'drive'))
       })
       .catch(() => {})
     return () => {
       cancelado = true
     }
-  }, [menuAnexoAberto, cardId])
+  }, [cardId])
 
   const meusMembros = useMemo(
     () => membros.filter((m) => m.usuario === user?.id),
@@ -112,9 +123,21 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
     toast({ title: `Arquivo "${arq.nome}" vinculado à anotação.` })
   }
 
+  // Google Drive: adiciona o vínculo (sem upload) à lista de anexos pendentes
+  const escolherArquivoDrive = (arq: ArquivoDrive) => {
+    setAnexosDrive((prev) => (prev.some((a) => a.id === arq.id) ? prev : [...prev, arq]))
+    setPickerDriveAberto(false)
+    setMenuAnexoAberto(false)
+    toast({ title: `Arquivo "${arq.nome}" do Drive vinculado à anotação.` })
+  }
+
+  const removerAnexoDrive = (id: string) => {
+    setAnexosDrive((prev) => prev.filter((a) => a.id !== id))
+  }
+
   const handleEnviarAnotacao = async () => {
     const texto = textoAnotacao.trim()
-    if ((!texto && anexosPendentes.length === 0) || !cardId) return
+    if ((!texto && anexosPendentes.length === 0 && anexosDrive.length === 0) || !cardId) return
     setEnviando(true)
     try {
       // 1. Upload real dos arquivos novos do computador (coleção card_arquivos)
@@ -155,15 +178,38 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
         }
       }
 
-      // 3. Anotação com o texto + links dos anexos embutidos
-      const linhasAnexo = anexados.map((a) => `📎 [${a.nome}](${a.url})`).join('\n')
+      // 3. Vínculos do Google Drive: um registro em card_arquivos com tipo_origem='drive'
+      const vinculadosDrive: Array<{ id: string; nome: string; url: string }> = []
+      for (const arq of anexosDrive) {
+        try {
+          const rec = await diamondApi.vincularCardArquivoDrive({
+            card: cardId,
+            nome: arq.nome,
+            drive_file_id: arq.id,
+            drive_url: linkAbrirDrive(arq),
+            criado_por: user?.id,
+          })
+          vinculadosDrive.push({ id: rec.id, nome: rec.nome, url: linkAbrirDrive(arq) })
+        } catch (err) {
+          console.error('Falha ao vincular arquivo do Drive:', arq.nome, err)
+          toast({
+            title: `Falha ao vincular o arquivo "${arq.nome}" do Drive`,
+            variant: 'destructive',
+          })
+        }
+      }
+
+      // 4. Anotação com o texto + links dos anexos embutidos
+      const todosAnexos = [...anexados, ...vinculadosDrive]
+      const linhasAnexo = todosAnexos.map((a) => `📎 [${a.nome}](${a.url})`).join('\n')
       const textoFinal = [texto, linhasAnexo].filter(Boolean).join('\n')
       const criada = await criarAnotacaoCard(cardId, textoFinal, {
-        anexos: anexados.map((a) => ({ id: a.id, nome: a.nome, url: a.url })),
+        anexos: todosAnexos.map((a) => ({ id: a.id, nome: a.nome, url: a.url })),
       })
       if (criada) {
         setTextoAnotacao('')
         setAnexosPendentes([])
+        setAnexosDrive([])
         setMenuAnexoAberto(false)
         await onRecarregar()
         toast({ title: 'Anotação registrada na timeline!' })
@@ -206,26 +252,12 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
     )
   }
 
-  /** Links de anexo embutidos no texto da anotação (📎 [nome](url)) varam clicáveis. */
+  /** Links de anexo embutidos no texto da anotação (📎 [nome](url)) ficam clicáveis. */
   const renderTextoComAnexos = (texto: string) => {
     const partes = texto.split(/(📎 \[[^\]]+\]\([^)]+\))/g)
     return partes.map((parte, i) => {
       const m = parte.match(/^📎 \[([^\]]+)\]\(([^)]+)\)$/)
-      if (m) {
-        return (
-          <a
-            key={i}
-            href={m[2]}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-[#0F766E] font-semibold hover:underline mr-1"
-          >
-            <Paperclip className="w-3 h-3" />
-            {m[1]}
-            <ExternalLink className="w-2.5 h-2.5" />
-          </a>
-        )
-      }
+      if (m) return renderAnexoInline(parte, i)
       return <span key={i}>{parte}</span>
     })
   }
@@ -277,7 +309,7 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
                 </div>
                 {ev.tipo_evento === 'anotacao' ? (
                   <p className="text-xs text-[#1A1D21] whitespace-pre-wrap break-words mt-0.5 leading-relaxed">
-                    {renderTextoComMencao(ev.texto || '', membros, user)}
+                    {renderTextoComMencaoEAnexos(ev.texto || '', membros, user)}
                   </p>
                 ) : (
                   <p className="text-xs text-[#5B6470] whitespace-pre-wrap break-words mt-0.5 leading-relaxed">
@@ -290,22 +322,6 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
         })}
       </div>
     )
-  }
-
-  const renderTextoComMencaoEAnexos = (texto: string) => {
-    // divide por anexos primeiro, depois aplica menções dentro de cada trecho de texto
-    const partes = texto.split(/(📎 \[[^\]]+\]\([^)]+\))/g)
-    return partes.map((parte, i) => {
-      const m = parte.match(/^📎 \[([^\]]+)\]\(([^)]+)\)$/)
-      if (m) {
-        return (
-          <span key={i} className="inline-flex mr-1">
-            {renderTextoComAnexos(parte)}
-          </span>
-        )
-      }
-      return <span key={i}>{renderTextoComMencao(parte, membros, user)}</span>
-    })
   }
 
   return (
@@ -328,8 +344,8 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
           className="text-xs border-0 p-0 shadow-none focus-visible:ring-0 resize-none text-[#1A1D21]"
         />
 
-        {/* Anexos pendentes da anotação */}
-        {anexosPendentes.length > 0 && (
+        {/* Anexos pendentes da anotação (computador/Agenda e Google Drive) */}
+        {(anexosPendentes.length > 0 || anexosDrive.length > 0) && (
           <div className="flex flex-wrap gap-1.5 mt-2">
             {anexosPendentes.map((f) => (
               <span
@@ -342,6 +358,22 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
                   type="button"
                   onClick={() => removerAnexoPendente(f.name)}
                   className="text-[#8A93A0] hover:text-red-500 shrink-0"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+            {anexosDrive.map((arq) => (
+              <span
+                key={arq.id}
+                className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#2563EB]/10 text-[#2563EB] max-w-[180px]"
+              >
+                <HardDrive className="w-3 h-3 shrink-0" />
+                <span className="truncate">{arq.nome}</span>
+                <button
+                  type="button"
+                  onClick={() => removerAnexoDrive(arq.id)}
+                  className="text-[#2563EB]/60 hover:text-red-500 shrink-0"
                 >
                   ✕
                 </button>
@@ -383,6 +415,17 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
               >
                 <FileIcon className="w-4 h-4 text-[#0F766E]" />
                 Enviar arquivo do computador…
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuAnexoAberto(false)
+                  setPickerDriveAberto(true)
+                }}
+                className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left text-xs text-[#1A1D21] hover:bg-[#F4F2EE]"
+              >
+                <HardDrive className="w-4 h-4 text-[#2563EB]" />
+                Google Drive…
               </button>
               <p className="text-[10px] font-semibold text-[#8A93A0] uppercase tracking-wider mt-2 mb-1">
                 Arquivos já enviados neste card
@@ -431,6 +474,25 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
           </button>
         </div>
 
+        {/* Picker de arquivos do Google Drive (conectores de app) */}
+        <Dialog open={pickerDriveAberto} onOpenChange={setPickerDriveAberto}>
+          <DialogContent className="max-w-md bg-white border border-[#E5E1D8]">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold text-[#1A1D21] flex items-center gap-2">
+                <HardDrive className="w-5 h-5 text-[#2563EB]" />
+                Google Drive
+              </DialogTitle>
+              <DialogDescription className="text-xs text-[#5B6470]">
+                Escolha um arquivo do seu Drive para vincular a esta anotação. Nada é baixado: o
+                card guarda o link de abertura do arquivo.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="pt-1">
+              <PickerArquivosDrive onSelecionar={escolherArquivoDrive} />
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {/* Sugestões de menção @ */}
         {textoAnotacao.includes('@') && membros.length > 0 && (
           <div className="mt-2 border-t border-[#F1EFEA] pt-2 space-y-1">
@@ -478,6 +540,48 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
       <div className="flex-1 overflow-y-auto px-1 py-4">{renderFeed()}</div>
     </div>
   )
+}
+
+/** Pedaço 📎 [nome](url) do feed — links do Drive ganham ícone próprio. */
+function renderAnexoInline(parte: string, chave: number) {
+  const m = parte.match(/^📎 \[([^\]]+)\]\(([^)]+)\)$/)
+  if (!m) return parte
+  const ehDrive = /^https:\/\/(drive|docs)\.google\.com/.test(m[2])
+  return (
+    <a
+      key={chave}
+      href={m[2]}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 text-[#0F766E] font-semibold hover:underline mr-1"
+    >
+      {ehDrive ? (
+        <HardDrive className="w-3 h-3 text-[#2563EB]" />
+      ) : (
+        <Paperclip className="w-3 h-3" />
+      )}
+      {m[1]}
+      <ExternalLink className="w-2.5 h-2.5" />
+    </a>
+  )
+}
+
+/**
+ * Divide o texto da anotação por anexos (📎 [nome](url)) e menções (@Nome).
+ * Links do Google Drive (drive.google.com / docs.google.com) são abertos em
+ * nova aba direto no Drive — nunca como download local.
+ */
+function renderTextoComMencaoEAnexos(
+  texto: string,
+  membros: MembroEquipe[],
+  user: { id: string; name?: string } | null,
+) {
+  const partes = texto.split(/(📎 \[[^\]]+\]\([^)]+\))/g)
+  return partes.map((parte, i) => {
+    const m = parte.match(/^📎 \[([^\]]+)\]\(([^)]+)\)$/)
+    if (m) return renderAnexoInline(parte, i)
+    return <span key={i}>{renderTextoComMencao(parte, membros, user)}</span>
+  })
 }
 
 /** Rola os @menções em negrito dentro do texto da anotação. */
