@@ -16,7 +16,6 @@ import {
   Bot,
   History,
   Settings,
-  LogOut,
   Menu,
   X,
   Search,
@@ -31,6 +30,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import ModalConvidarEquipe from '@/components/ModalConvidarEquipe'
+import BlocoUsuario from '@/components/BlocoUsuario'
 import SinoNotificacoes from '@/components/SinoNotificacoes'
 import CommandPaletteGlobal from '@/components/CommandPaletteGlobal'
 import BotaoFeedbackFlutuante from '@/components/comercial/BotaoFeedbackFlutuante'
@@ -40,15 +40,7 @@ interface LayoutProps {
 }
 
 export default function Layout({ children }: LayoutProps) {
-  const {
-    user,
-    clienteProfile,
-    isClientPortal,
-    isMaster,
-    isConvidadoExterno,
-    meusEscopos,
-    signOut,
-  } = useAuth()
+  const { isClientPortal, isMaster, isConvidadoExterno, meusEscopos } = useAuth()
   const {
     colunaSecundariaAberta,
     setColunaSecundariaAberta,
@@ -251,21 +243,9 @@ export default function Layout({ children }: LayoutProps) {
           })}
         </nav>
 
-        {/* Rodapé do Rail: Usuário & Sair */}
-        <div className="p-2 border-t border-white/10 flex flex-col items-center gap-2 shrink-0">
-          <div
-            title={`${user?.name || user?.email} (${isClientPortal ? clienteProfile?.empresa || 'Cliente' : 'Estrategista'})`}
-            className="w-9 h-9 rounded-full bg-white/15 border border-white/20 flex items-center justify-center text-xs font-bold text-white cursor-default"
-          >
-            {user?.name?.[0] || user?.email?.[0]?.toUpperCase() || 'U'}
-          </div>
-          <button
-            onClick={() => signOut()}
-            title="Sair da Conta"
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-zinc-400 hover:text-red-400 hover:bg-white/10 transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
+        {/* Rodapé do Rail: Bloco de Usuário clicável (nome + e-mail + menu suspenso) */}
+        <div className="p-2 border-t border-white/10 shrink-0">
+          <BlocoUsuario />
         </div>
       </aside>
 
@@ -403,16 +383,7 @@ export default function Layout({ children }: LayoutProps) {
                   )
                 })}
               </div>
-              <button
-                onClick={() => {
-                  setMobileMenuOpen(false)
-                  signOut()
-                }}
-                className="w-10 h-10 rounded-lg flex items-center justify-center text-zinc-400 hover:text-red-400"
-                title="Sair"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
+              <BlocoUsuario compacto onAcao={() => setMobileMenuOpen(false)} />
             </div>
 
             {/* Segunda Coluna Mobile */}

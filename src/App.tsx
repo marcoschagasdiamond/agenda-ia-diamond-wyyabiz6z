@@ -34,6 +34,7 @@ import Equipe from '@/pages/Equipe'
 import Master from '@/pages/Master'
 import AceitarConvite from '@/pages/AceitarConvite'
 import PortalCliente from '@/pages/PortalCliente'
+import Perfil from '@/pages/Perfil'
 import NotFound from '@/pages/NotFound'
 import { TelaAcessoRestrito } from '@/components/comercial/TelaAcessoRestrito'
 
@@ -269,6 +270,15 @@ export default function App() {
                 element={
                   <ProtectedRoute recursoTipo="resumos">
                     <Resumos />
+                  </ProtectedRoute>
+                }
+              />
+              {/* Perfil do Usuário (nome e senha) — todos os perfis autenticados */}
+              <Route
+                path="/perfil"
+                element={
+                  <ProtectedRoute>
+                    <Perfil />
                   </ProtectedRoute>
                 }
               />
