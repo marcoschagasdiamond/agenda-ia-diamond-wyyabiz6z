@@ -13,6 +13,7 @@ import {
   Clock,
   HelpCircle,
   File as FileIcon,
+  Folder,
   FolderOpen,
   ExternalLink,
   HardDrive,
@@ -42,8 +43,9 @@ import {
   type EventoCard,
 } from '@/services/eventosCard'
 import { PickerArquivosDrive } from '@/components/fluxo/PickerArquivosDrive'
-import { linkAbrirDrive, type ArquivoDrive } from '@/services/driveService'
-import type { CardArquivo, MembroEquipe } from '@/types'
+import { PickerPastasDrive } from '@/components/fluxo/PickerPastasDrive'
+import { linkAbrirDrive, linkAbrirPastaDrive, type ArquivoDrive } from '@/services/driveService'
+import type { CardArquivo, CardPastaDrive, MembroEquipe } from '@/types'
 
 const ABAS: AbaTimeline[] = ['todos', 'anotacoes', 'minhas', 'registros']
 
@@ -67,6 +69,10 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
   // Anexos do Google Drive escolhidos no picker (vínculo, sem upload local)
   const [anexosDrive, setAnexosDrive] = useState<ArquivoDrive[]>([])
   const [pickerDriveAberto, setPickerDriveAberto] = useState(false)
+  // Pastas do Google Drive: picker + vínculos já persistidos (card_pastas_drive)
+  const [pastasVinculadas, setPastasVinculadas] = useState<CardPastaDrive[]>([])
+  const [pickerPastasAberto, setPickerPastasAberto] = useState(false)
+  const [vinculandoPasta, setVinculandoPasta] = useState(false)
   const [menuAnexoAberto, setMenuAnexoAberto] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -79,6 +85,21 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
       .then((lista) => {
         // registros do Drive não têm arquivo local para reanexar
         if (!cancelado) setAnexosAgenda(lista.filter((a) => a.tipo_origem !== 'drive'))
+      })
+      .catch(() => {})
+    return () => {
+      cancelado = true
+    }
+  }, [cardId])
+
+  // Pastas do Google Drive já vinculadas ao card
+  useEffect(() => {
+    if (!cardId) return
+    let cancelado = false
+    diamondApi
+      .listCardPastasDrive(cardId)
+      .then((lista) => {
+        if (!cancelado) setPastasVinculadas(lista)
       })
       .catch(() => {})
     return () => {
@@ -133,6 +154,33 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
 
   const removerAnexoDrive = (id: string) => {
     setAnexosDrive((prev) => prev.filter((a) => a.id !== id))
+  }
+
+  // Pasta do Google Drive: cria o vínculo na hora (card_pastas_drive) e
+  // registra um evento de sistema na timeline
+  const escolherPastaDrive = async (pasta: ArquivoDrive) => {
+    if (!cardId || vinculandoPasta) return
+    setVinculandoPasta(true)
+    try {
+      const rec = await diamondApi.vincularCardPastaDrive({
+        card: cardId,
+        nome: pasta.nome,
+        drive_file_id: pasta.id,
+        drive_url: linkAbrirPastaDrive(pasta),
+        criado_por: user?.id,
+      })
+      setPastasVinculadas((prev) => [rec, ...prev.filter((p) => p.id !== rec.id)])
+      setPickerPastasAberto(false)
+      toast({ title: `Pasta "${pasta.nome}" do Drive vinculada ao card.` })
+    } catch (err) {
+      console.error('Falha ao vincular pasta do Drive:', err)
+      toast({
+        title: `Falha ao vincular a pasta "${pasta.nome}" do Drive`,
+        variant: 'destructive',
+      })
+    } finally {
+      setVinculandoPasta(false)
+    }
   }
 
   const handleEnviarAnotacao = async () => {
@@ -427,6 +475,17 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
                 <HardDrive className="w-4 h-4 text-[#2563EB]" />
                 Google Drive…
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuAnexoAberto(false)
+                  setPickerPastasAberto(true)
+                }}
+                className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left text-xs text-[#1A1D21] hover:bg-[#F4F2EE]"
+              >
+                <Folder className="w-4 h-4 text-[#F59E0B]" />
+                Pasta do Google Drive…
+              </button>
               <p className="text-[10px] font-semibold text-[#8A93A0] uppercase tracking-wider mt-2 mb-1">
                 Arquivos já enviados neste card
               </p>
@@ -473,6 +532,25 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
             )}
           </button>
         </div>
+
+        {/* Picker de PASTAS do Google Drive (conectores de app) */}
+        <Dialog open={pickerPastasAberto} onOpenChange={setPickerPastasAberto}>
+          <DialogContent className="max-w-md bg-white border border-[#E5E1D8]">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold text-[#1A1D21] flex items-center gap-2">
+                <Folder className="w-5 h-5 text-[#F59E0B]" />
+                Pasta do Google Drive
+              </DialogTitle>
+              <DialogDescription className="text-xs text-[#5B6470]">
+                Escolha uma pasta do seu Drive para vincular ao card. Nada é baixado: o card guarda
+                o link de abertura da pasta.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="pt-1">
+              <PickerPastasDrive onSelecionar={escolherPastaDrive} />
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Picker de arquivos do Google Drive (conectores de app) */}
         <Dialog open={pickerDriveAberto} onOpenChange={setPickerDriveAberto}>
@@ -535,6 +613,34 @@ export default function TimelineCard({ cardId, eventos, membros, onRecarregar }:
           </button>
         ))}
       </div>
+
+      {/* Pastas do Google Drive vinculadas ao card (vínculo, sem upload local) */}
+      {pastasVinculadas.length > 0 && (
+        <div className="px-1 pb-2 space-y-1.5">
+          <p className="text-[10px] font-semibold text-[#8A93A0] uppercase tracking-wider">
+            Pastas do Google Drive vinculadas
+          </p>
+          {pastasVinculadas.map((pasta) => (
+            <a
+              key={pasta.id}
+              href={pasta.drive_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 rounded-lg border border-[#E5E1D8] bg-white px-2.5 py-2 hover:bg-[#F4F2EE] group/pasta"
+            >
+              <Folder className="w-4 h-4 text-[#F59E0B] shrink-0" />
+              <span className="flex-1 min-w-0 truncate text-xs font-medium text-[#1A1D21]">
+                {pasta.nome}
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#2563EB]/10 px-2 py-0.5 text-[9px] font-bold text-[#2563EB] shrink-0">
+                <HardDrive className="w-2.5 h-2.5" />
+                GOOGLE DRIVE
+              </span>
+              <ExternalLink className="w-3 h-3 text-[#8A93A0] shrink-0 opacity-0 group-hover/pasta:opacity-100" />
+            </a>
+          ))}
+        </div>
+      )}
 
       {/* Feed cronológico */}
       <div className="flex-1 overflow-y-auto px-1 py-4">{renderFeed()}</div>

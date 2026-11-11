@@ -8,6 +8,7 @@ import type {
   StatusTranscricao,
   Card,
   CardArquivo,
+  CardPastaDrive,
   Demanda,
   Lista,
   Pasta,
@@ -651,6 +652,39 @@ export const diamondApi = {
       drive_url: dados.drive_url,
       ...(dados.criado_por ? { criado_por: dados.criado_por } : {}),
     } as any)
+  },
+
+  // Cards - Pastas do Google Drive vinculadas (vínculo, sem upload local)
+  async listCardPastasDrive(cardId: string): Promise<CardPastaDrive[]> {
+    try {
+      return await pb.collection('card_pastas_drive').getFullList<CardPastaDrive>({
+        filter: `card = "${cardId}"`,
+        sort: '-created',
+        expand: 'criado_por',
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async vincularCardPastaDrive(dados: {
+    card: string
+    nome: string
+    drive_file_id: string
+    drive_url: string
+    criado_por?: string
+  }): Promise<CardPastaDrive> {
+    return await pb.collection('card_pastas_drive').create<CardPastaDrive>({
+      card: dados.card,
+      nome: dados.nome,
+      drive_file_id: dados.drive_file_id,
+      drive_url: dados.drive_url,
+      ...(dados.criado_por ? { criado_por: dados.criado_por } : {}),
+    } as any)
+  },
+
+  async deleteCardPastaDrive(id: string): Promise<boolean> {
+    return await pb.collection('card_pastas_drive').delete(id)
   },
 
   // Cards - Hierarquia Pais e Filhos

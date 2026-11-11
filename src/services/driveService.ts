@@ -1,9 +1,11 @@
 // Google Drive (conectores de app — toolkit googledrive, conta de CADA usuário).
-// Busca/listagem de arquivos do Drive do usuário logado para vincular aos cards
-// e à área de Arquivos. Nada é baixado para o app: guardamos id + link.
+// Busca/listagem de arquivos e PASTAS do Drive do usuário logado para vincular
+// aos cards e à área de Arquivos. Nada é baixado para o app: guardamos id + link.
 import { execute, listConnectors, type ConnectorResult } from '@/lib/skipConnectors'
 
 export const DRIVE_TOOLKIT = 'googledrive'
+
+export const MIME_PASTA_DRIVE = 'application/vnd.google-apps.folder'
 
 export interface ArquivoDrive {
   id: string
@@ -61,10 +63,39 @@ function normalizar(data: unknown): ArquivoDrive[] {
         iconLink: typeof f.iconLink === 'string' ? f.iconLink : undefined,
         tamanho: typeof f.size === 'string' ? Number(f.size) : undefined,
         modificadoEm: typeof f.modifiedTime === 'string' ? f.modifiedTime : undefined,
-        pasta: mimeType === 'application/vnd.google-apps.folder',
+        pasta: mimeType === MIME_PASTA_DRIVE,
       }
     })
     .filter((f): f is ArquivoDrive => f !== null)
+}
+
+function apenasPastas(data: unknown): ArquivoDrive[] {
+  return normalizar(data).filter((f) => f.pasta)
+}
+
+/** Lista as pastas do Drive do usuário (raiz / Meu Drive). */
+export async function listarPastasDrive(pageSize = 25): Promise<ArquivoDrive[]> {
+  const res: ConnectorResult = await execute('GOOGLEDRIVE_LIST_FILES', {
+    q: `mimeType = '${MIME_PASTA_DRIVE}' and trashed = false`,
+    fields: 'files(id,name,mimeType,webViewLink,modifiedTime)',
+    pageSize,
+    orderBy: 'name',
+  })
+  if (!res.successful) throw new Error(res.error || 'Falha ao listar pastas do Google Drive')
+  return apenasPastas(res.data)
+}
+
+/** Busca pastas do Drive por nome. */
+export async function buscarPastasDrive(busca: string, pageSize = 25): Promise<ArquivoDrive[]> {
+  const termo = busca.trim().replace(/'/g, "\\'")
+  if (!termo) return listarPastasDrive(pageSize)
+  const res: ConnectorResult = await execute('GOOGLEDRIVE_FIND_FILE', {
+    q: `name contains '${termo}' and mimeType = '${MIME_PASTA_DRIVE}' and trashed = false`,
+    fields: 'files(id,name,mimeType,webViewLink,modifiedTime)',
+    pageSize,
+  })
+  if (!res.successful) throw new Error(res.error || 'Falha ao buscar pastas no Google Drive')
+  return apenasPastas(res.data)
 }
 
 /** Lista os arquivos mais recentes do Drive do usuário (raiz / Meu Drive). */
@@ -94,4 +125,9 @@ export async function buscarArquivosDrive(busca: string, pageSize = 25): Promise
 /** Link de abertura de um arquivo do Drive (webViewLink, com fallback de URL canônica). */
 export function linkAbrirDrive(f: Pick<ArquivoDrive, 'id' | 'webViewLink'>): string {
   return f.webViewLink || `https://drive.google.com/file/d/${f.id}/view`
+}
+
+/** Link de abertura de uma PASTA do Drive (webViewLink, com fallback canônico). */
+export function linkAbrirPastaDrive(f: Pick<ArquivoDrive, 'id' | 'webViewLink'>): string {
+  return f.webViewLink || `https://drive.google.com/drive/folders/${f.id}`
 }

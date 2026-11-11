@@ -401,6 +401,22 @@ export interface CardArquivo {
   }
 }
 
+/** Pasta do Google Drive vinculada a um card (registro de vínculo, sem upload). */
+export interface CardPastaDrive {
+  id: string
+  card: string
+  nome: string
+  drive_file_id: string
+  drive_url: string
+  criado_por?: string
+  created: string
+  updated: string
+  expand?: {
+    card?: Card
+    criado_por?: User
+  }
+}
+
 export interface Demanda {
   id: string
   titulo: string

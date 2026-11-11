@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-10T23:46:49.379Z",
+  "generatedAt": "2026-11-11T00:13:01.906Z",
   "collections": [
     {
       "name": "users",
@@ -4131,6 +4131,69 @@
       "indexes": [
         "CREATE INDEX idx_tarefas_card_card ON tarefas_card (card)",
         "CREATE INDEX idx_tarefas_card_card_ordem ON tarefas_card (card, ordem)"
+      ]
+    },
+    {
+      "name": "card_pastas_drive",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && criado_por = @request.auth.id",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "card",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "cards"
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "drive_file_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "drive_url",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "criado_por",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_card_pastas_drive_card ON card_pastas_drive (card)",
+        "CREATE INDEX idx_card_pastas_drive_created ON card_pastas_drive (created DESC)"
       ]
     }
   ]

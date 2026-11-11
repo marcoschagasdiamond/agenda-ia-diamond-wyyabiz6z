@@ -22,13 +22,15 @@ import {
   Loader2,
   ExternalLink,
   HardDrive,
+  Folder,
 } from 'lucide-react'
-import type { Card, CardArquivo } from '@/types'
+import type { Card, CardArquivo, CardPastaDrive } from '@/types'
 import { diamondApi } from '@/services/diamondApi'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/use-auth'
 import { PickerArquivosDrive } from '@/components/fluxo/PickerArquivosDrive'
-import { linkAbrirDrive, type ArquivoDrive } from '@/services/driveService'
+import { PickerPastasDrive } from '@/components/fluxo/PickerPastasDrive'
+import { linkAbrirDrive, linkAbrirPastaDrive, type ArquivoDrive } from '@/services/driveService'
 
 interface ModalCardArquivosProps {
   open: boolean
@@ -89,6 +91,11 @@ export function ModalCardArquivos({
   const [excluindoId, setExcluindoId] = useState<string | null>(null)
   const [pickerDriveAberto, setPickerDriveAberto] = useState(false)
   const [vinculandoDrive, setVinculandoDrive] = useState(false)
+  // Pastas do Google Drive vinculadas ao card (coleção card_pastas_drive)
+  const [pastasDrive, setPastasDrive] = useState<CardPastaDrive[]>([])
+  const [pickerPastasAberto, setPickerPastasAberto] = useState(false)
+  const [vinculandoPasta, setVinculandoPasta] = useState(false)
+  const [excluindoPastaId, setExcluindoPastaId] = useState<string | null>(null)
 
   const carregarArquivos = async () => {
     if (!card) return
@@ -103,12 +110,24 @@ export function ModalCardArquivos({
     }
   }
 
+  const carregarPastas = async () => {
+    if (!card) return
+    try {
+      setPastasDrive(await diamondApi.listCardPastasDrive(card.id))
+    } catch (err) {
+      console.error('Erro ao carregar pastas do Drive do card:', err)
+    }
+  }
+
   useEffect(() => {
     if (open && card) {
       carregarArquivos()
+      carregarPastas()
     } else {
       setArquivos([])
+      setPastasDrive([])
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, card?.id])
 
   const handleSelecionarArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -192,6 +211,51 @@ export function ModalCardArquivos({
     }
   }
 
+  // Pasta do Google Drive: cria o vínculo (card_pastas_drive, sem upload local)
+  const handleVincularPasta = async (pasta: ArquivoDrive) => {
+    if (!card) return
+    setVinculandoPasta(true)
+    try {
+      await diamondApi.vincularCardPastaDrive({
+        card: card.id,
+        nome: pasta.nome,
+        drive_file_id: pasta.id,
+        drive_url: linkAbrirPastaDrive(pasta),
+        criado_por: user?.id,
+      })
+      toast({ title: `Pasta "${pasta.nome}" do Drive vinculada!` })
+      setPickerPastasAberto(false)
+      await carregarPastas()
+    } catch (err) {
+      console.error('Falha ao vincular pasta do Drive:', pasta.nome, err)
+      toast({
+        title: `Falha ao vincular a pasta "${pasta.nome}" do Drive`,
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setVinculandoPasta(false)
+    }
+  }
+
+  const handleExcluirPasta = async (pasta: CardPastaDrive) => {
+    if (!confirm(`Deseja realmente remover o vínculo com a pasta "${pasta.nome}"?`)) return
+    setExcluindoPastaId(pasta.id)
+    try {
+      await diamondApi.deleteCardPastaDrive(pasta.id)
+      setPastasDrive((prev) => prev.filter((p) => p.id !== pasta.id))
+      toast({ title: 'Vínculo da pasta removido', description: `"${pasta.nome}" desvinculada.` })
+    } catch (err) {
+      toast({
+        title: 'Erro ao remover o vínculo da pasta',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setExcluindoPastaId(null)
+    }
+  }
+
   const handleExcluir = async (arquivo: CardArquivo) => {
     if (!confirm(`Deseja realmente remover o arquivo "${arquivo.nome}"?`)) return
 
@@ -242,7 +306,8 @@ export function ModalCardArquivos({
               </h4>
             </div>
             <Badge variant="outline" className="text-xs font-semibold bg-white border-[#E5E1D8]">
-              {arquivos.length} {arquivos.length === 1 ? 'anexo' : 'anexos'}
+              {arquivos.length + pastasDrive.length}{' '}
+              {arquivos.length + pastasDrive.length === 1 ? 'anexo' : 'anexos'}
             </Badge>
           </div>
 
@@ -277,6 +342,25 @@ export function ModalCardArquivos({
                 <>
                   <HardDrive className="w-3.5 h-3.5" />
                   Google Drive
+                </>
+              )}
+            </Button>
+            <Button
+              type="button"
+              disabled={enviando || vinculandoPasta}
+              onClick={() => setPickerPastasAberto(true)}
+              variant="outline"
+              className="text-[#F59E0B] border-[#F59E0B]/50 hover:bg-[#F59E0B]/10 hover:text-[#D97706] text-xs h-8 px-3.5 font-semibold gap-1.5"
+            >
+              {vinculandoPasta ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Vinculando...
+                </>
+              ) : (
+                <>
+                  <Folder className="w-3.5 h-3.5" />
+                  Pasta do Drive
                 </>
               )}
             </Button>
@@ -408,6 +492,76 @@ export function ModalCardArquivos({
             )}
           </div>
 
+          {/* Pastas do Google Drive vinculadas ao card */}
+          {pastasDrive.length > 0 && (
+            <div className="space-y-2">
+              <span className="text-[11px] font-bold text-[#5B6470] uppercase tracking-wider block">
+                Pastas do Google Drive
+              </span>
+              <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
+                {pastasDrive.map((pasta) => (
+                  <div
+                    key={pasta.id}
+                    className="group flex items-center justify-between p-2.5 rounded-lg border border-[#F59E0B]/40 bg-[#F59E0B]/5 hover:border-[#F59E0B]/60 transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
+                      <div className="shrink-0 p-1.5 rounded-md bg-white border border-[#F59E0B]/40">
+                        <Folder className="w-5 h-5 text-[#F59E0B]" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className="text-xs font-semibold text-[#1A1D21] truncate"
+                          title={pasta.nome}
+                        >
+                          {pasta.nome}
+                        </p>
+                        <div className="flex items-center gap-2 text-[10px] text-[#5B6470]">
+                          <span>{new Date(pasta.created).toLocaleDateString('pt-BR')}</span>
+                          <span>•</span>
+                          <Badge
+                            variant="outline"
+                            className="ml-1 text-[9px] font-bold uppercase tracking-wide text-[#2563EB] border-[#2563EB]/40 bg-[#2563EB]/10 px-1.5 py-0"
+                          >
+                            Google Drive
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        asChild
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 text-[#5B6470] hover:text-[#2563EB]"
+                        title="Abrir no Google Drive"
+                      >
+                        <a href={pasta.drive_url} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={excluindoPastaId === pasta.id}
+                        onClick={() => handleExcluirPasta(pasta)}
+                        className="h-7 w-7 p-0 text-[#5B6470] hover:text-red-600"
+                        title="Remover vínculo da pasta"
+                      >
+                        {excluindoPastaId === pasta.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3.5 h-3.5" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end pt-2 border-t border-[#E5E1D8]">
             <Button
               type="button"
@@ -435,6 +589,25 @@ export function ModalCardArquivos({
             </DialogHeader>
             <div className="pt-1">
               <PickerArquivosDrive onSelecionar={handleVincularDrive} />
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Picker de PASTAS do Google Drive (conectores de app) */}
+        <Dialog open={pickerPastasAberto} onOpenChange={setPickerPastasAberto}>
+          <DialogContent className="max-w-md bg-white border border-[#E5E1D8]">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold text-[#1A1D21] flex items-center gap-2">
+                <Folder className="w-5 h-5 text-[#F59E0B]" />
+                Pasta do Google Drive
+              </DialogTitle>
+              <DialogDescription className="text-xs text-[#5B6470]">
+                Escolha uma pasta do seu Drive para vincular a este card. Nada é baixado: o card
+                guarda o link de abertura da pasta.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="pt-1">
+              <PickerPastasDrive onSelecionar={handleVincularPasta} />
             </div>
           </DialogContent>
         </Dialog>
