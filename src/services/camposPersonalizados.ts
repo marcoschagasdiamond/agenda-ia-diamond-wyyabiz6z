@@ -14,22 +14,18 @@ export type CampoTipo =
   | 'lista_checkbox'
   | 'seletor_horario'
   | 'seletor_data'
-  | 'upload'
   | 'lista_selecao'
   | 'moeda'
 
-export type CampoMascara = 'cpf' | 'cnpj' | 'rg' | 'passaporte' | 'outros' | ''
+export type CampoMascara = 'cpf' | 'cnpj' | 'telefone' | 'moeda' | ''
 
 export interface CampoPersonalizado {
   id: string
   categoria: CampoCategoria
   tipo: CampoTipo
-  mascara: CampoMascara
-  mascara_outros: string
   nome_interno: string
   rotulo: string
   mensagem_ajuda: string
-  legenda: string
   opcoes: string[] | null
   lista_selecao: string
   obrigatorio: boolean
@@ -47,11 +43,15 @@ export interface ListaSelecao {
   updated: string
 }
 
+export type AlvoValor = { card?: string; contato?: string; projeto?: string; fluxo?: string }
+
 export interface ValorCampoPersonalizado {
   id: string
   campo: string
   card: string
   contato: string
+  projeto: string
+  fluxo: string
   valor: unknown
   created: string
   updated: string
@@ -66,33 +66,24 @@ export const ROTULOS_CATEGORIA: Record<CampoCategoria, string> = {
 export const ROTULOS_TIPO: Record<CampoTipo, string> = {
   texto_curto: 'Texto Curto',
   texto_longo: 'Texto Longo',
-  numero: 'Número',
-  select: 'Lista Suspensa (Select)',
-  radio: 'Radio',
+  numero: 'Números',
+  select: 'Select',
+  radio: 'Radio Button',
   checkbox: 'Checkbox',
-  lista_checkbox: 'Múltipla Escolha (Checkboxes)',
-  seletor_horario: 'Seletor de Horário',
-  seletor_data: 'Seletor de Data',
-  upload: 'Upload',
+  lista_checkbox: 'Lista de Checkbox',
+  seletor_horario: 'Seletor de horário',
+  seletor_data: 'Seletor de data',
   lista_selecao: 'Lista de Seleção',
   moeda: 'Moeda',
 }
 
-export const ROTULOS_MASCARA: Record<string, string> = {
-  cpf: 'CPF',
-  cnpj: 'CNPJ',
-  rg: 'RG',
-  passaporte: 'Passaporte',
-  outros: 'Outros',
-}
-
-// Tipos cujo rótulo fica visível ao cadastrar/validar por tipo
-export function tipoUsaOpcoes(tipo: CampoTipo): boolean {
-  return tipo === 'select' || tipo === 'radio' || tipo === 'checkbox' || tipo === 'lista_checkbox'
-}
-
+// Números é o único tipo com máscara própria (intrínseca ao tipo, sem célula no modal)
 export function tipoUsaMascara(tipo: CampoTipo): boolean {
-  return tipo === 'texto_curto' || tipo === 'numero'
+  return tipo === 'numero'
+}
+
+export function tipoUsaOpcoes(tipo: CampoTipo): boolean {
+  return tipo === 'select' || tipo === 'radio' || tipo === 'lista_checkbox'
 }
 
 export function tipoUsaListaSelecao(tipo: CampoTipo): boolean {
@@ -136,17 +127,20 @@ function parseLista(rec: Record<string, unknown>): ListaSelecao {
   }
 }
 
+function primeiro(v: unknown): string {
+  if (Array.isArray(v)) return (v[0] as string) || ''
+  return typeof v === 'string' ? v : ''
+}
+
 function parseValor(rec: Record<string, unknown>): ValorCampoPersonalizado {
   const raw = rec as Record<string, unknown>
-  const primeiro = (v: unknown): string => {
-    if (Array.isArray(v)) return (v[0] as string) || ''
-    return typeof v === 'string' ? v : ''
-  }
   return {
     id: raw.id as string,
     campo: primeiro(raw.campo),
     card: primeiro(raw.card),
     contato: primeiro(raw.contato),
+    projeto: primeiro(raw.projeto),
+    fluxo: primeiro(raw.fluxo),
     valor: raw.valor ?? null,
     created: raw.created as string,
     updated: raw.updated as string,
@@ -166,8 +160,14 @@ export async function listarListasSelecao(somenteAtivas = false): Promise<ListaS
 
 export async function listarCamposPersonalizados(
   apenasAtivos = false,
+  categorias?: CampoCategoria[],
 ): Promise<CampoPersonalizado[]> {
-  const filtro = apenasAtivos ? 'ativo = true' : ''
+  let filtro = apenasAtivos ? 'ativo = true' : ''
+  if (categorias && categorias.length > 0) {
+    filtro = [filtro, `(${categorias.map((c) => `categoria = "${c}"`).join(' || ')})`]
+      .filter(Boolean)
+      .join(' && ')
+  }
   const recs = await pb.collection('campos_personalizados').getList(1, 200, {
     filter: filtro,
     sort: '-created',
@@ -175,13 +175,30 @@ export async function listarCamposPersonalizados(
   return recs.items.map(parseCampo)
 }
 
-export async function listarValoresPorAlvo(alvo: {
-  card?: string
-  contato?: string
-}): Promise<ValorCampoPersonalizado[]> {
+export async function criarCampoPersonalizado(
+  dados: Omit<CampoPersonalizado, 'id' | 'created' | 'updated'> & { opcoes?: string[] },
+): Promise<CampoPersonalizado> {
+  const rec = await pb.collection('campos_personalizados').create({
+    categoria: dados.categoria,
+    tipo: dados.tipo,
+    nome_interno: dados.nome_interno,
+    rotulo: dados.rotulo,
+    mensagem_ajuda: dados.mensagem_ajuda || '',
+    opcoes: Array.isArray(dados.opcoes) ? dados.opcoes : [],
+    lista_selecao: dados.lista_selecao || '',
+    obrigatorio: !!dados.obrigatorio,
+    ativo: dados.ativo !== false,
+    criado_por: pb.authStore.record?.id || '',
+  })
+  return parseCampo(rec as unknown as Record<string, unknown>)
+}
+
+export async function listarValoresPorAlvo(alvo: AlvoValor): Promise<ValorCampoPersonalizado[]> {
   const partes: string[] = []
   if (alvo.card) partes.push(`card = "${alvo.card}"`)
   if (alvo.contato) partes.push(`contato = "${alvo.contato}"`)
+  if (alvo.projeto) partes.push(`projeto = "${alvo.projeto}"`)
+  if (alvo.fluxo) partes.push(`fluxo = "${alvo.fluxo}"`)
   if (partes.length === 0) return []
   const recs = await pb.collection('valores_campos_personalizados').getFullList({
     filter: partes.join(' && '),
@@ -191,13 +208,15 @@ export async function listarValoresPorAlvo(alvo: {
 
 export async function salvarValorCampo(
   campoId: string,
-  alvo: { card?: string; contato?: string },
+  alvo: AlvoValor,
   valor: unknown,
   usuarioId?: string,
 ): Promise<void> {
   const partes: string[] = [`campo = "${campoId}"`]
   if (alvo.card) partes.push(`card = "${alvo.card}"`)
   if (alvo.contato) partes.push(`contato = "${alvo.contato}"`)
+  if (alvo.projeto) partes.push(`projeto = "${alvo.projeto}"`)
+  if (alvo.fluxo) partes.push(`fluxo = "${alvo.fluxo}"`)
   const existentes = await pb
     .collection('valores_campos_personalizados')
     .getFullList({ filter: partes.join(' && ') })
@@ -210,58 +229,46 @@ export async function salvarValorCampo(
     campo: campoId,
     card: alvo.card || '',
     contato: alvo.contato || '',
+    projeto: alvo.projeto || '',
+    fluxo: alvo.fluxo || '',
     valor,
     criado_por: usuarioId || '',
   })
 }
 
-// ---------------- Máscaras de formatação ----------------
+// ---------------- Máscaras ----------------
+// Máscara é intrínseca ao tipo Números: detecta CPF (11 dígitos) / CNPJ (14) /
+// telefone ao digitar e formata sozinha.
 
-export function aplicarMascara(
-  valorDigitado: string,
-  mascara: CampoMascara,
-  outros: string,
-): string {
+export function aplicarMascaraNumero(valorDigitado: string): string {
   const digitos = (valorDigitado || '').replace(/\D/g, '')
-
-  switch (mascara) {
-    case 'cpf': {
-      const d = digitos.slice(0, 11)
-      return d
-        .replace(/(\d{3})(\d)/, '$1.$2')
-        .replace(/(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
-        .replace(/(\d{3})\.(\d{3})\.(\d{3})(\d{1,2})$/, '$1.$2.$3-$4')
-    }
-    case 'cnpj': {
-      const d = digitos.slice(0, 14)
-      return d
-        .replace(/^(\d{2})(\d)/, '$1.$2')
-        .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
-        .replace(/\.(\d{3})(\d)/, '.$1/$2')
-        .replace(/(\d{4})(\d{1,2})$/, '$1-$2')
-    }
-    case 'rg': {
-      const d = digitos.slice(0, 9)
-      return d
-        .replace(/^(\d{2})(\d)/, '$1.$2')
-        .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
-        .replace(/(\d{3})(\d{1})$/, '$1-$2')
-    }
-    case 'passaporte': {
-      return valorDigitado
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/g, '')
-        .slice(0, 8)
-    }
-    case 'outros': {
-      return valorDigitado.slice(0, 50)
-    }
-    default:
-      return valorDigitado
+  if (digitos.length === 11) {
+    return digitos
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+      .replace(/(\d{3})\.(\d{3})\.(\d{3})(\d{1,2})$/, '$1.$2.$3-$4')
   }
+  if (digitos.length === 14) {
+    return digitos
+      .replace(/^(\d{2})(\d)/, '$1.$2')
+      .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+      .replace(/\.(\d{3})(\d)/, '.$1/$2')
+      .replace(/(\d{4})(\d{1,2})$/, '$1-$2')
+  }
+  if (digitos.length >= 10 && digitos.length <= 13) {
+    // Telefone BR (até 11 dígitos) e afins
+    if (digitos.length <= 11) {
+      const d = digitos.slice(0, 11)
+      if (d.length >= 10) {
+        return d.replace(/^(\d{2})(\d)/, '($1) $2').replace(/(\d{4,5})(\d{4})$/, '$1-$2')
+      }
+    }
+    return digitos
+  }
+  return valorDigitado
 }
 
-// Utilidades de moeda (usadas no campo tipo moeda)
+// Utilidades de moeda (campo tipo Moeda, digitação formatada em R$)
 export function formatarMoedaBR(valor: number): string {
   return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
@@ -273,4 +280,12 @@ export function parseMoedaBR(texto: string): number {
     .replace(',', '.')
   const n = parseFloat(limpo)
   return isNaN(n) ? 0 : n
+}
+
+// Digitação progressiva em reais: "1234" → "R$ 12,34" (modelo caixinha de apps BR)
+export function aplicarMascaraMoeda(valorDigitado: string): string {
+  const digitos = (valorDigitado || '').replace(/\D/g, '')
+  if (!digitos) return ''
+  const centavos = parseInt(digitos, 10)
+  return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }

@@ -1,89 +1,92 @@
-// Hook compartilhado do painel de Campos Personalizados (modelo Ummense adaptado).
-// Centraliza carregamento de campos/listas, valores do alvo (card ou contato),
-// aplicação de máscara e validação de obrigatórios — consumido pelo PainelCamposPersonalizados,
-// que renderiza em ContatoDetalhes, CardDetalhes (/card/:id) e no modal de card do Kanban (/fluxo).
+// Hook compartilhado dos Campos Personalizados por entidade (card, pessoa, empresa).
+// A entidade começa EM BRANCO: os campos só entram quando o usuário os insere pela
+// caixa de busca (CaixaSelecaoCampo), e o campo inserido vem vazio (rótulo como
+// placeholder). Os valores persistem em valores_campos_personalizados.
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import {
-  aplicarMascara,
+  aplicarMascaraMoeda,
+  aplicarMascaraNumero,
   listarCamposPersonalizados,
   listarListasSelecao,
   listarValoresPorAlvo,
   salvarValorCampo,
+  tipoUsaMascara,
   type CampoPersonalizado,
+  type CampoCategoria,
   type ListaSelecao,
   type ValorCampoPersonalizado,
 } from '@/services/camposPersonalizados'
 
-export type AlvoCampos = { card?: string; contato?: string }
+export type AlvoCampos = { card?: string; contato?: string; projeto?: string; fluxo?: string }
 
-export function valorInicialTexto(campo: CampoPersonalizado, valor: unknown): string {
+export function valorInicialTexto(valor: unknown): string {
   if (valor == null) return ''
   if (typeof valor === 'string') return valor
   return String(valor)
 }
 
-export function campoEstaVazio(campo: CampoPersonalizado, valor: unknown): boolean {
+export function campoEstaVazio(valor: unknown): boolean {
   if (valor == null) return true
   if (typeof valor === 'string') return valor.trim() === ''
   if (Array.isArray(valor)) return valor.length === 0
   return false
 }
 
-export function useCamposPersonalizados(
-  categoria: 'card' | 'pessoa' | 'empresa',
-  alvo: AlvoCampos,
-) {
+export function useCamposPersonalizados(categoria: CampoCategoria, alvo: AlvoCampos) {
   const { user } = useAuth()
   const [campos, setCampos] = useState<CampoPersonalizado[]>([])
   const [valores, setValores] = useState<Record<string, unknown>>({})
   const [originais, setOriginais] = useState<Record<string, ValorCampoPersonalizado>>({})
   const [listas, setListas] = useState<ListaSelecao[]>([])
+  const [camposCatalogo, setCamposCatalogo] = useState<CampoPersonalizado[]>([])
   const [carregando, setCarregando] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [erroObrigatorio, setErroObrigatorio] = useState<Record<string, boolean>>({})
 
-  useEffect(() => {
-    let cancelado = false
-    const carregar = async () => {
-      setCarregando(true)
-      try {
-        const [listaCampos, listasSel] = await Promise.all([
-          listarCamposPersonalizados(true), // somente ativos: campos inativados no /config não aparecem
-          listarListasSelecao(true),
-        ])
-        const doAlvo = listaCampos.filter((c) => c.categoria === categoria)
-        if (cancelado) return
-        setListas(listasSel)
-        if (cancelado) return
-        setCampos(doAlvo)
-        if (alvo.card || alvo.contato) {
-          const vals = await listarValoresPorAlvo(alvo)
-          if (cancelado) return
-          const mapa: Record<string, unknown> = {}
-          const mapOrig: Record<string, ValorCampoPersonalizado> = {}
-          vals.forEach((v) => {
-            mapa[v.campo] = v.valor
-            mapOrig[v.campo] = v
-          })
-          setValores(mapa)
-          setOriginais(mapOrig)
-        } else {
-          setValores({})
-          setOriginais({})
-        }
-      } catch (err) {
-        console.error('Erro ao carregar campos personalizados', err)
-      } finally {
-        if (!cancelado) setCarregando(false)
-      }
+  const alvoAtivo = !!(alvo.card || alvo.contato || alvo.projeto || alvo.fluxo)
+
+  const carregar = useCallback(async () => {
+    if (!alvoAtivo) {
+      setCampos([])
+      setValores({})
+      setOriginais({})
+      setCamposCatalogo([])
+      setCarregando(false)
+      return
     }
-    carregar()
-    return () => {
-      cancelado = true
+    setCarregando(true)
+    try {
+      const [catalogo, listasSel, vals] = await Promise.all([
+        listarCamposPersonalizados(true, [categoria]),
+        listarListasSelecao(true),
+        listarValoresPorAlvo(alvo),
+      ])
+      // Campos JÁ INSERIDOS nesta entidade (vínculo por instância: existe um
+      // registro de valor — mesmo vazio — para ela). Sem registro, não aparece.
+      const vinculados = catalogo.filter((c) => vals.some((v) => v.campo === c.id))
+      const mapa: Record<string, unknown> = {}
+      const mapOrig: Record<string, ValorCampoPersonalizado> = {}
+      vals.forEach((v) => {
+        mapa[v.campo] = v.valor
+        mapOrig[v.campo] = v
+      })
+      setCampos(vinculados)
+      setValores(mapa)
+      setOriginais(mapOrig)
+      setListas(listasSel)
+      setCamposCatalogo(catalogo)
+    } catch (err) {
+      console.error('Erro ao carregar campos personalizados', err)
+    } finally {
+      setCarregando(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categoria, alvo.card, alvo.contato])
+  }, [categoria, alvo.card, alvo.contato, alvo.projeto, alvo.fluxo, alvoAtivo])
+
+  useEffect(() => {
+    carregar()
+  }, [carregar])
 
   const setValor = useCallback((campoId: string, valor: unknown) => {
     setValores((prev) => ({ ...prev, [campoId]: valor }))
@@ -92,20 +95,70 @@ export function useCamposPersonalizados(
 
   const setValorComMascara = useCallback(
     (campo: CampoPersonalizado, bruto: string) => {
-      const formatado =
-        campo.mascara && campo.mascara !== 'outros'
-          ? aplicarMascara(bruto, campo.mascara, campo.mascara_outros || '')
-          : bruto
-      setValor(campo.id, formatado)
+      if (!tipoUsaMascara(campo.tipo)) {
+        setValor(campo.id, bruto)
+        return
+      }
+      setValor(campo.id, aplicarMascaraNumero(bruto))
     },
     [setValor],
+  )
+
+  // Insere um campo do catálogo nesta entidade: cria o registro de valor vazio
+  // (o campo aparece VAZIO, com o rótulo como placeholder) e o inclui na lista.
+  const inserirCampo = useCallback(
+    async (campo: CampoPersonalizado): Promise<boolean> => {
+      if (!alvoAtivo || campos.some((c) => c.id === campo.id)) return false
+      try {
+        await salvarValorCampo(campo.id, alvo, campo.tipo === 'checkbox' ? false : null, user?.id)
+        setCampos((prev) => [...prev, campo])
+        setValores((prev) => ({
+          ...prev,
+          [campo.id]: campo.tipo === 'checkbox' ? false : null,
+        }))
+        setCamposCatalogo((prev) => (prev.some((c) => c.id === campo.id) ? prev : [...prev, campo]))
+        return true
+      } catch (err) {
+        console.error('Erro ao inserir campo personalizado', err)
+        return false
+      }
+    },
+    [alvo, alvoAtivo, campos, user?.id],
+  )
+
+  const removerCampo = useCallback(
+    async (campoId: string): Promise<boolean> => {
+      if (!alvoAtivo) return false
+      try {
+        const orig = originais[campoId]
+        if (orig) {
+          await pbRemoverValor(orig.id)
+          setOriginais((prev) => {
+            const prox = { ...prev }
+            delete prox[campoId]
+            return prox
+          })
+        }
+        setCampos((prev) => prev.filter((c) => c.id !== campoId))
+        setValores((prev) => {
+          const prox = { ...prev }
+          delete prox[campoId]
+          return prox
+        })
+        return true
+      } catch (err) {
+        console.error('Erro ao remover campo personalizado', err)
+        return false
+      }
+    },
+    [alvoAtivo, originais],
   )
 
   // Valida obrigatórios: true se tudo ok; false (marcando erros) se faltou preencher
   const validarObrigatorios = useCallback((): boolean => {
     const erros: Record<string, boolean> = {}
     campos.forEach((c) => {
-      if (c.obrigatorio && campoEstaVazio(c, valores[c.id])) erros[c.id] = true
+      if (c.obrigatorio && campoEstaVazio(valores[c.id])) erros[c.id] = true
     })
     setErroObrigatorio(erros)
     return Object.keys(erros).length === 0
@@ -123,16 +176,13 @@ export function useCamposPersonalizados(
         if (originalJson === atualJson) continue
         await salvarValorCampo(campo.id, alvo, valorAtual ?? null, user?.id)
       }
-      // Recarrega os originais para refletir o estado salvo
-      if (alvo.card || alvo.contato) {
+      if (alvoAtivo) {
         const vals = await listarValoresPorAlvo(alvo)
-        const mapa: Record<string, unknown> = {}
         const mapOrig: Record<string, ValorCampoPersonalizado> = {}
         vals.forEach((v) => {
-          mapa[v.campo] = v.valor
           mapOrig[v.campo] = v
         })
-        setOriginais(mapOrig)
+        setOriginais((prev) => ({ ...prev, ...mapOrig }))
       }
       return true
     } catch (err) {
@@ -141,18 +191,28 @@ export function useCamposPersonalizados(
     } finally {
       setSalvando(false)
     }
-  }, [alvo, campos, originais, user?.id, valores])
+  }, [alvo, alvoAtivo, campos, originais, user?.id, valores])
 
   return {
     campos,
     valores,
     listas,
+    camposCatalogo,
     carregando,
     salvando,
     erroObrigatorio,
     setValor,
     setValorComMascara,
+    inserirCampo,
+    removerCampo,
     validarObrigatorios,
     salvar,
+    recarregar: carregar,
   }
+}
+
+import pb from '@/lib/pocketbase/client'
+
+async function pbRemoverValor(registroId: string): Promise<void> {
+  await pb.collection('valores_campos_personalizados').delete(registroId)
 }

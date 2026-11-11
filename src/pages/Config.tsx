@@ -22,7 +22,6 @@ import {
   Save,
   CheckCircle2,
   ExternalLink,
-  Wrench,
   SlidersHorizontal,
   ListChecks,
 } from 'lucide-react'
@@ -402,43 +401,35 @@ export default function Config() {
               </div>
             </div>
 
-            {/* ============================= */}
-            {/* SEÇÃO: FERRAMENTAS            */}
-            {/* ============================= */}
-            <div>
-              <h2 className="text-sm font-bold text-[#1A1D21] mb-2 flex items-center gap-1.5">
-                <Wrench className="w-4 h-4 text-[#0F766E]" />
-                Ferramentas
-              </h2>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Button
-                  size="sm"
-                  variant={abaGestao === 'campos_personalizados' ? 'default' : 'ghost'}
-                  onClick={() => mudarAbaGestao('campos_personalizados')}
-                  className={`text-xs h-8 px-2.5 rounded-lg gap-1.5 ${
-                    abaGestao === 'campos_personalizados'
-                      ? 'bg-[#1A1D21] text-white hover:bg-[#2A2E33]'
-                      : 'text-[#5B6470] hover:text-[#1A1D21] hover:bg-white'
-                  }`}
-                >
-                  <SlidersHorizontal className="w-3.5 h-3.5" />
-                  <span>Campos Personalizados</span>
-                </Button>
+            {/* Campos Personalizados e Listas de Seleção — itens soltos, no final */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button
+                size="sm"
+                variant={abaGestao === 'campos_personalizados' ? 'default' : 'ghost'}
+                onClick={() => mudarAbaGestao('campos_personalizados')}
+                className={`text-xs h-8 px-2.5 rounded-lg gap-1.5 ${
+                  abaGestao === 'campos_personalizados'
+                    ? 'bg-[#1A1D21] text-white hover:bg-[#2A2E33]'
+                    : 'text-[#5B6470] hover:text-[#1A1D21] hover:bg-white'
+                }`}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span>Campos Personalizados</span>
+              </Button>
 
-                <Button
-                  size="sm"
-                  variant={abaGestao === 'listas_selecao' ? 'default' : 'ghost'}
-                  onClick={() => mudarAbaGestao('listas_selecao')}
-                  className={`text-xs h-8 px-2.5 rounded-lg gap-1.5 ${
-                    abaGestao === 'listas_selecao'
-                      ? 'bg-[#1A1D21] text-white hover:bg-[#2A2E33]'
-                      : 'text-[#5B6470] hover:text-[#1A1D21] hover:bg-white'
-                  }`}
-                >
-                  <ListChecks className="w-3.5 h-3.5" />
-                  <span>Listas de Seleção</span>
-                </Button>
-              </div>
+              <Button
+                size="sm"
+                variant={abaGestao === 'listas_selecao' ? 'default' : 'ghost'}
+                onClick={() => mudarAbaGestao('listas_selecao')}
+                className={`text-xs h-8 px-2.5 rounded-lg gap-1.5 ${
+                  abaGestao === 'listas_selecao'
+                    ? 'bg-[#1A1D21] text-white hover:bg-[#2A2E33]'
+                    : 'text-[#5B6470] hover:text-[#1A1D21] hover:bg-white'
+                }`}
+              >
+                <ListChecks className="w-3.5 h-3.5" />
+                <span>Listas de Seleção</span>
+              </Button>
             </div>
 
             {/* Renderização condicional do módulo selecionado */}
