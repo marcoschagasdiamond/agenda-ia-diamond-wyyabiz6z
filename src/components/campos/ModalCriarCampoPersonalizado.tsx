@@ -20,10 +20,8 @@ import {
   ROTULOS_TIPO,
   criarCampoPersonalizado,
   tipoUsaListaSelecao,
-  tipoUsaMascara,
   tipoUsaOpcoes,
   type CampoCategoria,
-  type CampoMascara,
   type CampoPersonalizado,
   type CampoTipo,
   type ListaSelecao,
@@ -75,7 +73,6 @@ export default function ModalCriarCampoPersonalizado({
   const { toast } = useToast()
   const [categorias, setCategorias] = useState<CampoCategoria[]>(categoriasSugeridas)
   const [tipo, setTipo] = useState<CampoTipo>('texto_curto')
-  const [mascara, setMascara] = useState<CampoMascara>('')
   const [nomeInterno, setNomeInterno] = useState('')
   const [rotulo, setRotulo] = useState('')
   const [mensagemAjuda, setMensagemAjuda] = useState('')
@@ -106,7 +103,6 @@ export default function ModalCriarCampoPersonalizado({
   const resetar = () => {
     setCategorias(categoriasSugeridas)
     setTipo('texto_curto')
-    setMascara('')
     setNomeInterno('')
     setRotulo('')
     setMensagemAjuda('')
@@ -326,10 +322,7 @@ export default function ModalCriarCampoPersonalizado({
             <Checkbox checked={obrigatorio} onCheckedChange={(v) => setObrigatorio(v === true)} />
             Campo obrigatório
           </label>
-
           {/* Máscara — removida do formulário: intrínseca ao tipo Números. */}
-          {/* @ts-expect-error variável reservada para exibição futura de máscara */}
-          {mascara && tipoUsaMascara(tipo) ? null : null}
         </div>
 
         <DialogFooter className="pt-2">

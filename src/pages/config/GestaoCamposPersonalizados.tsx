@@ -29,13 +29,10 @@ import {
 import {
   ROTULOS_CATEGORIA,
   ROTULOS_TIPO,
-  ROTULOS_MASCARA,
-  tipoUsaMascara,
   tipoUsaOpcoes,
   type CampoPersonalizado,
   type CampoCategoria,
   type CampoTipo,
-  type CampoMascara,
 } from '@/services/camposPersonalizados'
 import { GestaoListasSelecao } from './GestaoListasSelecao'
 
@@ -49,19 +46,14 @@ export const TIPOS_CAMPO: CampoTipo[] = [
   'lista_checkbox',
   'seletor_horario',
   'seletor_data',
-  'upload',
   'lista_selecao',
   'moeda',
 ]
-
-const MASCARAS: CampoMascara[] = ['', 'cpf', 'cnpj', 'rg', 'passaporte', 'outros']
 
 interface FormCampoState {
   id: string | null
   categoria: CampoCategoria
   tipo: CampoTipo
-  mascara: CampoMascara
-  mascara_outros: string
   nome_interno: string
   rotulo: string
   mensagem_ajuda: string
@@ -76,8 +68,6 @@ const FORM_PADRAO: FormCampoState = {
   id: null,
   categoria: 'card',
   tipo: 'texto_curto',
-  mascara: '',
-  mascara_outros: '',
   nome_interno: '',
   rotulo: '',
   mensagem_ajuda: '',
@@ -138,12 +128,10 @@ export default function GestaoCamposPersonalizados({
       id: campo.id,
       categoria: campo.categoria,
       tipo: campo.tipo,
-      mascara: campo.mascara || '',
-      mascara_outros: campo.mascara_outros || '',
       nome_interno: campo.nome_interno || '',
       rotulo: campo.rotulo || '',
       mensagem_ajuda: campo.mensagem_ajuda || '',
-      legenda: campo.legenda || '',
+      legenda: (campo as unknown as { legenda?: string }).legenda || '',
       opcoesTexto: Array.isArray(campo.opcoes) ? campo.opcoes.join('\n') : '',
       lista_selecao: campo.lista_selecao || '',
       obrigatorio: campo.obrigatorio,
@@ -180,8 +168,6 @@ export default function GestaoCamposPersonalizados({
       const payload: Record<string, unknown> = {
         categoria: form.categoria,
         tipo: form.tipo,
-        mascara: form.mascara || '',
-        mascara_outros: form.mascara_outros.trim(),
         nome_interno: form.nome_interno.trim(),
         rotulo: form.rotulo.trim(),
         mensagem_ajuda: form.mensagem_ajuda.trim(),
@@ -259,7 +245,7 @@ export default function GestaoCamposPersonalizados({
           </h3>
           <p className="text-xs text-[#5B6470] mt-0.5">
             Crie campos extras para Cards, Pessoas e Empresas. Os campos aparecem nos cards e nos
-            contatos, com máscara e validação de obrigatório.
+            contatos, com validação de obrigatório.
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -317,8 +303,8 @@ export default function GestaoCamposPersonalizados({
               {form.id ? 'Editar campo personalizado' : 'Adicionar novo campo personalizado'}
             </DialogTitle>
             <DialogDescription className="text-xs text-[#5B6470]">
-              Fluxo: categoria → tipo → nome interno e rótulo → opções/máscara → obrigatório →
-              legenda e mensagem de ajuda.
+              Fluxo: categoria → tipo → nome interno e rótulo → opções → obrigatório → legenda e
+              mensagem de ajuda.
             </DialogDescription>
           </DialogHeader>
 
@@ -422,40 +408,6 @@ export default function GestaoCamposPersonalizados({
                 <p className="text-[10px] text-[#5B6470]">
                   Gerencie as listas pelo botão "Listas de Seleção".
                 </p>
-              </div>
-            )}
-
-            {tipoUsaMascara(form.tipo) && (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-[#1A1D21]">Máscara</label>
-                  <select
-                    value={form.mascara}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, mascara: e.target.value as CampoMascara }))
-                    }
-                    className="w-full h-8 rounded-md border border-[#E5E1D8] bg-white px-2 text-xs"
-                  >
-                    {MASCARAS.map((m) => (
-                      <option key={m || 'nenhuma'} value={m}>
-                        {m === '' ? 'Sem máscara' : ROTULOS_MASCARA[m]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {form.mascara === 'outros' && (
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-[#1A1D21]">
-                      Descrição da máscara
-                    </label>
-                    <Input
-                      value={form.mascara_outros}
-                      onChange={(e) => setForm((f) => ({ ...f, mascara_outros: e.target.value }))}
-                      placeholder="ex.: CEP"
-                      className="text-xs h-8 border-[#E5E1D8]"
-                    />
-                  </div>
-                )}
               </div>
             )}
 
@@ -571,13 +523,6 @@ function ListaCampos({
               <Badge variant="outline" className="text-[9px] text-[#5B6470]">
                 {ROTULOS_TIPO[campo.tipo]}
               </Badge>
-              {campo.mascara && (
-                <Badge variant="outline" className="text-[9px] text-[#0F766E] border-[#0F766E]/30">
-                  {campo.mascara === 'outros' && campo.mascara_outros
-                    ? `Máscara: ${campo.mascara_outros}`
-                    : `Máscara: ${ROTULOS_MASCARA[campo.mascara] || campo.mascara}`}
-                </Badge>
-              )}
               {campo.obrigatorio && (
                 <Badge variant="outline" className="text-[9px] text-red-600 border-red-200">
                   Obrigatório
