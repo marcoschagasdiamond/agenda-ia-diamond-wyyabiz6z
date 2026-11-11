@@ -1,5 +1,8 @@
 // Gestão de Campos Personalizados dentro de /config (modelo Ummense adaptado).
-import { useEffect, useState } from 'react'
+// Modal alinhado ao fluxo do card (0.0.106): categoria MULTI-SELEÇÃO (Card/Pessoa/
+// Empresa + atalho "Todas"), criando um registro por categoria marcada, e
+// PRÉ-VISUALIZAÇÃO ao vivo da caixa real pelo CampoValorBox compartilhado.
+import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/hooks/use-toast'
 import pb from '@/lib/pocketbase/client'
@@ -8,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
@@ -25,15 +29,21 @@ import {
   SlidersHorizontal,
   Loader2,
   ListChecks,
+  Eye,
 } from 'lucide-react'
+import CampoValorBox from '@/components/campos/CampoValorBox'
 import {
   ROTULOS_CATEGORIA,
   ROTULOS_TIPO,
+  criarCampoPersonalizado,
+  tipoUsaListaSelecao,
   tipoUsaOpcoes,
   type CampoPersonalizado,
   type CampoCategoria,
   type CampoTipo,
+  type ListaSelecao,
 } from '@/services/camposPersonalizados'
+import { cn } from '@/lib/utils'
 import { GestaoListasSelecao } from './GestaoListasSelecao'
 
 export const TIPOS_CAMPO: CampoTipo[] = [
@@ -50,9 +60,13 @@ export const TIPOS_CAMPO: CampoTipo[] = [
   'moeda',
 ]
 
+const TODAS_CATEGORIAS: CampoCategoria[] = ['card', 'pessoa', 'empresa']
+
 interface FormCampoState {
   id: string | null
-  categoria: CampoCategoria
+  categorias: CampoCategoria[]
+  /** categorias como estão hoje no banco (edição) — para detectar mudança do usuário */
+  categoriasPersistidas: CampoCategoria[]
   tipo: CampoTipo
   nome_interno: string
   rotulo: string
@@ -66,7 +80,8 @@ interface FormCampoState {
 
 const FORM_PADRAO: FormCampoState = {
   id: null,
-  categoria: 'card',
+  categorias: [],
+  categoriasPersistidas: [],
   tipo: 'texto_curto',
   nome_interno: '',
   rotulo: '',
@@ -78,6 +93,21 @@ const FORM_PADRAO: FormCampoState = {
   ativo: true,
 }
 
+// Campo fictício só para alimentar a pré-visualização da caixa real
+function campoPreview(form: FormCampoState): Parameters<typeof CampoValorBox>[0]['campo'] {
+  return {
+    id: 'preview',
+    tipo: form.tipo,
+    rotulo: form.rotulo.trim() || 'Pré-visualização',
+    obrigatorio: false,
+    opcoes: form.opcoesTexto
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    lista_selecao: form.lista_selecao,
+  }
+}
+
 export default function GestaoCamposPersonalizados({
   onRecarregarGlobal,
 }: {
@@ -87,12 +117,15 @@ export default function GestaoCamposPersonalizados({
   const { toast } = useToast()
 
   const [campos, setCampos] = useState<CampoPersonalizado[]>([])
-  const [listas, setListas] = useState<import('@/services/camposPersonalizados').ListaSelecao[]>([])
+  const [listas, setListas] = useState<ListaSelecao[]>([])
   const [carregando, setCarregando] = useState(true)
   const [modalCampoOpen, setModalCampoOpen] = useState(false)
   const [form, setForm] = useState<FormCampoState>(FORM_PADRAO)
   const [salvandoCampo, setSalvandoCampo] = useState(false)
   const [abaLista, setAbaLista] = useState<'ativos' | 'inativos'>('ativos')
+
+  // estado só do preview (a caixa real precisa de um valor para interagir)
+  const [valorPreview, setValorPreview] = useState<unknown>(null)
 
   const carregar = async () => {
     setCarregando(true)
@@ -120,13 +153,19 @@ export default function GestaoCamposPersonalizados({
 
   const abrirNovoCampo = () => {
     setForm({ ...FORM_PADRAO })
+    setValorPreview(null)
     setModalCampoOpen(true)
   }
+
+  // Categoria legada (registro único) é lida como "todas" até o usuário editar.
+  const categoriasDoCampo = (campo: CampoPersonalizado): CampoCategoria[] =>
+    campo.categoria ? TODAS_CATEGORIAS : []
 
   const abrirEditarCampo = (campo: CampoPersonalizado) => {
     setForm({
       id: campo.id,
-      categoria: campo.categoria,
+      categorias: categoriasDoCampo(campo),
+      categoriasPersistidas: categoriasDoCampo(campo),
       tipo: campo.tipo,
       nome_interno: campo.nome_interno || '',
       rotulo: campo.rotulo || '',
@@ -137,13 +176,39 @@ export default function GestaoCamposPersonalizados({
       obrigatorio: campo.obrigatorio,
       ativo: campo.ativo,
     })
+    setValorPreview(null)
     setModalCampoOpen(true)
   }
 
-  const salvarCampo = async () => {
+  const alternarCategoria = (cat: CampoCategoria) => {
+    setForm((f) => ({
+      ...f,
+      categorias: f.categorias.includes(cat)
+        ? f.categorias.filter((c) => c !== cat)
+        : [...f.categorias, cat],
+    }))
+  }
+
+  const marcarTodasCategorias = () => {
+    setForm((f) => ({
+      ...f,
+      categorias: TODAS_CATEGORIAS.every((c) => f.categorias.includes(c))
+        ? []
+        : [...TODAS_CATEGORIAS],
+    }))
+  }
+
+  const validarForm = (): boolean => {
+    if (form.categorias.length === 0) {
+      toast({
+        title: 'Marque ao menos uma categoria (Card, Pessoa ou Empresa).',
+        variant: 'destructive',
+      })
+      return false
+    }
     if (!form.nome_interno.trim() || !form.rotulo.trim()) {
       toast({ title: 'Preencha o nome interno e o rótulo do campo', variant: 'destructive' })
-      return
+      return false
     }
     if (tipoUsaOpcoes(form.tipo)) {
       const ops = form.opcoesTexto
@@ -155,18 +220,22 @@ export default function GestaoCamposPersonalizados({
           title: 'Informe pelo menos uma opção para este tipo de campo',
           variant: 'destructive',
         })
-        return
+        return false
       }
     }
     if (form.tipo === 'lista_selecao' && !form.lista_selecao) {
       toast({ title: 'Selecione a lista de seleção deste campo', variant: 'destructive' })
-      return
+      return false
     }
+    return true
+  }
+
+  const salvarCampo = async () => {
+    if (!validarForm()) return
 
     setSalvandoCampo(true)
     try {
       const payload: Record<string, unknown> = {
-        categoria: form.categoria,
         tipo: form.tipo,
         nome_interno: form.nome_interno.trim(),
         rotulo: form.rotulo.trim(),
@@ -183,14 +252,32 @@ export default function GestaoCamposPersonalizados({
         lista_selecao: form.tipo === 'lista_selecao' ? form.lista_selecao : '',
       }
 
+      const mudouCategorias = (() => {
+        const normaliza = (arr: CampoCategoria[]) =>
+          arr.length === TODAS_CATEGORIAS.length
+            ? [...TODAS_CATEGORIAS].sort().join(',')
+            : [...arr].sort().join(',')
+        return normaliza(form.categorias) !== normaliza(form.categoriasPersistidas)
+      })()
+
       if (form.id) {
-        await pb.collection('campos_personalizados').update(form.id, payload)
+        // Edição: atualiza o registro existente. A categoria só é reescrita se o
+        // usuário mexeu nas categorias (categoria legada preservada intacta).
+        await pb.collection('campos_personalizados').update(form.id, {
+          ...payload,
+          ...(mudouCategorias ? { categoria: form.categorias[0] } : {}),
+        })
         toast({ title: 'Campo personalizado atualizado!' })
       } else {
-        await pb.collection('campos_personalizados').create({
-          ...payload,
-          criado_por: user?.id || '',
-        })
+        // Criação multi-categoria: um registro por categoria marcada (mesmo
+        // mecanismo do modal do card, build 0.0.106).
+        for (const cat of form.categorias) {
+          await criarCampoPersonalizado({
+            ...(payload as unknown as Omit<CampoPersonalizado, 'id' | 'created' | 'updated'>),
+            categoria: cat,
+            criado_por: user?.id || '',
+          } as Parameters<typeof criarCampoPersonalizado>[0])
+        }
         toast({ title: 'Campo personalizado criado!' })
       }
       setModalCampoOpen(false)
@@ -231,9 +318,21 @@ export default function GestaoCamposPersonalizados({
     }
   }
 
-  const ativos = campos.filter((c) => c.ativo)
-  const inativos = campos.filter((c) => !c.ativo)
-  const camposVisiveis = abaLista === 'ativos' ? ativos : inativos
+  // Campos gêmeos: mesmo nome interno = mesma definição criada para várias categorias
+  const gruposCampos = useMemo(() => {
+    const grupos = new Map<string, CampoPersonalizado[]>()
+    for (const c of campos) {
+      const chave = c.nome_interno || c.id
+      const arr = grupos.get(chave) || []
+      arr.push(c)
+      grupos.set(chave, arr)
+    }
+    return Array.from(grupos.values())
+  }, [campos])
+
+  const ativos = gruposCampos.filter((g) => g[0].ativo)
+  const inativos = gruposCampos.filter((g) => !g[0].ativo)
+  const gruposVisiveis = abaLista === 'ativos' ? ativos : inativos
 
   return (
     <div className="space-y-4">
@@ -272,7 +371,7 @@ export default function GestaoCamposPersonalizados({
 
         <TabsContent value="ativos" className="m-0 mt-3">
           <ListaCampos
-            campos={camposVisiveis}
+            grupos={gruposVisiveis}
             carregando={carregando}
             onEditar={abrirEditarCampo}
             onAlternarAtivo={alternarAtivo}
@@ -282,7 +381,7 @@ export default function GestaoCamposPersonalizados({
         </TabsContent>
         <TabsContent value="inativos" className="m-0 mt-3">
           <ListaCampos
-            campos={camposVisiveis}
+            grupos={gruposVisiveis}
             carregando={carregando}
             onEditar={abrirEditarCampo}
             onAlternarAtivo={alternarAtivo}
@@ -303,30 +402,42 @@ export default function GestaoCamposPersonalizados({
               {form.id ? 'Editar campo personalizado' : 'Adicionar novo campo personalizado'}
             </DialogTitle>
             <DialogDescription className="text-xs text-[#5B6470]">
-              Fluxo: categoria → tipo → nome interno e rótulo → opções → obrigatório → legenda e
-              mensagem de ajuda.
+              Fluxo: categorias → tipo → nome interno e rótulo → opções → obrigatório → legenda e
+              mensagem de ajuda — com pré-visualização da caixa real.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3.5">
-            {/* 1. Categoria */}
+            {/* 1. Categoria — multi-seleção com atalho "Todas" */}
             <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-[#1A1D21] uppercase">1. Categoria</label>
-              <div className="flex gap-2">
-                {(['card', 'pessoa', 'empresa'] as CampoCategoria[]).map((cat) => (
-                  <button
+              <label className="text-[11px] font-bold text-[#1A1D21] uppercase">
+                1. Categorias
+              </label>
+              <div className="flex flex-wrap items-center gap-3">
+                {TODAS_CATEGORIAS.map((cat) => (
+                  <label
                     key={cat}
-                    type="button"
-                    onClick={() => setForm((f) => ({ ...f, categoria: cat }))}
-                    className={`flex-1 h-9 rounded-lg border text-xs font-semibold transition-colors ${
-                      form.categoria === cat
-                        ? 'bg-[#0F766E] text-white border-[#0F766E]'
-                        : 'bg-white text-[#5B6470] border-[#E5E1D8] hover:bg-[#FAFAF9]'
-                    }`}
+                    className="flex items-center gap-1.5 text-xs text-[#1A1D21] cursor-pointer"
                   >
+                    <Checkbox
+                      checked={form.categorias.includes(cat)}
+                      onCheckedChange={() => alternarCategoria(cat)}
+                    />
                     {ROTULOS_CATEGORIA[cat]}
-                  </button>
+                  </label>
                 ))}
+                <button
+                  type="button"
+                  onClick={marcarTodasCategorias}
+                  className={cn(
+                    'text-xs font-medium underline-offset-2 hover:underline',
+                    TODAS_CATEGORIAS.every((c) => form.categorias.includes(c))
+                      ? 'text-[#0F766E]'
+                      : 'text-[#5B6470]',
+                  )}
+                >
+                  Todas
+                </button>
               </div>
             </div>
 
@@ -335,7 +446,10 @@ export default function GestaoCamposPersonalizados({
               <label className="text-[11px] font-bold text-[#1A1D21] uppercase">2. Tipo</label>
               <select
                 value={form.tipo}
-                onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value as CampoTipo }))}
+                onChange={(e) => {
+                  setValorPreview(null)
+                  setForm((f) => ({ ...f, tipo: e.target.value as CampoTipo }))
+                }}
                 className="w-full h-9 rounded-md border border-[#E5E1D8] bg-white px-2 text-xs"
               >
                 {TIPOS_CAMPO.map((t) => (
@@ -372,7 +486,7 @@ export default function GestaoCamposPersonalizados({
               </div>
             </div>
 
-            {/* 4. Opções ou Máscara ou Lista */}
+            {/* 4. Opções ou Lista de Seleção */}
             {tipoUsaOpcoes(form.tipo) && (
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-[#1A1D21]">
@@ -449,6 +563,30 @@ export default function GestaoCamposPersonalizados({
               </div>
             </div>
 
+            {/* Pré-visualização da caixa real (mesmo componente do painel da entidade) */}
+            <div className="space-y-1.5 rounded-lg border border-[#E5E1D8] bg-[#FAFAF9] p-3">
+              <div className="flex items-center gap-1.5">
+                <Eye className="w-3.5 h-3.5 text-[#0F766E]" />
+                <span className="text-[11px] font-bold text-[#1A1D21] uppercase tracking-wide">
+                  Pré-visualização
+                </span>
+              </div>
+              <CampoValorBox
+                campo={campoPreview(form)}
+                valor={valorPreview}
+                onChange={(v) => setValorPreview(v)}
+                listas={listas}
+                preview
+                idRadio="preview_campo"
+                placeholderOverride={
+                  form.legenda.trim() || form.rotulo.trim() || 'Pré-visualização'
+                }
+              />
+              <p className="text-[10px] text-[#5B6470]">
+                Assim a caixa aparece no card, no contato e nas demais entidades.
+              </p>
+            </div>
+
             <div className="flex justify-end gap-2 pt-2 border-t border-[#E5E1D8]">
               <Button
                 size="sm"
@@ -476,14 +614,14 @@ export default function GestaoCamposPersonalizados({
 }
 
 function ListaCampos({
-  campos,
+  grupos,
   carregando,
   onEditar,
   onAlternarAtivo,
   onExcluir,
   modoInativos,
 }: {
-  campos: CampoPersonalizado[]
+  grupos: CampoPersonalizado[][]
   carregando: boolean
   onEditar: (c: CampoPersonalizado) => void
   onAlternarAtivo: (c: CampoPersonalizado) => void
@@ -498,7 +636,7 @@ function ListaCampos({
       </div>
     )
   }
-  if (campos.length === 0) {
+  if (grupos.length === 0) {
     return (
       <div className="text-center py-8 border border-dashed border-[#E5E1D8] rounded-xl bg-[#FAFAF9]">
         <ListChecks className="w-6 h-6 text-[#5B6470] mx-auto mb-2" />
@@ -512,67 +650,73 @@ function ListaCampos({
   }
   return (
     <div className="rounded-xl border border-[#E5E1D8] bg-white divide-y divide-[#E5E1D8]/70 overflow-hidden">
-      {campos.map((campo) => (
-        <div key={campo.id} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-bold text-[#1A1D21]">{campo.rotulo}</span>
-              <Badge variant="outline" className="text-[9px] text-[#5B6470]">
-                {ROTULOS_CATEGORIA[campo.categoria]}
-              </Badge>
-              <Badge variant="outline" className="text-[9px] text-[#5B6470]">
-                {ROTULOS_TIPO[campo.tipo]}
-              </Badge>
-              {campo.obrigatorio && (
-                <Badge variant="outline" className="text-[9px] text-red-600 border-red-200">
-                  Obrigatório
+      {grupos.map((grupo) => {
+        const campo = grupo[0]
+        const cats = grupo.map((c) => c.categoria)
+        return (
+          <div key={campo.id} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-[#1A1D21]">{campo.rotulo}</span>
+                {TODAS_CATEGORIAS.filter((c) => cats.includes(c)).map((c) => (
+                  <Badge key={c} variant="outline" className="text-[9px] text-[#5B6470]">
+                    {ROTULOS_CATEGORIA[c]}
+                  </Badge>
+                ))}
+                <Badge variant="outline" className="text-[9px] text-[#5B6470]">
+                  {ROTULOS_TIPO[campo.tipo]}
                 </Badge>
-              )}
+                {campo.obrigatorio && (
+                  <Badge variant="outline" className="text-[9px] text-red-600 border-red-200">
+                    Obrigatório
+                  </Badge>
+                )}
+              </div>
+              <p className="text-[10px] text-[#5B6470] mt-0.5 truncate">
+                {campo.nome_interno}
+                {Array.isArray(campo.opcoes) &&
+                  campo.opcoes.length > 0 &&
+                  ` • opções: ${campo.opcoes.join(', ')}`}
+              </p>
             </div>
-            <p className="text-[10px] text-[#5B6470] mt-0.5 truncate">
-              {campo.nome_interno}
-              {Array.isArray(campo.opcoes) &&
-                campo.opcoes.length > 0 &&
-                ` • opções: ${campo.opcoes.join(', ')}`}
-            </p>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 w-7 p-0"
-              title="Editar campo"
-              onClick={() => onEditar(campo)}
-            >
-              <Pencil className="w-3.5 h-3.5 text-[#5B6470]" />
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 w-7 p-0"
-              title={modoInativos ? 'Reativar campo' : 'Inativar campo'}
-              onClick={() => onAlternarAtivo(campo)}
-            >
-              {modoInativos ? (
-                <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />
-              ) : (
-                <Ban className="w-3.5 h-3.5 text-amber-600" />
-              )}
-            </Button>
-            {modoInativos && (
+            <div className="flex items-center gap-1 shrink-0">
               <Button
                 size="sm"
                 variant="ghost"
                 className="h-7 w-7 p-0"
-                title="Excluir campo"
-                onClick={() => onExcluir(campo)}
+                title="Editar campo"
+                onClick={() => onEditar(campo)}
               >
-                <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                <Pencil className="w-3.5 h-3.5 text-[#5B6470]" />
               </Button>
-            )}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0"
+                title={modoInativos ? 'Reativar campo' : 'Inativar campo'}
+                onClick={() => onAlternarAtivo(campo)}
+              >
+                {modoInativos ? (
+                  <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />
+                ) : (
+                  <Ban className="w-3.5 h-3.5 text-amber-600" />
+                )}
+              </Button>
+              {modoInativos && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 w-7 p-0"
+                  title="Excluir campo"
+                  onClick={() => onExcluir(campo)}
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
