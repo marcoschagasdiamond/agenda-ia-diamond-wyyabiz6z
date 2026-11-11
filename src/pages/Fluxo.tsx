@@ -34,6 +34,9 @@ import {
   Filter,
   Check,
   CheckCircle2,
+  FolderInput,
+  UserMinus,
+  Unlink,
   Clock,
   AlertCircle,
   Tag,
@@ -58,7 +61,7 @@ import { ModalEditarFases } from './fluxo/ModalEditarFases'
 import { ModalCardFluxo } from './fluxo/ModalCardFluxo'
 import { ModalCardArquivos } from './fluxo/ModalCardArquivos'
 import { ModalCardFamilia } from './fluxo/ModalCardFamilia'
-import { ModalGestaoGrupoFamilia } from './fluxo/ModalGestaoGrupoFamilia'
+import { ModalGestaoGrupoFamilia, type ModoGestaoFamilia } from './fluxo/ModalGestaoGrupoFamilia'
 import { MODELOS_FLUXO_TEMPLATES, TEMPLATE_PADRAO_ID, gerarSlugChave } from './fluxo/fluxoTemplates'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -263,9 +266,20 @@ export default function Fluxo() {
   const [familiaColunaId, setFamiliaColunaId] = useState<string>('none')
   const [familiaCategoriaId, setFamiliaCategoriaId] = useState<string>('none')
   const [salvandoFamilia, setSalvandoFamilia] = useState(false)
-  // Gestão do grupo de família pelo menu de 3 pontinhos no cabeçalho do grupo
+  // Gestão do grupo de família pelo menu de 3 pontinhos no cabeçalho do grupo.
+  // O dropdown já abre o modal na AÇÃO escolhida (sem clique intermediário).
   const [gestaoFamiliaOpen, setGestaoFamiliaOpen] = useState(false)
   const [gestaoFamiliaAlvo, setGestaoFamiliaAlvo] = useState<GrupoFamilia | null>(null)
+  const [gestaoFamiliaModo, setGestaoFamiliaModo] = useState<ModoGestaoFamilia | null>(null)
+  const abrirGestaoFamilia = (fam: GrupoFamilia, modo: ModoGestaoFamilia) => {
+    setGestaoFamiliaAlvo(fam)
+    setGestaoFamiliaModo(modo)
+    setGestaoFamiliaOpen(true)
+  }
+  const gestaoFamiliaCards = useMemo(
+    () => (gestaoFamiliaAlvo ? cards.filter((c) => c.grupo_familia === gestaoFamiliaAlvo.id) : []),
+    [gestaoFamiliaAlvo, cards],
+  )
 
   // Drag and drop state
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null)
@@ -2822,13 +2836,61 @@ export default function Fluxo() {
                                           <MoreVertical className="w-3.5 h-3.5" />
                                         </button>
                                       </DropdownMenuTrigger>
-                                      <DropdownMenuContent align="end" className="text-xs">
+                                      {/* As 7 ações do grupo DIRETO no dropdown — sem clique
+                                          intermediário em "Gerenciar grupo". Ações que precisam
+                                          de formulário abrem o modal já na etapa correspondente. */}
+                                      <DropdownMenuContent align="end" className="text-xs w-64">
                                         <DropdownMenuItem
-                                          onClick={() => setGestaoFamiliaOpen(true)}
+                                          onClick={() => abrirGestaoFamilia(fam, 'editar')}
                                         >
                                           <Pencil className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
-                                          Gerenciar grupo
+                                          Editar (nome e cor)
                                         </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onClick={() =>
+                                            abrirGestaoFamilia(fam, 'encaminhar_categoria')
+                                          }
+                                        >
+                                          <FolderInput className="w-3.5 h-3.5 mr-2 text-[#2563EB]" />
+                                          Encaminhar para outra categoria
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onClick={() =>
+                                            abrirGestaoFamilia(fam, 'encaminhar_fluxo')
+                                          }
+                                        >
+                                          <GitBranch className="w-3.5 h-3.5 mr-2 text-[#8B5CF6]" />
+                                          Encaminhar para outro fluxo
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          disabled={gestaoFamiliaCards.length === 0}
+                                          onClick={() => abrirGestaoFamilia(fam, 'retirar_card')}
+                                        >
+                                          <UserMinus className="w-3.5 h-3.5 mr-2 text-[#F59E0B]" />
+                                          Retirar card do fluxo
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          disabled={gestaoFamiliaCards.length === 0}
+                                          onClick={() => abrirGestaoFamilia(fam, 'desfazer')}
+                                        >
+                                          <Unlink className="w-3.5 h-3.5 mr-2 text-[#64748B]" />
+                                          Desfazer grupo
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onClick={() => abrirGestaoFamilia(fam, 'duplicar')}
+                                        >
+                                          <Copy className="w-3.5 h-3.5 mr-2 text-[#0EA5E9]" />
+                                          Duplicar grupo
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          onClick={() => abrirGestaoFamilia(fam, 'excluir')}
+                                          className="text-red-600 focus:text-red-600"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5 mr-2" />
+                                          Excluir grupo
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
                                         <DropdownMenuItem
                                           onClick={() => criarCardRascunho(col.chave, fam.id)}
                                         >
@@ -4079,9 +4141,8 @@ export default function Fluxo() {
         open={gestaoFamiliaOpen}
         onOpenChange={setGestaoFamiliaOpen}
         familia={gestaoFamiliaAlvo}
-        cardsDoGrupo={
-          gestaoFamiliaAlvo ? cards.filter((c) => c.grupo_familia === gestaoFamiliaAlvo.id) : []
-        }
+        modoInicial={gestaoFamiliaModo}
+        cardsDoGrupo={gestaoFamiliaCards}
         categorias={categorias}
         fluxos={fluxos}
         colunas={colunas}

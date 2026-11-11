@@ -62,10 +62,22 @@ const CORES_GRUPO = [
   '#64748B',
 ]
 
+/** Ação selecionável direto no menu de 3 pontinhos (abre o modal já na etapa). */
+export type ModoGestaoFamilia =
+  | 'editar'
+  | 'encaminhar_categoria'
+  | 'encaminhar_fluxo'
+  | 'retirar_card'
+  | 'duplicar'
+  | 'excluir'
+  | 'desfazer'
+
 interface ModalGestaoGrupoFamiliaProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   familia: GrupoFamilia | null
+  /** Ação vinda do dropdown de 3 pontinhos — o modal abre já nela (menu principal quando ausente). */
+  modoInicial?: ModoGestaoFamilia | null
   cardsDoGrupo: Card[]
   categorias: CategoriaFluxo[]
   fluxos: FluxoKanban[]
@@ -75,20 +87,13 @@ interface ModalGestaoGrupoFamiliaProps {
   onAtualizado: () => Promise<void> | void
 }
 
-type Modo =
-  | 'editar'
-  | 'encaminhar_categoria'
-  | 'encaminhar_fluxo'
-  | 'retirar_card'
-  | 'duplicar'
-  | 'excluir'
-  | 'desfazer'
-  | null
+type Modo = ModoGestaoFamilia | null
 
 export function ModalGestaoGrupoFamilia({
   open,
   onOpenChange,
   familia,
+  modoInicial = null,
   cardsDoGrupo,
   categorias,
   fluxos,
@@ -119,18 +124,22 @@ export function ModalGestaoGrupoFamilia({
   const [cardRetiradaId, setCardRetiradaId] = useState('none')
   const [retirando, setRetirando] = useState(false)
 
-  // Reset ao abrir / trocar de grupo
+  // Reset ao abrir / trocar de grupo — já posiciona na ação escolhida no
+  // dropdown de 3 pontinhos (o menu 'modoInicial' vira o modo direto).
   useEffect(() => {
     if (open && familia) {
-      setModo(null)
+      setModo(modoInicial)
       setEditNome(familia.nome)
       setEditCor(familia.cor || '#3B82F6')
-      setDestinoCategoria('none')
+      if (modoInicial === 'encaminhar_categoria') {
+        setDestinoCategoria('none')
+      }
       setDestinoFluxo('none')
       setDestinoFase('none')
       setExcluirModo('desagrupar')
       setCardRetiradaId('none')
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, familia])
 
   // Categoria do fluxo atual do board
