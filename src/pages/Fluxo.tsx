@@ -58,6 +58,7 @@ import { ModalEditarFases } from './fluxo/ModalEditarFases'
 import { ModalCardFluxo } from './fluxo/ModalCardFluxo'
 import { ModalCardArquivos } from './fluxo/ModalCardArquivos'
 import { ModalCardFamilia } from './fluxo/ModalCardFamilia'
+import { ModalGestaoGrupoFamilia } from './fluxo/ModalGestaoGrupoFamilia'
 import { MODELOS_FLUXO_TEMPLATES, TEMPLATE_PADRAO_ID, gerarSlugChave } from './fluxo/fluxoTemplates'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -262,6 +263,9 @@ export default function Fluxo() {
   const [familiaColunaId, setFamiliaColunaId] = useState<string>('none')
   const [familiaCategoriaId, setFamiliaCategoriaId] = useState<string>('none')
   const [salvandoFamilia, setSalvandoFamilia] = useState(false)
+  // Gestão do grupo de família pelo menu de 3 pontinhos no cabeçalho do grupo
+  const [gestaoFamiliaOpen, setGestaoFamiliaOpen] = useState(false)
+  const [gestaoFamiliaAlvo, setGestaoFamiliaAlvo] = useState<GrupoFamilia | null>(null)
 
   // Drag and drop state
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null)
@@ -2803,6 +2807,36 @@ export default function Fluxo() {
                                     >
                                       <Plus className="w-3.5 h-3.5" />
                                     </button>
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <button
+                                          type="button"
+                                          aria-label={`Opções do grupo ${fam.nome}`}
+                                          title="Opções do grupo de família"
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            setGestaoFamiliaAlvo(fam)
+                                          }}
+                                          className="text-[#5B6470] hover:text-[#1A1D21] p-0.5 rounded hover:bg-[#F4F2EE]"
+                                        >
+                                          <MoreVertical className="w-3.5 h-3.5" />
+                                        </button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end" className="text-xs">
+                                        <DropdownMenuItem
+                                          onClick={() => setGestaoFamiliaOpen(true)}
+                                        >
+                                          <Pencil className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
+                                          Gerenciar grupo
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onClick={() => criarCardRascunho(col.chave, fam.id)}
+                                        >
+                                          <Plus className="w-3.5 h-3.5 mr-2 text-[#2563EB]" />+ Card
+                                          nesta família
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
                                   </div>
                                 </div>
 
@@ -4035,6 +4069,28 @@ export default function Fluxo() {
         }}
         onExcluirCard={async (c) => {
           await handleExcluirCard(c.id)
+        }}
+      />
+
+      {/* ======================================================== */}
+      {/* MODAL 9: GESTÃO DO GRUPO DE FAMÍLIA (MENU 3 PONTINHOS)   */}
+      {/* ======================================================== */}
+      <ModalGestaoGrupoFamilia
+        open={gestaoFamiliaOpen}
+        onOpenChange={setGestaoFamiliaOpen}
+        familia={gestaoFamiliaAlvo}
+        cardsDoGrupo={
+          gestaoFamiliaAlvo ? cards.filter((c) => c.grupo_familia === gestaoFamiliaAlvo.id) : []
+        }
+        categorias={categorias}
+        fluxos={fluxos}
+        colunas={colunas}
+        fluxoAtualId={fluxoAtivo?.id}
+        onAtualizado={async () => {
+          await Promise.all([
+            recarregarFluxoGlobal().catch(() => {}),
+            carregarDados().catch(() => {}),
+          ])
         }}
       />
     </div>
