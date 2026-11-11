@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { diamondApi } from '@/services/diamondApi'
-import type { Pasta, Arquivo, Projeto } from '@/types'
+import type { Pasta, Arquivo, Projeto, PastaDriveArquivos } from '@/types'
 import {
+  Folder,
   FolderOpen,
   FolderPlus,
   Upload,
@@ -23,6 +24,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
 import {
@@ -33,11 +35,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
+import { useAuth } from '@/hooks/use-auth'
 import { PickerArquivosDrive } from '@/components/fluxo/PickerArquivosDrive'
-import { linkAbrirDrive, type ArquivoDrive } from '@/services/driveService'
+import { PickerPastasDrive } from '@/components/fluxo/PickerPastasDrive'
+import { linkAbrirDrive, linkAbrirPastaDrive, type ArquivoDrive } from '@/services/driveService'
 
 export default function Arquivos() {
   const { toast } = useToast()
+  const { user } = useAuth()
   const [pastas, setPastas] = useState<Pasta[]>([])
   const [arquivos, setArquivos] = useState<Arquivo[]>([])
   const [projetos, setProjetos] = useState<Projeto[]>([])
@@ -55,9 +60,13 @@ export default function Arquivos() {
   const [uploadPastaId, setUploadPastaId] = useState<string>('none')
   const [modalUploadOpen, setModalUploadOpen] = useState(false)
 
-  // Google Drive (conectores de app)
+  // Google Drive (conectores de app) - Arquivos e Pastas
   const [pickerDriveAberto, setPickerDriveAberto] = useState(false)
   const [vinculandoDrive, setVinculandoDrive] = useState(false)
+  const [pastasDrive, setPastasDrive] = useState<PastaDriveArquivos[]>([])
+  const [pickerPastasDriveAberto, setPickerPastasDriveAberto] = useState(false)
+  const [vinculandoPastaDrive, setVinculandoPastaDrive] = useState(false)
+  const [excluindoPastaDriveId, setExcluindoPastaDriveId] = useState<string | null>(null)
 
   // Síntese de Arquivo com IA
   const [modalResumoOpen, setModalResumoOpen] = useState(false)
@@ -66,14 +75,16 @@ export default function Arquivos() {
 
   const carregar = async () => {
     try {
-      const [p, a, proj] = await Promise.all([
+      const [p, a, proj, pd] = await Promise.all([
         diamondApi.listPastas(),
         diamondApi.listArquivos(),
         diamondApi.listProjetos(),
+        diamondApi.listPastasDriveArquivos(),
       ])
       setPastas(p)
       setArquivos(a)
       setProjetos(proj)
+      setPastasDrive(pd)
     } catch (err) {
       console.error(err)
     }
@@ -171,6 +182,46 @@ export default function Arquivos() {
     }
   }
 
+  // Google Drive: vincula a PASTA escolhida no picker à área /arquivos
+  // (coleção arquivos_pastas_drive, sem upload local)
+  const handleVincularPastaDrive = async (pasta: ArquivoDrive) => {
+    setVinculandoPastaDrive(true)
+    try {
+      await diamondApi.vincularPastaDriveArquivos({
+        nome: pasta.nome,
+        drive_file_id: pasta.id,
+        drive_url: linkAbrirPastaDrive(pasta),
+        criado_por: user?.id,
+      })
+      toast({ title: `Pasta "${pasta.nome}" do Drive vinculada!` })
+      setPickerPastasDriveAberto(false)
+      await carregar()
+    } catch (err) {
+      console.error('Falha ao vincular pasta do Drive em arquivos:', pasta.nome, err)
+      toast({
+        title: `Falha ao vincular a pasta "${pasta.nome}" do Drive`,
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setVinculandoPastaDrive(false)
+    }
+  }
+
+  const handleExcluirPastaDrive = async (id: string, nome: string) => {
+    if (!confirm(`Deseja realmente remover o vínculo com a pasta "${nome}"?`)) return
+    setExcluindoPastaDriveId(id)
+    try {
+      await diamondApi.deletePastaDriveArquivos(id)
+      setPastasDrive((prev) => prev.filter((p) => p.id !== id))
+      toast({ title: 'Vínculo da pasta removido com sucesso.' })
+    } catch {
+      toast({ title: 'Erro ao remover vínculo da pasta', variant: 'destructive' })
+    } finally {
+      setExcluindoPastaDriveId(null)
+    }
+  }
+
   const handleResumirDocumento = async (file: File) => {
     setResumindo(true)
     setModalResumoOpen(true)
@@ -230,7 +281,21 @@ export default function Arquivos() {
             ) : (
               <HardDrive className="w-4 h-4" />
             )}
-            Google Drive
+            Arquivo do Drive
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={vinculandoPastaDrive}
+            onClick={() => setPickerPastasDriveAberto(true)}
+            className="text-xs h-9 border-[#F59E0B]/50 text-[#F59E0B] hover:bg-[#F59E0B]/10 hover:text-[#D97706] gap-1.5"
+          >
+            {vinculandoPastaDrive ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Folder className="w-4 h-4" />
+            )}
+            Pasta do Drive
           </Button>
           <Button
             size="sm"
@@ -287,6 +352,108 @@ export default function Arquivos() {
           })}
         </div>
       </div>
+
+      {/* Seção Pastas do Google Drive */}
+      <Card className="border-[#F59E0B]/30 bg-white shadow-xs">
+        <CardHeader className="pb-3 border-b border-[#E5E1D8]/60 flex flex-row items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-md bg-[#F59E0B]/10 text-[#F59E0B]">
+              <Folder className="w-4 h-4" />
+            </div>
+            <div>
+              <CardTitle className="text-sm font-bold text-[#1A1D21] flex items-center gap-2">
+                Pastas do Google Drive ({pastasDrive.length})
+                <Badge
+                  variant="outline"
+                  className="text-[9px] font-bold uppercase tracking-wide text-[#2563EB] border-[#2563EB]/40 bg-[#2563EB]/10 px-1.5 py-0"
+                >
+                  Drive
+                </Badge>
+              </CardTitle>
+              <p className="text-[11px] text-[#5B6470] mt-0.5">
+                Pastas do seu Google Drive vinculadas a esta área. Nada é baixado: o vínculo guarda
+                o link direto de abertura.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={vinculandoPastaDrive}
+            onClick={() => setPickerPastasDriveAberto(true)}
+            className="text-xs h-8 border-[#F59E0B]/50 text-[#F59E0B] hover:bg-[#F59E0B]/10 hover:text-[#D97706] gap-1.5 shrink-0"
+          >
+            {vinculandoPastaDrive ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <FolderPlus className="w-3.5 h-3.5" />
+            )}
+            Vincular Pasta do Drive
+          </Button>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="divide-y divide-[#E5E1D8]">
+            {pastasDrive.map((p) => (
+              <div
+                key={p.id}
+                className="p-3.5 flex items-center justify-between hover:bg-[#FAFAF9] transition-colors"
+              >
+                <div className="flex items-center gap-3 truncate">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-[#F59E0B]/10 text-[#F59E0B]">
+                    <Folder className="w-4 h-4" />
+                  </div>
+                  <div className="truncate">
+                    <h4 className="text-xs font-bold text-[#1A1D21] truncate">{p.nome}</h4>
+                    <p className="text-[10px] text-[#5B6470] flex items-center gap-1.5">
+                      Vinculada do Google Drive
+                      <Badge
+                        variant="outline"
+                        className="text-[9px] font-bold uppercase tracking-wide text-[#2563EB] border-[#2563EB]/40 bg-[#2563EB]/10 px-1.5 py-0"
+                      >
+                        Drive
+                      </Badge>
+                      <span>•</span>
+                      <span>Salva em {p.created?.slice(0, 10)}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <a
+                    href={p.drive_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-[#0F766E] hover:underline px-2 py-1 rounded bg-[#F4F2EE]"
+                    title="Abrir no Google Drive"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Abrir no Drive
+                  </a>
+                  <button
+                    disabled={excluindoPastaDriveId === p.id}
+                    onClick={() => handleExcluirPastaDrive(p.id, p.nome)}
+                    className="p-1.5 text-[#5B6470] hover:text-red-600 transition-colors disabled:opacity-40"
+                    title="Remover vínculo da pasta"
+                  >
+                    {excluindoPastaDriveId === p.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {pastasDrive.length === 0 && (
+              <div className="py-8 text-center text-xs text-[#5B6470]">
+                Nenhuma pasta do Google Drive vinculada ainda. Clique em "Vincular Pasta do Drive"
+                acima para adicionar.
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Tabela / Grid de Arquivos */}
       <Card className="border-[#E5E1D8] bg-white shadow-xs">
@@ -521,6 +688,25 @@ export default function Arquivos() {
           </DialogHeader>
           <div className="pt-1">
             <PickerArquivosDrive onSelecionar={handleVincularDrive} />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Picker de PASTAS do Google Drive (conectores de app) */}
+      <Dialog open={pickerPastasDriveAberto} onOpenChange={setPickerPastasDriveAberto}>
+        <DialogContent className="max-w-md bg-white border border-[#E5E1D8]">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-[#1A1D21] flex items-center gap-2">
+              <Folder className="w-5 h-5 text-[#F59E0B]" />
+              Pastas do Google Drive
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[#5B6470]">
+              Escolha uma pasta do seu Drive para vincular à área de Arquivos. Nada é baixado: o
+              vínculo guarda o link de abertura direta da pasta no Drive.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="pt-1">
+            <PickerPastasDrive onSelecionar={handleVincularPastaDrive} />
           </div>
         </DialogContent>
       </Dialog>

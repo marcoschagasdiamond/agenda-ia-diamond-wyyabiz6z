@@ -127,6 +127,43 @@ export function linkAbrirDrive(f: Pick<ArquivoDrive, 'id' | 'webViewLink'>): str
   return f.webViewLink || `https://drive.google.com/file/d/${f.id}/view`
 }
 
+/**
+ * Cria uma PASTA nova no Drive do usuário (ação GOOGLEDRIVE_CREATE_FOLDER do
+ * conector, sem improvisar OAuth/$http). Sem parent_id a pasta nasce na raiz
+ * do Meu Drive. Extrai o id do objeto criado nos formatos de resposta que o
+ * conector costuma devolver (data.id, data.folder.id, data.data.id...).
+ */
+export async function criarPastaDrive(nome: string, parentId?: string): Promise<ArquivoDrive> {
+  const nomeLimpo = nome.trim()
+  if (!nomeLimpo) throw new Error('Informe o nome da nova pasta')
+  const res: ConnectorResult = await execute('GOOGLEDRIVE_CREATE_FOLDER', {
+    name: nomeLimpo,
+    folder_name: nomeLimpo,
+    ...(parentId ? { parent_id: parentId } : {}),
+  })
+  if (!res.successful) throw new Error(res.error || 'Falha ao criar a pasta no Google Drive')
+
+  const no = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
+  let obj: Record<string, unknown> | null = no(res.data)
+    ? (res.data as Record<string, unknown>)
+    : null
+  // desembrulha camadas tipo { data: {...} } / { folder: {...} } / { file: {...} }
+  for (const chave of ['data', 'folder', 'file']) {
+    if (obj && !obj.id && no(obj[chave])) obj = obj[chave] as Record<string, unknown>
+    else break
+  }
+  const id = obj && typeof obj.id === 'string' ? obj.id : null
+  if (!id) throw new Error('Resposta inesperada ao criar a pasta no Google Drive')
+  const webViewLink = obj && typeof obj.webViewLink === 'string' ? obj.webViewLink : undefined
+  return {
+    id,
+    nome: obj && typeof obj.name === 'string' ? obj.name : nomeLimpo,
+    mimeType: MIME_PASTA_DRIVE,
+    webViewLink,
+    pasta: true,
+  }
+}
+
 /** Link de abertura de uma PASTA do Drive (webViewLink, com fallback canônico). */
 export function linkAbrirPastaDrive(f: Pick<ArquivoDrive, 'id' | 'webViewLink'>): string {
   return f.webViewLink || `https://drive.google.com/drive/folders/${f.id}`

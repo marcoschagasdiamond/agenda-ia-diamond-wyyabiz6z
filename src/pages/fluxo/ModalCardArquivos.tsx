@@ -5,6 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -23,14 +24,20 @@ import {
   ExternalLink,
   HardDrive,
   Folder,
+  Pencil,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react'
+import { Input } from '@/components/ui/input'
 import type { Card, CardArquivo, CardPastaDrive } from '@/types'
 import { diamondApi } from '@/services/diamondApi'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/use-auth'
 import { PickerArquivosDrive } from '@/components/fluxo/PickerArquivosDrive'
 import { PickerPastasDrive } from '@/components/fluxo/PickerPastasDrive'
+import { ModalCriarPastaDrive } from '@/components/fluxo/ModalCriarPastaDrive'
 import { linkAbrirDrive, linkAbrirPastaDrive, type ArquivoDrive } from '@/services/driveService'
+import { FolderPlus } from 'lucide-react'
 
 interface ModalCardArquivosProps {
   open: boolean
@@ -94,8 +101,14 @@ export function ModalCardArquivos({
   // Pastas do Google Drive vinculadas ao card (coleção card_pastas_drive)
   const [pastasDrive, setPastasDrive] = useState<CardPastaDrive[]>([])
   const [pickerPastasAberto, setPickerPastasAberto] = useState(false)
+  const [modalNovaPastaAberto, setModalNovaPastaAberto] = useState(false)
   const [vinculandoPasta, setVinculandoPasta] = useState(false)
   const [excluindoPastaId, setExcluindoPastaId] = useState<string | null>(null)
+  // Renomear apelido / reordenar pastas do card
+  const [editandoPastaId, setEditandoPastaId] = useState<string | null>(null)
+  const [apelidoPasta, setApelidoPasta] = useState('')
+  const [salvandoApelido, setSalvandoApelido] = useState(false)
+  const [movendoPasta, setMovendoPasta] = useState(false)
 
   const carregarArquivos = async () => {
     if (!card) return
@@ -238,6 +251,66 @@ export function ModalCardArquivos({
     }
   }
 
+  /** Lista ordenada por ordem (created desempata vínculos antigos). */
+  const pastasOrdenadas = (lista: CardPastaDrive[]) =>
+    [...lista].sort((a, b) => {
+      const oa = a.ordem ?? Number.MAX_SAFE_INTEGER
+      const ob = b.ordem ?? Number.MAX_SAFE_INTEGER
+      if (oa !== ob) return oa - ob
+      return (a.created || '').localeCompare(b.created || '')
+    })
+
+  const salvarApelidoPasta = async () => {
+    if (!editandoPastaId) return
+    const nome = apelidoPasta.trim()
+    if (!nome) return
+    setSalvandoApelido(true)
+    try {
+      const atual = await diamondApi.renomearCardPastaDrive(editandoPastaId, nome)
+      setPastasDrive((prev) => prev.map((p) => (p.id === atual.id ? atual : p)))
+      setEditandoPastaId(null)
+      toast({ title: 'Apelido da pasta atualizado.' })
+    } catch (err) {
+      toast({
+        title: 'Erro ao renomear o apelido da pasta',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoApelido(false)
+    }
+  }
+
+  /** Troca a ordem do vínculo com o vizinho (setas ↑/↓) e persiste os dois. */
+  const moverPastaModal = async (indice: number, direcao: -1 | 1) => {
+    if (movendoPasta) return
+    const ordenadas = pastasOrdenadas(pastasDrive)
+    const alvo = indice + direcao
+    if (alvo < 0 || alvo >= ordenadas.length) return
+    const atual = ordenadas[indice]
+    const vizinho = ordenadas[alvo]
+    if (!atual || !vizinho) return
+    setMovendoPasta(true)
+    const novas = [...ordenadas]
+    novas[indice] = { ...vizinho, ordem: atual.ordem ?? indice }
+    novas[alvo] = { ...atual, ordem: vizinho.ordem ?? alvo }
+    setPastasDrive(novas)
+    try {
+      await diamondApi.moverCardPastaDrive(atual.id, vizinho.ordem ?? alvo)
+      await diamondApi.moverCardPastaDrive(vizinho.id, atual.ordem ?? indice)
+      toast({ title: 'Ordem das pastas atualizada.' })
+    } catch (err) {
+      setPastasDrive(pastasDrive) // volta ao estado salvo
+      toast({
+        title: 'Erro ao reordenar as pastas',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setMovendoPasta(false)
+    }
+  }
+
   const handleExcluirPasta = async (pasta: CardPastaDrive) => {
     if (!confirm(`Deseja realmente remover o vínculo com a pasta "${pasta.nome}"?`)) return
     setExcluindoPastaId(pasta.id)
@@ -350,7 +423,8 @@ export function ModalCardArquivos({
               disabled={enviando || vinculandoPasta}
               onClick={() => setPickerPastasAberto(true)}
               variant="outline"
-              className="text-[#F59E0B] border-[#F59E0B]/50 hover:bg-[#F59E0B]/10 hover:text-[#D97706] text-xs h-8 px-3.5 font-semibold gap-1.5"
+              className="text-[#F59E0B] border-[#F59E0B]/50 hover:bg-[#F59E0B]/10 hover:text-[#D97706] text-xs h-8 px-3 font-semibold gap-1.5"
+              title="Vincular pasta existente do Google Drive"
             >
               {vinculandoPasta ? (
                 <>
@@ -366,7 +440,18 @@ export function ModalCardArquivos({
             </Button>
             <Button
               type="button"
-              disabled={enviando || vinculandoDrive}
+              disabled={enviando || vinculandoPasta}
+              onClick={() => setModalNovaPastaAberto(true)}
+              variant="outline"
+              className="text-[#D97706] border-[#D97706]/50 hover:bg-[#F59E0B]/10 hover:text-[#B45309] text-xs h-8 px-3 font-semibold gap-1.5"
+              title="Criar uma pasta nova no Drive e vincular a este card"
+            >
+              <FolderPlus className="w-3.5 h-3.5" />
+              Criar no Drive
+            </Button>
+            <Button
+              type="button"
+              disabled={enviando || vinculandoDrive || vinculandoPasta}
               onClick={() => fileInputRef.current?.click()}
               className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs h-8 px-3.5 font-semibold gap-1.5 shadow-2xs"
             >
@@ -492,14 +577,14 @@ export function ModalCardArquivos({
             )}
           </div>
 
-          {/* Pastas do Google Drive vinculadas ao card */}
+          {/* Pastas do Google Drive vinculadas ao card (acumulam; renomear/reordenar) */}
           {pastasDrive.length > 0 && (
             <div className="space-y-2">
               <span className="text-[11px] font-bold text-[#5B6470] uppercase tracking-wider block">
-                Pastas do Google Drive
+                Pastas do Google Drive ({pastasDrive.length})
               </span>
-              <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
-                {pastasDrive.map((pasta) => (
+              <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
+                {pastasOrdenadas(pastasDrive).map((pasta, i, arr) => (
                   <div
                     key={pasta.id}
                     className="group flex items-center justify-between p-2.5 rounded-lg border border-[#F59E0B]/40 bg-[#F59E0B]/5 hover:border-[#F59E0B]/60 transition-colors"
@@ -540,6 +625,44 @@ export function ModalCardArquivos({
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>
                       </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={editandoPastaId === pasta.id}
+                        onClick={() => {
+                          setEditandoPastaId(pasta.id)
+                          setApelidoPasta(pasta.nome)
+                        }}
+                        className="h-7 w-7 p-0 text-[#5B6470] hover:text-[#F59E0B]"
+                        title="Renomear apelido"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                      <div className="flex flex-col">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={i === 0 || movendoPasta}
+                          onClick={() => moverPastaModal(i, -1)}
+                          className="h-4 w-6 p-0 text-[#5B6470] hover:text-[#1A1D21]"
+                          title="Mover para cima"
+                        >
+                          <ChevronUp className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={i === arr.length - 1 || movendoPasta}
+                          onClick={() => moverPastaModal(i, 1)}
+                          className="h-4 w-6 p-0 text-[#5B6470] hover:text-[#1A1D21]"
+                          title="Mover para baixo"
+                        >
+                          <ChevronDown className="w-3 h-3" />
+                        </Button>
+                      </div>
                       <Button
                         type="button"
                         variant="ghost"
@@ -609,6 +732,63 @@ export function ModalCardArquivos({
             <div className="pt-1">
               <PickerPastasDrive onSelecionar={handleVincularPasta} />
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal para criar pasta nova no Google Drive e já vincular */}
+        <ModalCriarPastaDrive
+          open={modalNovaPastaAberto}
+          onOpenChange={setModalNovaPastaAberto}
+          onCriada={handleVincularPasta}
+        />
+
+        {/* Editar apelido da pasta vinculada */}
+        <Dialog open={!!editandoPastaId} onOpenChange={(o) => !o && setEditandoPastaId(null)}>
+          <DialogContent className="max-w-sm bg-white border border-[#E5E1D8]">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold text-[#1A1D21]">
+                Renomear apelido da pasta
+              </DialogTitle>
+              <DialogDescription className="text-xs text-[#5B6470]">
+                O apelido é só o nome do vínculo no card — a pasta no Drive não é alterada.
+              </DialogDescription>
+            </DialogHeader>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                salvarApelidoPasta()
+              }}
+              className="space-y-3 pt-1"
+            >
+              <Input
+                autoFocus
+                value={apelidoPasta}
+                onChange={(e) => setApelidoPasta(e.target.value)}
+                placeholder="Apelido da pasta..."
+                maxLength={200}
+                disabled={salvandoApelido}
+              />
+              <DialogFooter className="gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditandoPastaId(null)}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" size="sm" disabled={!apelidoPasta.trim() || salvandoApelido}>
+                  {salvandoApelido ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    'Salvar'
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
           </DialogContent>
         </Dialog>
       </DialogContent>

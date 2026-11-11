@@ -9,6 +9,7 @@ import type {
   Card,
   CardArquivo,
   CardPastaDrive,
+  PastaDriveArquivos,
   Demanda,
   Lista,
   Pasta,
@@ -685,6 +686,47 @@ export const diamondApi = {
 
   async deleteCardPastaDrive(id: string): Promise<boolean> {
     return await pb.collection('card_pastas_drive').delete(id)
+  },
+
+  /** Renomeia o apelido do vínculo de uma pasta do Drive do card. */
+  async renomearCardPastaDrive(id: string, nome: string): Promise<CardPastaDrive> {
+    return await pb.collection('card_pastas_drive').update<CardPastaDrive>(id, { nome })
+  },
+
+  /** Move um vínculo de pasta do card para cima/baixo na lista (troca de ordem). */
+  async moverCardPastaDrive(id: string, ordem: number): Promise<CardPastaDrive> {
+    return await pb.collection('card_pastas_drive').update<CardPastaDrive>(id, { ordem })
+  },
+
+  // Área /arquivos — Pastas do Google Drive (coleção arquivos_pastas_drive,
+  // vínculo avulso sem card obrigatório)
+  async listPastasDriveArquivos(): Promise<PastaDriveArquivos[]> {
+    try {
+      return await pb.collection('arquivos_pastas_drive').getFullList<PastaDriveArquivos>({
+        sort: '-created',
+        expand: 'criado_por',
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async vincularPastaDriveArquivos(dados: {
+    nome: string
+    drive_file_id: string
+    drive_url: string
+    criado_por?: string
+  }): Promise<PastaDriveArquivos> {
+    return await pb.collection('arquivos_pastas_drive').create<PastaDriveArquivos>({
+      nome: dados.nome,
+      drive_file_id: dados.drive_file_id,
+      drive_url: dados.drive_url,
+      ...(dados.criado_por ? { criado_por: dados.criado_por } : {}),
+    } as any)
+  },
+
+  async deletePastaDriveArquivos(id: string): Promise<boolean> {
+    return await pb.collection('arquivos_pastas_drive').delete(id)
   },
 
   // Cards - Hierarquia Pais e Filhos

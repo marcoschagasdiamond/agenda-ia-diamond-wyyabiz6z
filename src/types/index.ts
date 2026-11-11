@@ -408,11 +408,26 @@ export interface CardPastaDrive {
   nome: string
   drive_file_id: string
   drive_url: string
+  ordem?: number
   criado_por?: string
   created: string
   updated: string
   expand?: {
     card?: Card
+    criado_por?: User
+  }
+}
+
+/** Pasta do Google Drive vinculada à área /arquivos (sem card — vínculo avulso). */
+export interface PastaDriveArquivos {
+  id: string
+  nome: string
+  drive_file_id: string
+  drive_url: string
+  criado_por?: string
+  created: string
+  updated: string
+  expand?: {
     criado_por?: User
   }
 }
