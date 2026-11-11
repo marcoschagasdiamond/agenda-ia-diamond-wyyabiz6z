@@ -420,6 +420,22 @@ export default function Fluxo() {
     return colunasOrdenadas
   }, [colunasOrdenadas, fluxoAtivoId, categoriaAtivaId, fluxos, fluxosValidos])
 
+  // PREVENÇÃO de cards órfãos: todo card cujo status não casa com nenhuma
+  // coluna do escopo visível cai na PRIMEIRA coluna do quadro — nunca some
+  // silenciosamente do board. Marcado com _statusOrfao para o quadro poder
+  // destacar o card (o banco NÃO é alterado; a coluna real reaparece ao
+  // reativar/recriar a fase).
+  const cardsNormalizados = useMemo(() => {
+    const chavesVisiveis = new Set(colunasFiltradas.map((c) => c.chave))
+    const primeiraChave = colunasFiltradas[0]?.chave
+    if (!primeiraChave) return cards
+    return cards.map((card) =>
+      card.status && chavesVisiveis.has(card.status as string)
+        ? card
+        : { ...card, status: primeiraChave, _statusOrfao: true },
+    )
+  }, [cards, colunasFiltradas])
+
   // Categorias com contagens e lista dos seus fluxos reais (NUNCA as fases)
   const categoriasComFluxos = useMemo(() => {
     return navGlobal.categoriasComFluxos
@@ -442,6 +458,7 @@ export default function Fluxo() {
   }
 
   // Filtragem de cards baseada no escopo ativo e filtros
+  // (parte de cardsNormalizados: cards com status órfão já caem na 1ª coluna)
   const cardsFiltrados = useMemo(() => {
     // Escopo de fluxo / categoria:
     // 1. Se um fluxo específico estiver ativo (fluxoAtivoId !== 'all'):
@@ -463,7 +480,7 @@ export default function Fluxo() {
       }
     }
 
-    return cards.filter((card) => {
+    return cardsNormalizados.filter((card) => {
       // Escopo de fluxo: se card tiver fluxo_id e estivermos filtrando por fluxo específico
       if (fluxoIdFiltro && card.fluxo_id && card.fluxo_id !== fluxoIdFiltro) {
         return false
@@ -502,7 +519,7 @@ export default function Fluxo() {
       return true
     })
   }, [
-    cards,
+    cardsNormalizados,
     colunas,
     categoriaAtivaId,
     fluxoAtivoId,
