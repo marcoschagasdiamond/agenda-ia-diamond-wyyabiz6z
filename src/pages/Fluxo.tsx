@@ -576,7 +576,7 @@ export default function Fluxo() {
     e.preventDefault()
     if (!formTitulo.trim()) return
     // Campos personalizados obrigatórios da categoria Card bloqueiam o salvamento
-    if (editingCard && camposPersonalizadosRef.current?.validarObrigatorios() === false) {
+    if (camposPersonalizadosRef.current?.validarObrigatorios() === false) {
       toast({
         title: 'Campos obrigatórios não preenchidos',
         description: 'Preencha os campos personalizados obrigatórios antes de salvar o card.',
@@ -612,9 +612,12 @@ export default function Fluxo() {
     try {
       if (editingCard) {
         await diamondApi.updateCard(editingCard.id, payload)
+        await camposPersonalizadosRef.current?.salvar()
         toast({ title: 'Card atualizado com sucesso!' })
       } else {
         const cardCriado = await diamondApi.createCard(payload)
+        // Campos personalizados escolhidos no card novo: grava os valores no card criado
+        await camposPersonalizadosRef.current?.salvarEm({ card: cardCriado.id })
         // Timeline: registra a criação do card + entrada inicial no fluxo/coluna
         await criarEventoCard(cardCriado.id, 'sistema', textoEventoCriacao())
         const nomeColunaInicial = colunasPorChave.get(formStatus)?.titulo || formStatus
@@ -3429,15 +3432,14 @@ export default function Fluxo() {
               )}
             </div>
 
-            {/* Campos Personalizados (categoria Card) — apenas na edição de um card existente */}
-            {editingCard && (
-              <PainelCamposPersonalizados
-                ref={camposPersonalizadosRef}
-                categoria="card"
-                alvo={{ card: editingCard.id }}
-                titulo="Campos Personalizados do Card"
-              />
-            )}
+            {/* Campos Personalizados — aparecem no card NOVO também; os valores só são
+                gravados quando o card for criado (salvarEm). */}
+            <PainelCamposPersonalizados
+              ref={camposPersonalizadosRef}
+              categoria="card"
+              alvo={editingCard ? { card: editingCard.id } : {}}
+              titulo="Campos Personalizados do Card"
+            />
 
             <DialogFooter className="flex justify-between items-center pt-4 border-t border-[#E5E1D8]">
               {editingCard ? (

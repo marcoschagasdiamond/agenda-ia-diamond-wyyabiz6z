@@ -86,9 +86,11 @@ export default function CaixaSelecaoCampo({
               }}
               className="w-full text-left px-3 py-2 text-xs text-[#1A1D21] hover:bg-[#0F766E]/5 flex items-center justify-between gap-2"
             >
-              <span className="truncate">{c.rotulo}</span>
-              <span className="text-[10px] text-[#5B6470] shrink-0">
-                {ROTULOS_TIPO[c.tipo]} • {ROTULOS_CATEGORIA[c.categoria]}
+              <span className="truncate flex-1">{c.rotulo}</span>
+              <span className="text-[10px] text-[#5B6470] shrink-0">{ROTULOS_TIPO[c.tipo]}</span>
+              {/* Categoria é INFORMATIVA — não filtra o catálogo */}
+              <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-[#F4F2EE] text-[#5B6470] border border-[#E5E1D8]">
+                {ROTULOS_CATEGORIA[c.categoria]}
               </span>
             </button>
           ))}

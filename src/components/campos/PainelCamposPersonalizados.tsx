@@ -2,7 +2,7 @@
 // caixa de busca (placeholder "campo personalizado") → insere do catálogo ou cria
 // novo; campo inserido vem VAZIO com o rótulo como placeholder; caixa própria por tipo
 // (renderizada pelo componente compartilhado CampoValorBox).
-import { forwardRef, useEffect, useImperativeHandle, useState } from 'react'
+import { forwardRef, useImperativeHandle, useState } from 'react'
 import { X } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -17,6 +17,7 @@ import type { CampoPersonalizado } from '@/services/camposPersonalizados'
 
 export interface PainelCamposPersonalizadosHandle {
   salvar: () => Promise<boolean>
+  salvarEm: (novoAlvo: AlvoCampos) => Promise<boolean>
   validarObrigatorios: () => boolean
 }
 
@@ -34,17 +35,9 @@ const PainelCamposPersonalizados = forwardRef<PainelCamposPersonalizadosHandle, 
 
     useImperativeHandle(ref, () => ({
       salvar: cp.salvar,
+      salvarEm: cp.salvarEm,
       validarObrigatorios: cp.validarObrigatorios,
     }))
-
-    // Fallback: sem alvo (ex.: card novo no modal) mostra só a caixa; ao salvar o
-    // card os valores são gravados junto pelo mesmo hook no pai.
-    useEffect(() => {
-      if (!alvoAtivo) {
-        cp.recarregar()
-      }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [alvoAtivo])
 
     const handleSalvoCriacao = async (criados: CampoPersonalizado[]) => {
       for (const c of criados) {
@@ -52,7 +45,9 @@ const PainelCamposPersonalizados = forwardRef<PainelCamposPersonalizadosHandle, 
       }
     }
 
-    if (!alvoAtivo) return null
+    // Sem alvo (ex.: card novo ainda sem id) o painel TAMBÉM aparece: a caixa lista
+    // o catálogo inteiro, o campo incluído fica vazio localmente e os valores só são
+    // gravados quando a entidade for criada/salva.
 
     return (
       <Card className="border-[#E5E1D8] bg-white shadow-xs">

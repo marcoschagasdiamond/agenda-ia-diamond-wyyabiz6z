@@ -47,21 +47,18 @@ export function useCamposPersonalizados(categoria: CampoCategoria, alvo: AlvoCam
   const alvoAtivo = !!(alvo.card || alvo.contato || alvo.projeto || alvo.fluxo)
 
   const carregar = useCallback(async () => {
-    if (!alvoAtivo) {
-      setCampos([])
-      setValores({})
-      setOriginais({})
-      setCamposCatalogo([])
-      setCarregando(false)
-      return
-    }
     setCarregando(true)
     try {
-      const [catalogo, listasSel, vals] = await Promise.all([
-        listarCamposPersonalizados(true, [categoria]),
+      // O catálogo é carregado SEMPRE (todas as categorias ativas), independente de
+      // alvo: no card NOVO (ainda sem id) a caixa de busca já lista os campos
+      // criados. A categoria NÃO filtra mais o catálogo — campos de qualquer
+      // categoria podem ser incluídos em card, contato, projeto ou fluxo.
+      const [catalogo, listasSel] = await Promise.all([
+        listarCamposPersonalizados(true),
         listarListasSelecao(true),
-        listarValoresPorAlvo(alvo),
       ])
+      // Valores só são lidos quando a entidade já tem id (alvo)
+      const vals = alvoAtivo ? await listarValoresPorAlvo(alvo) : []
       // Campos JÁ INSERIDOS nesta entidade (vínculo por instância: existe um
       // registro de valor — mesmo vazio — para ela). Sem registro, não aparece.
       const vinculados = catalogo.filter((c) => vals.some((v) => v.campo === c.id))
@@ -108,7 +105,18 @@ export function useCamposPersonalizados(categoria: CampoCategoria, alvo: AlvoCam
   // (o campo aparece VAZIO, com o rótulo como placeholder) e o inclui na lista.
   const inserirCampo = useCallback(
     async (campo: CampoPersonalizado): Promise<boolean> => {
-      if (!alvoAtivo || campos.some((c) => c.id === campo.id)) return false
+      if (campos.some((c) => c.id === campo.id)) return false
+      // Entidade ainda sem id (card novo): inclui localmente e vazio — os valores
+      // só são gravados quando a entidade for criada/salva.
+      if (!alvoAtivo) {
+        setCampos((prev) => [...prev, campo])
+        setValores((prev) => ({
+          ...prev,
+          [campo.id]: campo.tipo === 'checkbox' ? false : null,
+        }))
+        setCamposCatalogo((prev) => (prev.some((c) => c.id === campo.id) ? prev : [...prev, campo]))
+        return true
+      }
       try {
         await salvarValorCampo(campo.id, alvo, campo.tipo === 'checkbox' ? false : null, user?.id)
         setCampos((prev) => [...prev, campo])
@@ -164,8 +172,32 @@ export function useCamposPersonalizados(categoria: CampoCategoria, alvo: AlvoCam
     return Object.keys(erros).length === 0
   }, [campos, valores])
 
+  // Grava os campos atuais em um alvo RECÉM-CRIADO (ex.: card novo acabou de
+  // ganhar id) — usado pelo modal de criação para persistir o que foi preenchido.
+  const salvarEm = useCallback(
+    async (novoAlvo: AlvoCampos): Promise<boolean> => {
+      const temAlvo = !!(novoAlvo.card || novoAlvo.contato || novoAlvo.projeto || novoAlvo.fluxo)
+      if (!temAlvo) return true
+      setSalvando(true)
+      try {
+        for (const campo of campos) {
+          await salvarValorCampo(campo.id, novoAlvo, valores[campo.id] ?? null, user?.id)
+        }
+        return true
+      } catch (err) {
+        console.error('Erro ao salvar campos personalizados', err)
+        return false
+      } finally {
+        setSalvando(false)
+      }
+    },
+    [campos, user?.id, valores],
+  )
+
   // Grava só o que mudou (upsert campo+alvo em valores_campos_personalizados)
   const salvar = useCallback(async (): Promise<boolean> => {
+    // Sem alvo (entidade ainda não criada) não há onde gravar os valores ainda.
+    if (!alvoAtivo) return true
     setSalvando(true)
     try {
       for (const campo of campos) {
@@ -207,6 +239,7 @@ export function useCamposPersonalizados(categoria: CampoCategoria, alvo: AlvoCam
     removerCampo,
     validarObrigatorios,
     salvar,
+    salvarEm,
     recarregar: carregar,
   }
 }
