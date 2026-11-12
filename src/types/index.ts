@@ -71,20 +71,37 @@ export interface User {
 export interface ChatMensagem {
   id: string
   remetente: string
-  destinatario: string
+  destinatario?: string
   texto: string
   lida_em?: string | null
+  grupo?: string
+  anexo?: string
   created: string
   updated: string
   expand?: {
     remetente?: User
     destinatario?: User
+    grupo?: ChatGrupo
   }
 }
 
-// Resumo de uma conversa (agrupamento por interlocutor)
+// Grupo de trabalho/conversa do chat interno (coleção chat_grupos)
+export interface ChatGrupo {
+  id: string
+  nome: string
+  descricao?: string
+  criado_por: string
+  membros: string[]
+  created: string
+  updated: string
+}
+
+// Resumo de uma conversa (agrupamento por interlocutor ou grupo)
 export interface ChatConversaResumo {
-  usuario_id: string
+  usuario_id?: string
+  grupo_id?: string
+  eh_grupo: boolean
+  nome: string
   ultima: string
   ultima_criada_em: string
   ultima_propria: boolean
