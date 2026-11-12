@@ -19,6 +19,7 @@ import type {
   ConviteEquipe,
   EscopoTipo,
 } from '@/types'
+import type { AlvoConversa } from '@/components/chat/tiposChat'
 
 export interface FluxoComContagem extends FluxoKanban {
   cardCount: number
@@ -94,6 +95,10 @@ interface NavegacaoContextData {
   colunaSecundariaAberta: boolean
   setColunaSecundariaAberta: (aberta: boolean) => void
   toggleColunaSecundaria: () => void
+
+  // Conversa aberta do Chat interno (compartilhada entre a coluna contextual e o /chat)
+  chatAlvo: AlvoConversa | null
+  setChatAlvo: (alvo: AlvoConversa | null) => void
 }
 
 const NavegacaoContext = createContext<NavegacaoContextData | undefined>(undefined)
@@ -150,6 +155,9 @@ export const NavegacaoProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Visibilidade da coluna secundária
   const [colunaSecundariaAberta, setColunaSecundariaAberta] = useState<boolean>(true)
   const toggleColunaSecundaria = () => setColunaSecundariaAberta((prev) => !prev)
+
+  // Conversa aberta do chat (coluna contextual e página /chat compartilham)
+  const [chatAlvo, setChatAlvo] = useState<AlvoConversa | null>(null)
 
   const recarregarFluxo = async () => {
     try {
@@ -327,6 +335,8 @@ export const NavegacaoProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         colunaSecundariaAberta,
         setColunaSecundariaAberta,
         toggleColunaSecundaria,
+        chatAlvo,
+        setChatAlvo,
       }}
     >
       {children}

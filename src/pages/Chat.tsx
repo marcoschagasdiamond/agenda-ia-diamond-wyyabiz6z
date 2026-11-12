@@ -76,11 +76,14 @@ export default function Chat() {
   const navigate = useNavigate()
   const { toast } = useToast()
   const nav = useNavegacao()
+  // Conversa aberta compartilhada com a coluna contextual (NavContextColumn)
+  const { chatAlvo, setChatAlvo, colunaSecundariaAberta } = nav
+  const alvo = chatAlvo
+  const setAlvo = setChatAlvo
 
   const [conversas, setConversas] = useState<ChatConversaResumo[]>([])
   const [grupos, setGrupos] = useState<ChatGrupo[]>([])
   const [colaboradores, setColaboradores] = useState<ColaboradorChat[]>([])
-  const [alvo, setAlvo] = useState<AlvoConversa | null>(null)
   const [telefone, setTelefone] = useState('')
   const [mensagens, setMensagens] = useState<ChatMensagem[]>([])
   const [rascunho, setRascunho] = useState('')
@@ -487,15 +490,33 @@ export default function Chat() {
 
   const organizando = !!mensagemOrganizar && !!mensagemOrganizar.texto.trim()
 
+  // No desktop, quando a coluna contextual (NavContextColumn) está aberta ela
+  // substitui a lista de conversas embutida — evita duplicação de UI. No mobile
+  // (sem segunda coluna) a lista interna permanece completa.
+  const listaInternaNoDesktop = !colunaSecundariaAberta
+  const classesListaConversas = [
+    'w-full',
+    'shrink-0',
+    'flex-col',
+    'bg-white',
+    'border-r',
+    'border-gray-200',
+  ]
+  if (alvo) {
+    classesListaConversas.push('hidden')
+    if (listaInternaNoDesktop) classesListaConversas.push('md:flex', 'md:w-[340px]')
+  } else {
+    classesListaConversas.push('flex')
+    if (listaInternaNoDesktop) classesListaConversas.push('md:flex', 'md:w-[340px]')
+    else classesListaConversas.push('md:hidden')
+  }
+
   return (
     <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-[#efeae2]">
-      {/* Coluna esquerda: lista de conversas */}
-      <aside
-        className={cn(
-          'w-full md:w-[340px] shrink-0 flex flex-col bg-white border-r border-gray-200',
-          alvo && 'hidden md:flex',
-        )}
-      >
+      {/* Coluna esquerda: lista de conversas (escondida no desktop quando a
+          coluna contextual está aberta — evita duplicação de UI; no mobile e
+          com a coluna recolhida, a lista interna permanece) */}
+      <aside className={classesListaConversas.join(' ')}>
         <div className="px-4 py-3 bg-[#008069] text-white flex items-center gap-2">
           <MessageCircle className="h-5 w-5" />
           <span className="font-semibold text-sm">Chat interno</span>

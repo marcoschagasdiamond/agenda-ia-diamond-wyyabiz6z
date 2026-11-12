@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useNavegacao } from '@/contexts/NavegacaoContext'
 import { useAuth } from '@/hooks/use-auth'
 import NavColunaMaster from '@/components/master/NavColunaMaster'
+import ColunaChat from '@/components/chat/ColunaChat'
 import {
   ChevronRight,
   ChevronDown,
@@ -184,6 +185,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
     if (pathname.startsWith('/config')) return 'config'
     if (pathname.startsWith('/portal')) return 'portal'
     if (pathname.startsWith('/master')) return 'master'
+    if (pathname.startsWith('/chat')) return 'chat'
     return 'dashboard'
   })()
 
@@ -1735,6 +1737,8 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
 
   // Renderiza a coluna com base na seção ativa
   switch (secaoAtiva) {
+    case 'chat':
+      return <ColunaChat />
     case 'calendario':
       return renderColunaCalendario()
     case 'fluxo':
