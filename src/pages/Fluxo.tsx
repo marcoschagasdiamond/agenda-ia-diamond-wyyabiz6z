@@ -102,7 +102,7 @@ import {
   listarValoresPorAlvo,
   type ValorCampoPersonalizado,
 } from '@/services/camposPersonalizados'
-import CardKanbanDiamond from '@/components/fluxo/CardKanbanDiamond'
+import CardKanbanDiamond, { type DestinoMoverCategoria } from '@/components/fluxo/CardKanbanDiamond'
 import {
   contarValoresPreenchidos,
   encontrarContatoDoCard,
@@ -117,6 +117,9 @@ export default function Fluxo() {
 
   // Integração com o NavegacaoContext (Segunda coluna global do Layout)
   const navGlobal = useNavegacao()
+  // Grupos de família recolhidos na coluna (chave = id da família) e busca rápida por coluna (chave = chave da coluna)
+  const [familiasRecolhidas, setFamiliasRecolhidas] = useState<Record<string, boolean>>({})
+  const [buscaPorColuna, setBuscaPorColuna] = useState<Record<string, string>>({})
   const {
     categoriaAtivaId: globalCatId,
     setCategoriaAtivaId: setGlobalCatId,
@@ -794,6 +797,68 @@ export default function Fluxo() {
     } catch (err) {
       toast({
         title: 'Erro ao atualizar status',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+      await carregarDados()
+    }
+  }
+
+  // Destinos do submenu "Mover para" em cascata: categoria → fluxo → coluna
+  const montarDestinosMover = (card: CardType): DestinoMoverCategoria[] =>
+    navGlobal.categoriasComFluxos
+      .map((cat) => ({
+        id: cat.id,
+        nome: cat.nome,
+        fluxos: cat.fluxos
+          .map((fl) => ({
+            id: fl.id,
+            nome: fl.nome,
+            colunas: colunas
+              .filter((c) => c.fluxo_id === fl.id)
+              .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
+              .filter((c) => !(fl.id === card.fluxo_id && c.chave === card.status)),
+          }))
+          .filter((fl) => fl.colunas.length > 0),
+      }))
+      .filter((cat) => cat.fluxos.length > 0)
+
+  // Move o card para uma coluna de outro fluxo: grava fluxo_id e status juntos
+  const handleMoverParaFluxoColuna = async (
+    cardId: string,
+    novaColuna: ColunaFluxo,
+    fluxoId: string,
+  ) => {
+    const cardAnterior = cards.find((c) => c.id === cardId)
+    const statusAnterior = (cardAnterior?.status as string | undefined) || ''
+    const fluxoAnteriorId = cardAnterior?.fluxo_id
+    const nomeFluxoDestino = fluxos.find((f) => f.id === fluxoId)?.nome || 'Fluxo'
+    setCards((prev) =>
+      prev.map((c) =>
+        c.id === cardId ? { ...c, status: novaColuna.chave, fluxo_id: fluxoId } : c,
+      ),
+    )
+    try {
+      await diamondApi.updateCard(cardId, {
+        status: novaColuna.chave,
+        fluxo_id: fluxoId,
+      } as Partial<CardType>)
+      if (statusAnterior !== novaColuna.chave || fluxoAnteriorId !== fluxoId) {
+        const de = colunasPorChave.get(statusAnterior)?.titulo || statusAnterior
+        await criarEventoCard(
+          cardId,
+          'movimento',
+          textoEventoMovimento(
+            { fluxo_nome: nomeFluxoDestino, coluna_nome: novaColuna.titulo },
+            de,
+          ),
+        )
+      }
+      toast({ title: `Card movido para "${novaColuna.titulo}" (${nomeFluxoDestino})` })
+      await carregarDados()
+    } catch (err) {
+      toast({
+        title: 'Erro ao mover card',
         description: (err as Error)?.message,
         variant: 'destructive',
       })
@@ -1723,6 +1788,8 @@ export default function Fluxo() {
         familia={familiaDoCard || card.expand?.grupo_familia || null}
         colunaAtual={colunaAtual}
         colunasParaMover={colunasOrdenadas.filter((col) => col.chave !== card.status)}
+        destinosMover={montarDestinosMover(card)}
+        onMoverParaColuna={(col, fluxoId) => handleMoverParaFluxoColuna(card.id, col, fluxoId)}
         valorMonetario={valorMonetarioDoCard(valoresCard, idsCamposMoeda)}
         totalCamposPreenchidos={contarValoresPreenchidos(valoresCard)}
         totalCardsFamilia={totalCardsFamilia}
@@ -2665,6 +2732,14 @@ export default function Fluxo() {
                 // Na coluna de finalizado, se o usuário não clicou em "Visualizar Todos", os cards individuais ficam recolhidos
                 const mostrarCardsFinalizados = !!colunasConclusaoExpandidas[col.chave]
 
+                // Busca rápida dentro da coluna: filtra os cards exibidos pelo título
+                const termoBuscaColuna = (buscaPorColuna[col.chave] || '').trim().toLowerCase()
+                const colCardsExibidos = termoBuscaColuna
+                  ? colCards.filter((c) =>
+                      (c.titulo || '').toLowerCase().includes(termoBuscaColuna),
+                    )
+                  : colCards
+
                 return (
                   <div
                     key={col.id || col.chave}
@@ -2770,6 +2845,20 @@ export default function Fluxo() {
                       </button>
                     ) : null}
 
+                    {/* BUSCA RÁPIDA DENTRO DA COLUNA: filtra os cards pelo título */}
+                    <div className="relative mb-2">
+                      <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-[#5B6470]/70 pointer-events-none" />
+                      <Input
+                        value={buscaPorColuna[col.chave] || ''}
+                        onChange={(e) =>
+                          setBuscaPorColuna((prev) => ({ ...prev, [col.chave]: e.target.value }))
+                        }
+                        placeholder="Buscar card..."
+                        aria-label={`Buscar cards em ${col.titulo}`}
+                        className="h-7 text-xs pl-7 bg-white border-[#E5E1D8] text-[#1A1D21]"
+                      />
+                    </div>
+
                     {/* CARDS DA COLUNA */}
                     <div className="space-y-3 flex-1 overflow-y-auto">
                       {/* Se for coluna de conclusão e o usuário clicou em Visualizar Todos, exibe os cards acima do resumo */}
@@ -2783,9 +2872,10 @@ export default function Fluxo() {
                       {!isColunaFinalizado && agruparPorFamilia ? (
                         <>
                           {familiasDaColuna.map((fam) => {
-                            const cardsDaFamilia = colCards.filter(
+                            const cardsDaFamilia = colCardsExibidos.filter(
                               (c) => c.grupo_familia === fam.id,
                             )
+                            const familiaRecolhida = !!familiasRecolhidas[fam.id]
 
                             return (
                               <div
@@ -2799,6 +2889,25 @@ export default function Fluxo() {
                               >
                                 <div className="flex items-center justify-between pb-1.5 border-b border-[#E5E1D8]/60">
                                   <div className="flex items-center gap-1.5 min-w-0">
+                                    {/* Recolher / expandir o grupo (cards ocultos quando recolhido) */}
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setFamiliasRecolhidas((prev) => ({
+                                          ...prev,
+                                          [fam.id]: !prev[fam.id],
+                                        }))
+                                      }
+                                      aria-expanded={!familiaRecolhida}
+                                      title={familiaRecolhida ? 'Expandir grupo' : 'Recolher grupo'}
+                                      className="text-[#5B6470] hover:text-[#1A1D21] p-0.5 rounded hover:bg-[#F4F2EE] shrink-0"
+                                    >
+                                      {familiaRecolhida ? (
+                                        <ChevronRight className="w-3.5 h-3.5" />
+                                      ) : (
+                                        <ChevronDown className="w-3.5 h-3.5" />
+                                      )}
+                                    </button>
                                     <span
                                       className="w-2 h-2 rounded-full shrink-0"
                                       style={{ backgroundColor: fam.cor || '#3B82F6' }}
@@ -2901,21 +3010,23 @@ export default function Fluxo() {
                                   </div>
                                 </div>
 
-                                <div className="space-y-2.5">
-                                  {cardsDaFamilia.map((card) => renderKanbanCard(card))}
-                                  {cardsDaFamilia.length === 0 && (
-                                    <div className="h-10 border border-dashed border-[#E5E1D8] rounded-lg flex items-center justify-center text-[10px] text-[#5B6470]/60">
-                                      Arraste cards para esta família
-                                    </div>
-                                  )}
-                                </div>
+                                {!familiaRecolhida && (
+                                  <div className="space-y-2.5">
+                                    {cardsDaFamilia.map((card) => renderKanbanCard(card))}
+                                    {cardsDaFamilia.length === 0 && (
+                                      <div className="h-10 border border-dashed border-[#E5E1D8] rounded-lg flex items-center justify-center text-[10px] text-[#5B6470]/60">
+                                        Arraste cards para esta família
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             )
                           })}
 
                           {/* Cards sem família nesta coluna */}
                           {(() => {
-                            const cardsSemFamilia = colCards.filter((c) => !c.grupo_familia)
+                            const cardsSemFamilia = colCardsExibidos.filter((c) => !c.grupo_familia)
                             if (cardsSemFamilia.length === 0 && familiasDaColuna.length > 0)
                               return null
 
@@ -2940,7 +3051,7 @@ export default function Fluxo() {
                           })()}
                         </>
                       ) : !isColunaFinalizado ? (
-                        colCards.map((card) => renderKanbanCard(card))
+                        colCardsExibidos.map((card) => renderKanbanCard(card))
                       ) : null}
 
                       {colCards.length === 0 && !isColunaFinalizado && (
