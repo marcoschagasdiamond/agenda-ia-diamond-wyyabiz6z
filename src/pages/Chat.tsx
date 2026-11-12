@@ -32,7 +32,9 @@ import { diamondApi } from '@/services/diamondApi'
 import { cn } from '@/lib/utils'
 import { alternarMudo, estaMudo, tocarSomMensagem } from '@/lib/somNotificacao'
 import ModalNovoGrupoChat from '@/components/chat/ModalNovoGrupoChat'
-import ModalCriarCardMensagem from '@/components/chat/ModalCriarCardMensagem'
+import ModalCriarCardMensagem, {
+  type DestinoCardFluxo,
+} from '@/components/chat/ModalCriarCardMensagem'
 import ModalEnviarProjeto from '@/components/chat/ModalEnviarProjeto'
 import { BalaoMensagem, ehImagem } from '@/components/chat/BalaoMensagem'
 import type { AlvoConversa, AbaConversas } from '@/components/chat/tiposChat'
@@ -397,11 +399,28 @@ export default function Chat() {
     }
   }
 
-  /** "Criar demanda/card": card novo com o texto da mensagem preenchido. */
-  async function confirmarCriarCard(titulo: string, descricao: string) {
+  /**
+   * "Criar demanda/card": card novo com o texto da mensagem preenchido.
+   * Quando um destino é escolhido no modal (categoria → fluxo → coluna), o
+   * card nasce gravando fluxo_id E status juntos — nunca card órfão de coluna.
+   */
+  async function confirmarCriarCard(
+    titulo: string,
+    descricao: string,
+    destino: DestinoCardFluxo | null,
+  ) {
     if (!mensagemOrganizar || !titulo) return
     setCriandoCard(true)
-    await criarCard({ titulo, descricao }, 'Card criado! Veja no painel Fluxo.')
+    await criarCard(
+      {
+        titulo,
+        descricao,
+        ...(destino ? { fluxo_id: destino.fluxoId, status: destino.colunaChave } : {}),
+      },
+      destino
+        ? `Card criado em "${destino.colunaTitulo}"! Veja no painel Fluxo.`
+        : 'Card criado! Veja no painel Fluxo.',
+    )
     setCriandoCard(false)
     setModalCardAberto(false)
     setMensagemOrganizar(null)
@@ -908,6 +927,7 @@ export default function Chat() {
           setMensagemOrganizar(null)
         }}
         textoMensagem={mensagemOrganizar?.texto || ''}
+        destinos={destinosFluxo}
         criando={criandoCard}
         onConfirmar={confirmarCriarCard}
       />

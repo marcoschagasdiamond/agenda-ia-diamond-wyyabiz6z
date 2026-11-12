@@ -118,7 +118,9 @@ export function agruparConversas(
         atual.ultima_criada_em = m.created
         atual.ultima_propria = m.remetente === meuId
       }
-      if (naoLida) atual.nao_lidas += 1
+      // Grupos: badge conta CONVERSAS com pendência (o grupo entra no badge
+      // quando tem ao menos 1 mensagem não lida, sem acumular por mensagem).
+      if (naoLida && atual.nao_lidas === 0) atual.nao_lidas = 1
       continue
     }
 
@@ -238,12 +240,23 @@ async function marcarLidasEm(mensagens: { id: string }[]): Promise<ChatMensagem[
   )
 }
 
-/** Total de mensagens NÃO lidas destinadas a mim (individual + grupos) para badges. */
+/**
+ * Não lidas para badges: conversas INDIVIDUAIS contam MENSAGENS não lidas;
+ * GRUPOS contam CONVERSAS com pendência (1 por grupo com ao menos 1 mensagem
+ * não lida, sem acumular por mensagem).
+ */
 export async function contarNaoLidas(meuId: string): Promise<number> {
-  const res = await pb.collection(COLECAO).getList<ChatMensagem>(1, 1, {
+  const res = await pb.collection(COLECAO).getFullList<ChatMensagem>({
     filter: `(destinatario = "${meuId}" || grupo.membros.id ?= "${meuId}") && remetente != "${meuId}" && lida_em = null`,
+    fields: 'id,grupo,destinatario',
   })
-  return res.totalItems
+  const grupos = new Set<string>()
+  let individuais = 0
+  for (const m of res) {
+    if (m.grupo) grupos.add(m.grupo)
+    else individuais += 1
+  }
+  return individuais + grupos.size
 }
 
 /** Mensagens recebidas e não lidas, para contar por conversa no badge da lista. */
