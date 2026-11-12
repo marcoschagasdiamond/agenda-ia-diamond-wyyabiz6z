@@ -52,6 +52,7 @@ import {
   Copy,
   Download,
   MessageSquare,
+  X,
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { FluxoTabelaView } from './fluxo/FluxoTabelaView'
@@ -63,6 +64,7 @@ import { ModalCardArquivos } from './fluxo/ModalCardArquivos'
 import { ModalCardFamilia } from './fluxo/ModalCardFamilia'
 import { ModalGestaoGrupoFamilia, type ModoGestaoFamilia } from './fluxo/ModalGestaoGrupoFamilia'
 import { MODELOS_FLUXO_TEMPLATES, TEMPLATE_PADRAO_ID, gerarSlugChave } from './fluxo/fluxoTemplates'
+import { EditorFasesFluxo, type FaseFluxoDraft } from '@/components/fluxo/EditorFasesFluxo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -258,6 +260,19 @@ export default function Fluxo() {
   const [fluxoTituloFases, setFluxoTituloFases] = useState('')
   const [fluxoTemplateSelecionado, setFluxoTemplateSelecionado] =
     useState<string>(TEMPLATE_PADRAO_ID)
+  // Fases do modelo selecionado (para o editor de fases embutido)
+  const templateAtualFases: FaseFluxoDraft[] = useMemo(() => {
+    const t = MODELOS_FLUXO_TEMPLATES.find((x) => x.id === fluxoTemplateSelecionado)
+    return t ? t.fases.map((f) => ({ ...f })) : []
+  }, [fluxoTemplateSelecionado])
+  // Fases montadas manualmente no modal de criação de fluxo (EditorFasesFluxo).
+  // Quando null, a criação usa o modelo (template) selecionado normalmente.
+  const [fasesCustomFluxo, setFasesCustomFluxo] = useState<FaseFluxoDraft[] | null>(null)
+  // Caixinha rápida '+ Nova fase' no fim das colunas do Kanban
+  const [novaFaseRapidaOpen, setNovaFaseRapidaOpen] = useState(false)
+  const [novaFaseRapidaTitulo, setNovaFaseRapidaTitulo] = useState('')
+  const [novaFaseRapidaCor, setNovaFaseRapidaCor] = useState('#0F766E')
+  const [salvandoNovaFaseRapida, setSalvandoNovaFaseRapida] = useState(false)
   const [salvandoFluxo, setSalvandoFluxo] = useState(false)
 
   // Modais dedicados e focados para RENOMEAR Categoria e Fluxo
@@ -1004,6 +1019,8 @@ export default function Fluxo() {
     setFluxoCor('#0F766E')
     setFluxoTituloFases('')
     setFluxoTemplateSelecionado(TEMPLATE_PADRAO_ID)
+    // Começa com as 5 fases padrão (pode editar/limpar no editor embutido)
+    setFasesCustomFluxo(null)
     const catDestino =
       catId && catId !== 'all'
         ? catId
@@ -1100,6 +1117,18 @@ export default function Fluxo() {
           MODELOS_FLUXO_TEMPLATES.find((t) => t.id === fluxoTemplateSelecionado) ||
           MODELOS_FLUXO_TEMPLATES[0]
 
+        // Quando o usuário montou as fases manualmente no editor embutido,
+        // elas têm prioridade sobre o modelo selecionado.
+        const fasesCriar: FaseFluxoDraft[] =
+          fasesCustomFluxo && fasesCustomFluxo.length > 0
+            ? fasesCustomFluxo
+            : templateEscolhido.fases
+
+        const templateOrigem =
+          fasesCustomFluxo && fasesCustomFluxo.length > 0
+            ? 'personalizado_editor'
+            : templateEscolhido.id
+
         const novoFluxo = await diamondApi.createFluxoKanban({
           nome: fluxoTitulo.trim(),
           titulo: fluxoTitulo.trim(),
@@ -1107,16 +1136,11 @@ export default function Fluxo() {
           cor: fluxoCor || '#0F766E',
           ordem: fluxos.length + 1,
           titulo_fases: fluxoTituloFases.trim() || undefined,
-          template_origem: templateEscolhido.id,
+          template_origem: templateOrigem,
         })
 
-        // 2. Semear automaticamente as fases (colunas_fluxo) com base no modelo selecionado
-        // Vinculadas diretamente a esse fluxo via fluxo_id e com a categoria associada
-        const fasesCriar =
-          templateEscolhido.fases.length > 0
-            ? templateEscolhido.fases
-            : MODELOS_FLUXO_TEMPLATES[0].fases
-
+        // 2. Semear automaticamente as fases (colunas_fluxo) com base no que foi montado
+        // no editor embutido ou, na falta, no modelo selecionado.
         for (let i = 0; i < fasesCriar.length; i++) {
           const f = fasesCriar[i]
           const chaveFase = gerarSlugChave(f.titulo, `${novoFluxo.id}_${Date.now()}_${i + 1}`)
@@ -1128,13 +1152,13 @@ export default function Fluxo() {
             categoria: catDestinoId,
             fluxo_id: novoFluxo.id,
             is_conclusao: f.is_conclusao ?? false,
-            template_origem: templateEscolhido.id,
+            template_origem: templateOrigem,
           })
         }
 
         toast({
           title: `Fluxo "${fluxoTitulo}" criado com sucesso!`,
-          description: `${fasesCriar.length} fases criadas no board (${templateEscolhido.nome}).`,
+          description: `${fasesCriar.length} fases criadas no board.`,
         })
 
         // Abre o board diretamente no fluxo recém-criado
@@ -1261,6 +1285,60 @@ export default function Fluxo() {
       })
     } finally {
       setSalvandoRenomearFluxo(false)
+    }
+  }
+
+  // ==========================================
+  // CAIXINHA RÁPIDA '+ NOVA FASE' (fim das colunas do Kanban)
+  // ==========================================
+  const handleCriarFaseRapida = async () => {
+    const tituloFase = novaFaseRapidaTitulo.trim()
+    if (!tituloFase) return
+
+    // O fluxo de destino: o ativo; senão o primeiro fluxo visível; senão não dá para criar
+    const fluxoDestino =
+      (fluxoAtivoId !== 'all' ? fluxosValidos.find((f) => f.id === fluxoAtivoId) : undefined) ||
+      fluxosValidos[0]
+
+    if (!fluxoDestino) {
+      toast({
+        title: 'Nenhum fluxo aberto',
+        description: 'Abra ou crie um fluxo antes de adicionar uma fase.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setSalvandoNovaFaseRapida(true)
+    try {
+      const baseChave = gerarSlugChave(
+        tituloFase,
+        `${fluxoDestino.id}_${Date.now()}_${colunas.length + 1}`,
+      )
+      const maxOrdem = colunas.reduce((acc, c) => Math.max(acc, c.ordem ?? 0), 0)
+      await diamondApi.createColunaFluxo({
+        chave: baseChave,
+        titulo: tituloFase,
+        cor: novaFaseRapidaCor || '#0F766E',
+        ordem: maxOrdem + 1,
+        categoria: fluxoDestino.categoria,
+        fluxo_id: fluxoDestino.id,
+        is_conclusao: false,
+        template_origem: 'nova_fase_rapida',
+      })
+      toast({ title: `Fase "${tituloFase}" criada no fluxo "${fluxoDestino.nome}".` })
+      setNovaFaseRapidaOpen(false)
+      setNovaFaseRapidaTitulo('')
+      setNovaFaseRapidaCor('#0F766E')
+      await Promise.all([recarregarFluxoGlobal().catch(() => {}), carregarDados().catch(() => {})])
+    } catch (err) {
+      toast({
+        title: 'Erro ao criar fase',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoNovaFaseRapida(false)
     }
   }
 
@@ -2920,6 +2998,78 @@ export default function Fluxo() {
                 )
               })}
 
+              {/* BOTÃO '+ NOVA FASE' NO FIM DAS COLUNAS DO KANBAN */}
+              <div className="shrink-0 w-[240px] pt-7">
+                {novaFaseRapidaOpen ? (
+                  <div className="bg-white rounded-2xl border-2 border-[#0F766E] p-3 space-y-2 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-[#1A1D21] uppercase tracking-wider">
+                        Nova fase
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setNovaFaseRapidaOpen(false)}
+                        className="text-[#5B6470] hover:text-[#1A1D21]"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <Input
+                      autoFocus
+                      placeholder="Nome da fase"
+                      value={novaFaseRapidaTitulo}
+                      onChange={(e) => setNovaFaseRapidaTitulo(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          handleCriarFaseRapida()
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault()
+                          setNovaFaseRapidaOpen(false)
+                        }
+                      }}
+                      className="text-xs border-[#E5E1D8]"
+                    />
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={novaFaseRapidaCor}
+                        onChange={(e) => setNovaFaseRapidaCor(e.target.value)}
+                        className="w-8 h-8 rounded border border-[#E5E1D8] cursor-pointer"
+                      />
+                      <Input
+                        value={novaFaseRapidaCor}
+                        onChange={(e) => setNovaFaseRapidaCor(e.target.value)}
+                        className="text-xs border-[#E5E1D8] font-mono w-24"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={salvandoNovaFaseRapida || !novaFaseRapidaTitulo.trim()}
+                      onClick={handleCriarFaseRapida}
+                      className="w-full bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs"
+                    >
+                      {salvandoNovaFaseRapida ? 'Criando...' : 'Criar fase'}
+                    </Button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNovaFaseRapidaTitulo('')
+                      setNovaFaseRapidaCor('#0F766E')
+                      setNovaFaseRapidaOpen(true)
+                    }}
+                    title="Criar nova fase no fim do quadro"
+                    className="w-full h-11 rounded-xl border-2 border-dashed border-[#E5E1D8] text-[#5B6470] hover:text-[#0F766E] hover:border-[#0F766E] flex items-center justify-center gap-1.5 text-xs font-semibold transition-all bg-white/40"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Nova fase
+                  </button>
+                )}
+              </div>
+
               {colunasFiltradas.length === 0 && (
                 <div className="w-full bg-white p-8 rounded-xl border border-[#E5E1D8] text-center space-y-3">
                   <GitBranch className="w-10 h-10 text-[#5B6470]/40 mx-auto" />
@@ -3676,55 +3826,22 @@ export default function Fluxo() {
               </span>
             </div>
 
-            {/* SELEÇÃO DE MODELO PRONTO DE FASES (apenas ao criar novo fluxo) */}
+            {/* MONTAGEM DAS FASES (apenas ao criar novo fluxo): adicionar, renomear,
+                remover e reordenar as fases antes de salvar; começa vazio ou com as 5 padrão */}
             {!editingFluxo && (
-              <div className="space-y-2 p-3 rounded-xl bg-[#F4F2EE]/50 border border-[#E5E1D8]">
-                <label className="text-xs font-bold text-[#1A1D21] flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5 text-[#0F766E]" />
-                  <span>Modelo de Fases (Template do Board)</span>
-                </label>
-                <Select
-                  value={fluxoTemplateSelecionado}
-                  onValueChange={setFluxoTemplateSelecionado}
-                >
-                  <SelectTrigger className="text-xs bg-white border-[#E5E1D8]">
-                    <SelectValue placeholder="Selecione o modelo de fases" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MODELOS_FLUXO_TEMPLATES.map((tmpl) => (
-                      <SelectItem key={tmpl.id} value={tmpl.id} className="text-xs">
-                        {tmpl.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {(() => {
-                  const tmplAtual = MODELOS_FLUXO_TEMPLATES.find(
-                    (t) => t.id === fluxoTemplateSelecionado,
-                  )
-                  if (!tmplAtual) return null
-                  return (
-                    <div className="space-y-1.5 pt-1">
-                      <p className="text-[11px] text-[#5B6470]">{tmplAtual.descricao}</p>
-                      {tmplAtual.fases.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1 pt-1">
-                          {tmplAtual.fases.map((f, i) => (
-                            <span
-                              key={i}
-                              className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-black/10 text-white shadow-2xs"
-                              style={{ backgroundColor: f.cor }}
-                            >
-                              {f.titulo}
-                              {f.is_conclusao && <CheckCircle2 className="w-2.5 h-2.5 ml-0.5" />}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })()}
-              </div>
+              <EditorFasesFluxo
+                fases={fasesCustomFluxo ?? templateAtualFases}
+                onChange={(novas) => {
+                  setFasesCustomFluxo(novas)
+                  if (novas.length === 0) {
+                    toast({
+                      title: 'Fases limpas',
+                      description:
+                        'O fluxo será criado sem colunas. Você pode adicionar fases depois com "Editar Fases do Fluxo" ou o botão "+ Nova fase" no board.',
+                    })
+                  }
+                }}
+              />
             )}
 
             <div className="space-y-1">
