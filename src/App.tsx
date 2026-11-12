@@ -37,6 +37,8 @@ import PortalCliente from '@/pages/PortalCliente'
 import Perfil from '@/pages/Perfil'
 import MinhaConta from '@/pages/MinhaConta'
 import NotFound from '@/pages/NotFound'
+// Chat interno carregado sob demanda (lazy) para não pesar o bundle principal
+const Chat = React.lazy(() => import('@/pages/Chat'))
 import { TelaAcessoRestrito } from '@/components/comercial/TelaAcessoRestrito'
 import { podeAcessarRecurso, type RecursoApp } from '@/lib/permissoes'
 
@@ -56,6 +58,7 @@ const ROTULOS_RECURSO: Record<RecursoApp, string> = {
   config: 'Configurações',
   master: 'Painel Master',
   portal: 'Portal do Cliente',
+  chat: 'Chat Interno',
 }
 
 function ProtectedRoute({
@@ -78,6 +81,7 @@ function ProtectedRoute({
     | 'agente'
     | 'resumos'
     | 'config'
+    | 'chat'
     | 'dashboard'
 }) {
   const { user, loading, isMaster, isConvidadoExterno, meusEscopos, funcaoEquipe } = useAuth()
@@ -302,6 +306,23 @@ export default function App() {
                 element={
                   <ProtectedRoute recursoTipo="resumos">
                     <Resumos />
+                  </ProtectedRoute>
+                }
+              />
+              {/* Chat interno — todos os perfis da equipe (master/admin/membro) */}
+              <Route
+                path="/chat"
+                element={
+                  <ProtectedRoute recursoTipo="chat">
+                    <React.Suspense
+                      fallback={
+                        <div className="min-h-[60vh] flex items-center justify-center text-xs text-[#5B6470]">
+                          Carregando Chat Interno...
+                        </div>
+                      }
+                    >
+                      <Chat />
+                    </React.Suspense>
                   </ProtectedRoute>
                 }
               />

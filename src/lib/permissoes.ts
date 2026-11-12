@@ -18,6 +18,7 @@ export type RecursoApp =
   | 'agente'
   | 'resumos'
   | 'config'
+  | 'chat'
   | 'master'
   | 'portal'
 
@@ -46,6 +47,7 @@ const ACESSO_POR_RECURSO: Record<RecursoApp, FuncaoAcesso[]> = {
   equipe: ['master', 'admin'],
   agente: ['master', 'admin', 'membro'],
   resumos: ['master', 'admin', 'membro'],
+  chat: ['master', 'admin', 'membro'],
   config: ['master', 'admin'],
   master: ['master'],
   portal: ['portal_cliente'],
@@ -120,6 +122,7 @@ const RECURSO_POR_ROTA: Record<string, RecursoApp> = {
   '/equipe': 'equipe',
   '/agente': 'agente',
   '/resumos': 'resumos',
+  '/chat': 'chat',
   '/config': 'config',
   '/master': 'master',
   '/portal': 'portal',

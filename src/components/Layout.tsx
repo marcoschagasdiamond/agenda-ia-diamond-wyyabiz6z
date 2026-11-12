@@ -58,7 +58,7 @@ export default function Layout({ children }: LayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [searchModalOpen, setSearchModalOpen] = useState(false)
   // Badge de não lidas do chat interno (mesmo padrão da badge da Folha)
-  const badgeChat = useBadgeChatNaoLidas()
+  const { naoLidas: badgeChat, atualizar: atualizarBadgeChat } = useBadgeChatNaoLidas()
 
   // Suporte global a atalho de teclado Ctrl+K ou ⌘K
   useEffect(() => {

@@ -117,7 +117,7 @@ export async function telefoneDoColaborador(userId: string): Promise<string> {
 
 /** Lista de colaboradores ativos (id, nome, email, telefone) para o chat. */
 export async function listarColaboradores(): Promise<ColaboradorChat[]> {
-  const res = await pb.collection('membros_equipe').getFullList<RecordModel>({
+  const res = await pb.collection('membros_equipe').getFullList({
     filter: `status = "ativo"`,
     sort: 'nome',
   })
