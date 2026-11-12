@@ -48,6 +48,10 @@ export interface CardKanbanDiamondProps {
   familia?: GrupoFamilia | null
   colunaAtual?: ColunaFluxo | null
   colunasParaMover: ColunaFluxo[]
+  /** Destinos em cascata: categoria → fluxo → colunas (quando informado, substitui a lista plana) */
+  destinosMover?: DestinoMoverCategoria[]
+  /** Move o card para uma coluna de um fluxo específico (grava fluxo_id e status) */
+  onMoverParaColuna?: (novaColuna: ColunaFluxo, fluxoId: string) => void
   valorMonetario: number
   totalCamposPreenchidos: number
   totalCardsFamilia: number
@@ -64,6 +68,18 @@ export interface CardKanbanDiamondProps {
   onConvidarColaborador: () => void
   onMudarStatus: (novaColuna: ColunaFluxo) => void
   onExcluirCard: () => void
+}
+
+export interface DestinoMoverFluxo {
+  id: string
+  nome: string
+  colunas: ColunaFluxo[]
+}
+
+export interface DestinoMoverCategoria {
+  id: string
+  nome: string
+  fluxos: DestinoMoverFluxo[]
 }
 
 const ROTULO_PRIORIDADE: Record<NonNullable<CardKanbanDiamondProps['prioridade']>, string> = {
@@ -153,6 +169,8 @@ export default function CardKanbanDiamond(props: CardKanbanDiamondProps) {
     familia,
     colunaAtual,
     colunasParaMover,
+    destinosMover,
+    onMoverParaColuna,
     valorMonetario,
     totalCamposPreenchidos,
     totalCardsFamilia,
@@ -406,8 +424,45 @@ export default function CardKanbanDiamond(props: CardKanbanDiamondProps) {
               Família & Relações...
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            {/* Mover para coluna: um único item com submenu (abre ao passar o mouse). */}
-            {colunasParaMover.length > 0 && (
+            {/* Mover para: cascata categoria → fluxo → coluna (grava fluxo_id e status do destino). */}
+            {destinosMover && destinosMover.length > 0 && onMoverParaColuna && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="text-xs">
+                  <ArrowRight className="w-3.5 h-3.5 mr-2 text-[#5B6470]" />
+                  Mover para
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="text-xs">
+                  {destinosMover.map((cat) => (
+                    <DropdownMenuSub key={cat.id}>
+                      <DropdownMenuSubTrigger className="text-xs">
+                        {cat.nome}
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="text-xs">
+                        {cat.fluxos.map((fl) => (
+                          <DropdownMenuSub key={fl.id}>
+                            <DropdownMenuSubTrigger className="text-xs">
+                              {fl.nome}
+                            </DropdownMenuSubTrigger>
+                            <DropdownMenuSubContent className="text-xs">
+                              {fl.colunas.map((col) => (
+                                <DropdownMenuItem
+                                  key={col.id}
+                                  onClick={() => onMoverParaColuna(col, fl.id)}
+                                >
+                                  {col.titulo}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuSubContent>
+                          </DropdownMenuSub>
+                        ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
+            {/* Fallback: lista plana de colunas do fluxo atual (sem destinos em cascata). */}
+            {!(destinosMover && destinosMover.length > 0) && colunasParaMover.length > 0 && (
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger className="text-xs">
                   <ArrowRight className="w-3.5 h-3.5 mr-2 text-[#5B6470]" />
