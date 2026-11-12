@@ -1,7 +1,10 @@
 // Chat interno estilo WhatsApp entre colaboradores da conta.
 // Lista de conversas à esquerda (individuais + grupos), balões à direita,
-// anexos, busca/abas e envio real pelo conector WhatsApp (conta do usuário).
+// anexos (com filtro "só com anexo" e busca por nome de arquivo), busca/abas,
+// envio real pelo conector WhatsApp (conta do usuário) e organização de
+// mensagem (criar card, enviar para fluxo em cascata, enviar a projeto).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Send,
   MessageCircle,
@@ -14,19 +17,27 @@ import {
   Volume2,
   VolumeX,
   Plus,
+  Phone,
+  Paperclip as IconeAnexoFiltro,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { useToast } from '@/hooks/use-toast'
 import { ConnectorButton } from '@/components/skip/ConnectorButton'
 import { execute } from '@/lib/skipConnectors'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { useNavegacao } from '@/contexts/NavegacaoContext'
+import { diamondApi } from '@/services/diamondApi'
 import { cn } from '@/lib/utils'
 import { alternarMudo, estaMudo, tocarSomMensagem } from '@/lib/somNotificacao'
 import ModalNovoGrupoChat from '@/components/chat/ModalNovoGrupoChat'
+import ModalCriarCardMensagem from '@/components/chat/ModalCriarCardMensagem'
+import ModalEnviarProjeto from '@/components/chat/ModalEnviarProjeto'
 import { BalaoMensagem, ehImagem } from '@/components/chat/BalaoMensagem'
 import type { AlvoConversa, AbaConversas } from '@/components/chat/tiposChat'
+import type { DestinoMoverCategoria } from '@/components/fluxo/CardKanbanDiamond'
+import type { Card } from '@/types'
 import {
   listarMensagensCom,
   listarMensagensGrupo,
@@ -62,6 +73,9 @@ function horaCurta(iso: string): string {
 export default function Chat() {
   const { user } = useAuth()
   const meuId = user?.id ?? ''
+  const navigate = useNavigate()
+  const { toast } = useToast()
+  const nav = useNavegacao()
 
   const [conversas, setConversas] = useState<ChatConversaResumo[]>([])
   const [grupos, setGrupos] = useState<ChatGrupo[]>([])
@@ -72,6 +86,7 @@ export default function Chat() {
   const [rascunho, setRascunho] = useState('')
   const [busca, setBusca] = useState('')
   const [aba, setAba] = useState<AbaConversas>('todas')
+  const [soComAnexo, setSoComAnexo] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [carregando, setCarregando] = useState(true)
   const [whatsappEstado, setWhatsappEstado] = useState<'idle' | 'enviando' | 'ok' | 'erro'>('idle')
@@ -86,6 +101,12 @@ export default function Chat() {
 
   // Som
   const [mudo, setMudo] = useState(estaMudo())
+
+  // Organização de mensagem (criar card / enviar a projeto)
+  const [mensagemOrganizar, setMensagemOrganizar] = useState<ChatMensagem | null>(null)
+  const [modalCardAberto, setModalCardAberto] = useState(false)
+  const [modalProjetoAberto, setModalProjetoAberto] = useState(false)
+  const [criandoCard, setCriandoCard] = useState(false)
 
   const fimRef = useRef<HTMLDivElement>(null)
 
@@ -259,6 +280,33 @@ export default function Chat() {
     }
   }
 
+  async function transmitirWhatsapp(texto: string, numero: string, rotuloAcao: string) {
+    setWhatsappEstado('enviando')
+    setWhatsappErro(null)
+    try {
+      const res = await execute('WHATSAPP_SEND_MESSAGE', {
+        text: texto,
+        to_number: numero,
+        phone_number_id: '',
+      })
+      if (res.successful) {
+        setWhatsappEstado('ok')
+        return true
+      }
+      setWhatsappEstado('erro')
+      setWhatsappErro(res.error || `Falha ao ${rotuloAcao} pelo WhatsApp.`)
+      return false
+    } catch (err) {
+      setWhatsappEstado('erro')
+      setWhatsappErro(
+        err instanceof Error
+          ? err.message
+          : `Falha ao ${rotuloAcao} pelo WhatsApp. Verifique se sua conta está conectada.`,
+      )
+      return false
+    }
+  }
+
   /** Envio real pelo conector WhatsApp da conta do próprio usuário. */
   async function enviarWhatsapp() {
     if (!alvo || alvo.tipo !== 'individual' || !rascunho.trim()) return
@@ -269,39 +317,150 @@ export default function Chat() {
       )
       return
     }
-    const texto = rascunho.trim()
-    setWhatsappEstado('enviando')
-    setWhatsappErro(null)
-    try {
-      const res = await execute('WHATSAPP_SEND_MESSAGE', {
-        text: texto,
-        to_number: telefone,
-        phone_number_id: '',
-      })
-      if (res.successful) {
-        setWhatsappEstado('ok')
-        setRascunho('')
-      } else {
-        setWhatsappEstado('erro')
-        setWhatsappErro(res.error || 'Falha ao enviar pelo WhatsApp.')
-      }
-    } catch (err) {
+    const ok = await transmitirWhatsapp(rascunho.trim(), telefone, 'enviar')
+    if (ok) setRascunho('')
+  }
+
+  /**
+   * "Chamar no WhatsApp": abre a conversa real enviando a primeira mensagem
+   * pelo conector (mesmo mecanismo do "Enviar por WhatsApp"). Bloqueado com
+   * aviso quando o colaborador não tem telefone em membros_equipe.telefone.
+   */
+  async function chamarNoWhatsapp() {
+    if (!alvo || alvo.tipo !== 'individual') return
+    if (!telefone.trim()) {
       setWhatsappEstado('erro')
       setWhatsappErro(
-        err instanceof Error
-          ? err.message
-          : 'Falha ao enviar pelo WhatsApp. Verifique se sua conta está conectada.',
+        `${alvo.nome} não tem número de telefone cadastrado na equipe. Cadastre o telefone em Equipe para chamar no WhatsApp.`,
       )
+      return
     }
+    const ok = await transmitirWhatsapp(
+      `Olá, ${alvo.nome}! Falando pelo chat interno do Agenda IA Diamond.`,
+      telefone,
+      'chamar',
+    )
+    if (ok) {
+      toast({
+        title: 'Chamada enviada',
+        description: `Mensagem de abertura enviada para ${telefone}.`,
+      })
+    }
+  }
+
+  // ==========================================================================
+  // Organização de mensagem: criar card / enviar para fluxo / enviar a projeto
+  // ==========================================================================
+
+  /** Cascata categoria → fluxo → coluna (mesmo padrão do "Mover para" do /fluxo). */
+  const destinosFluxo = useMemo<DestinoMoverCategoria[]>(
+    () =>
+      nav.categoriasComFluxos
+        .map((cat) => ({
+          id: cat.id,
+          nome: cat.nome,
+          fluxos: cat.fluxos
+            .map((fl) => ({
+              id: fl.id,
+              nome: fl.nome || fl.titulo || 'Fluxo',
+              colunas: nav.colunas
+                .filter((c) => c.fluxo_id === fl.id)
+                .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)),
+            }))
+            .filter((fl) => fl.colunas.length > 0),
+        }))
+        .filter((cat) => cat.fluxos.length > 0),
+    [nav.categoriasComFluxos, nav.colunas],
+  )
+
+  const projetos = nav.projetos
+
+  /** Primeira linha da mensagem vira título do card. */
+  function tituloDaMensagem(texto: string): string {
+    const linha = texto.trim().split('\n')[0] || ''
+    return linha.slice(0, 120)
+  }
+
+  async function criarCard(payload: Partial<Card>, mensagemOk: string) {
+    try {
+      await diamondApi.createCard(payload)
+      toast({ title: mensagemOk })
+    } catch (err) {
+      toast({
+        title: 'Erro ao criar card',
+        description: err instanceof Error ? err.message : undefined,
+        variant: 'destructive',
+      })
+    }
+  }
+
+  /** "Criar demanda/card": card novo com o texto da mensagem preenchido. */
+  async function confirmarCriarCard(titulo: string, descricao: string) {
+    if (!mensagemOrganizar || !titulo) return
+    setCriandoCard(true)
+    await criarCard({ titulo, descricao }, 'Card criado! Veja no painel Fluxo.')
+    setCriandoCard(false)
+    setModalCardAberto(false)
+    setMensagemOrganizar(null)
+  }
+
+  /**
+   * "Enviar para fluxo": cria o card no destino escolhido em cascata,
+   * gravando fluxo_id E status juntos (nunca card órfão de coluna).
+   */
+  async function enviarMensagemParaFluxo(
+    m: ChatMensagem,
+    colunaChave: string,
+    colunaTitulo: string,
+    fluxoId: string,
+  ) {
+    const titulo = tituloDaMensagem(m.texto) || 'Card do chat'
+    await criarCard(
+      {
+        titulo,
+        descricao: m.texto,
+        status: colunaChave,
+        fluxo_id: fluxoId,
+      },
+      `Card criado em "${colunaTitulo}"!`,
+    )
+    void navigate('/fluxo')
+  }
+
+  /** "Enviar a projeto": card vinculado ao projeto escolhido. */
+  async function enviarMensagemParaProjeto(
+    m: ChatMensagem,
+    projetoId: string,
+    titulo?: string,
+    descricao?: string,
+  ) {
+    await criarCard(
+      {
+        titulo: (titulo || tituloDaMensagem(m.texto) || 'Card do chat').trim(),
+        descricao: descricao ?? m.texto,
+        projeto: projetoId,
+      },
+      'Card criado e vinculado ao projeto!',
+    )
+    setModalProjetoAberto(false)
+    setMensagemOrganizar(null)
   }
 
   const conversasFiltradas = useMemo(() => {
     const termo = busca.trim().toLowerCase()
     let lista = conversas.map((c) => (c.eh_grupo ? c : { ...c, nome: nomeDe(c.usuario_id || '') }))
     if (aba === 'nao_lidas') lista = lista.filter((c) => c.nao_lidas > 0)
-    if (termo) lista = lista.filter((c) => c.nome.toLowerCase().includes(termo))
+    if (termo) {
+      lista = lista.filter(
+        (c) =>
+          c.nome.toLowerCase().includes(termo) ||
+          (c.ultima || '').toLowerCase().includes(termo) ||
+          (c.nomes_anexos || []).some((a) => a.toLowerCase().includes(termo)),
+      )
+    }
+    if (soComAnexo) lista = lista.filter((c) => c.tem_anexo)
     return lista
-  }, [conversas, busca, aba, nomeDe])
+  }, [conversas, busca, aba, nomeDe, soComAnexo])
 
   const naoLidasTotal = useMemo(() => conversas.reduce((s, c) => s + c.nao_lidas, 0), [conversas])
 
@@ -325,6 +484,8 @@ export default function Chat() {
     const nomes = ids.map((id) => (id === meuId ? 'Você' : nomeDe(id)))
     return nomes.filter((n, i) => nomes.indexOf(n) === i)
   }, [alvo, grupos, nomeDe, meuId])
+
+  const organizando = !!mensagemOrganizar && !!mensagemOrganizar.texto.trim()
 
   return (
     <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-[#efeae2]">
@@ -350,7 +511,7 @@ export default function Chat() {
             <input
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar conversa, grupo ou colaborador..."
+              placeholder="Buscar conversa, grupo ou anexo..."
               className="w-full rounded-full bg-gray-100 pl-8 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#008069]/30"
             />
           </div>
@@ -376,6 +537,19 @@ export default function Chat() {
               )}
             >
               Não lidas{naoLidasTotal > 0 ? ` (${naoLidasTotal})` : ''}
+            </button>
+            <button
+              onClick={() => setSoComAnexo((v) => !v)}
+              className={cn(
+                'rounded-full px-2.5 py-1 text-xs font-medium transition-colors flex items-center gap-1',
+                soComAnexo
+                  ? 'bg-[#008069] text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
+              )}
+              title="Mostrar só conversas com anexo"
+            >
+              <IconeAnexoFiltro className="h-3 w-3" />
+              Com anexo
             </button>
           </div>
         </div>
@@ -423,20 +597,30 @@ export default function Chat() {
                     {c.ultima_propria && 'Você: '}
                     {c.ultima || 'Novo grupo de conversa'}
                   </span>
-                  {c.nao_lidas > 0 && (
-                    <span className="shrink-0 bg-[#25d366] text-white text-[11px] font-semibold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
-                      {c.nao_lidas}
-                    </span>
-                  )}
+                  <span className="shrink-0 flex items-center gap-1.5">
+                    {c.tem_anexo && (
+                      <IconeAnexoFiltro
+                        className="h-3.5 w-3.5 text-gray-400"
+                        aria-label="Tem anexo"
+                      />
+                    )}
+                    {c.nao_lidas > 0 && (
+                      <span className="bg-[#25d366] text-white text-[11px] font-semibold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
+                        {c.nao_lidas}
+                      </span>
+                    )}
+                  </span>
                 </div>
               </div>
             </button>
           ))}
           {!carregando && conversasFiltradas.length === 0 && (
             <p className="text-xs text-gray-400 text-center py-6 px-4">
-              {aba === 'nao_lidas'
-                ? 'Nenhuma conversa não lida.'
-                : 'Nenhuma conversa ainda. Selecione um colaborador abaixo ou crie um grupo.'}
+              {soComAnexo
+                ? 'Nenhuma conversa com anexo.'
+                : aba === 'nao_lidas'
+                  ? 'Nenhuma conversa não lida.'
+                  : 'Nenhuma conversa ainda. Selecione um colaborador abaixo ou crie um grupo.'}
             </p>
           )}
 
@@ -535,6 +719,18 @@ export default function Chat() {
                     : telefone || alvo.nome}
                 </p>
               </div>
+              {alvo.tipo === 'individual' && (
+                <button
+                  type="button"
+                  onClick={chamarNoWhatsapp}
+                  disabled={whatsappEstado === 'enviando'}
+                  className="h-8 px-3 rounded-full border border-[#25d366] text-[#1eb85a] hover:bg-[#25d366]/10 disabled:opacity-40 text-xs font-semibold flex items-center gap-1.5 shrink-0"
+                  title="Chamar no WhatsApp (mensagem de abertura pela sua conta conectada)"
+                >
+                  <Phone className="h-3.5 w-3.5" />
+                  Chamar no WhatsApp
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setMudo(alternarMudo())}
@@ -563,6 +759,20 @@ export default function Chat() {
                     mostrarAutor={alvo.tipo === 'grupo'}
                     nomeAutor={nomeMembroGrupo.get(m.remetente) || 'Colaborador'}
                     urlAnexo={urlAnexo}
+                    aoCriarCard={(msg) => {
+                      setMensagemOrganizar(msg)
+                      setModalCardAberto(true)
+                    }}
+                    aoEnviarFluxo={(msg, chave, tituloColuna, fluxoId) => {
+                      void enviarMensagemParaFluxo(msg, chave, tituloColuna, fluxoId)
+                    }}
+                    aoEnviarProjeto={(msg) => {
+                      setMensagemOrganizar(msg)
+                      setModalProjetoAberto(true)
+                    }}
+                    destinosFluxo={destinosFluxo}
+                    projetos={projetos.map((p) => ({ id: p.id, nome: p.nome }))}
+                    criandoCard={criandoCard}
                   />
                 )
               })}
@@ -581,7 +791,9 @@ export default function Chat() {
               )}
               {whatsappEstado === 'ok' && (
                 <p className="text-[11px] text-emerald-700 mb-1">
-                  Mensagem enviada pelo WhatsApp para {telefone}.
+                  {alvo.tipo === 'individual'
+                    ? `Ação concluída no WhatsApp para ${telefone}.`
+                    : 'Ação concluída no WhatsApp.'}
                 </p>
               )}
             </div>
@@ -664,6 +876,36 @@ export default function Chat() {
           setGrupos((prev) => [g, ...prev])
           setAlvo({ tipo: 'grupo', id: g.id, nome: g.nome })
           void atualizarConversas()
+        }}
+      />
+
+      {/* Diálogos de organização (criar card / enviar a projeto) */}
+      <ModalCriarCardMensagem
+        aberto={modalCardAberto}
+        onFechar={() => {
+          setModalCardAberto(false)
+          setMensagemOrganizar(null)
+        }}
+        textoMensagem={mensagemOrganizar?.texto || ''}
+        criando={criandoCard}
+        onConfirmar={confirmarCriarCard}
+      />
+      <ModalEnviarProjeto
+        aberto={modalProjetoAberto}
+        onFechar={() => {
+          setModalProjetoAberto(false)
+          setMensagemOrganizar(null)
+        }}
+        projetos={projetos}
+        textoMensagem={mensagemOrganizar?.texto || ''}
+        enviando={false}
+        onConfirmar={(projetoId, titulo, descricao) => {
+          void enviarMensagemParaProjeto(
+            mensagemOrganizar as ChatMensagem,
+            projetoId,
+            titulo,
+            descricao,
+          )
         }}
       />
     </div>

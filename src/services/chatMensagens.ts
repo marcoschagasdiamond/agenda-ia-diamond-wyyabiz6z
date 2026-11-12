@@ -21,6 +21,11 @@ function urlAnexo(m: ChatMensagem): string | null {
   )
 }
 
+/** Nome do arquivo anexado à mensagem (campo anexo). */
+export function nomeDoAnexo(m: ChatMensagem): string {
+  return m.anexo || ''
+}
+
 /** Mensagens trocadas com um colaborador (meu par = remetente ou destinatário). */
 export async function listarMensagensCom(
   meuId: string,
@@ -97,8 +102,16 @@ export function agruparConversas(
           ultima_criada_em: m.created,
           ultima_propria: m.remetente === meuId,
           nao_lidas: naoLida ? 1 : 0,
+          tem_anexo: !!m.anexo,
+          nomes_anexos: m.anexo ? [m.anexo] : [],
         })
         continue
+      }
+      if (m.anexo) {
+        atual.tem_anexo = true
+        if (atual.nomes_anexos && !atual.nomes_anexos.includes(m.anexo)) {
+          atual.nomes_anexos.push(m.anexo)
+        }
       }
       if (m.created > atual.ultima_criada_em) {
         atual.ultima = m.texto
@@ -122,8 +135,16 @@ export function agruparConversas(
         ultima_criada_em: m.created,
         ultima_propria: m.remetente === meuId,
         nao_lidas: naoLida ? 1 : 0,
+        tem_anexo: !!m.anexo,
+        nomes_anexos: m.anexo ? [m.anexo] : [],
       })
       continue
+    }
+    if (m.anexo) {
+      atual.tem_anexo = true
+      if (atual.nomes_anexos && !atual.nomes_anexos.includes(m.anexo)) {
+        atual.nomes_anexos.push(m.anexo)
+      }
     }
     if (m.created > atual.ultima_criada_em) {
       atual.ultima = m.texto

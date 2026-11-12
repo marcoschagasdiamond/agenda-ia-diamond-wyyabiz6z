@@ -106,6 +106,10 @@ export interface ChatConversaResumo {
   ultima_criada_em: string
   ultima_propria: boolean
   nao_lidas: number
+  /** A conversa tem pelo menos uma mensagem com anexo (filtro "só com anexo"). */
+  tem_anexo?: boolean
+  /** Nomes dos arquivos anexados na conversa (busca por nome de arquivo). */
+  nomes_anexos?: string[]
 }
 
 // Colaborador listável no chat (cadastro da equipe)
