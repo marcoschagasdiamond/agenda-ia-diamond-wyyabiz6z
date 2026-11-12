@@ -7,6 +7,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -403,12 +406,22 @@ export default function CardKanbanDiamond(props: CardKanbanDiamondProps) {
               Família & Relações...
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            {colunasParaMover.map((col) => (
-              <DropdownMenuItem key={col.id} onClick={() => onMudarStatus(col)}>
-                <ArrowRight className="w-3.5 h-3.5 mr-2 text-[#5B6470]" />
-                Mover para {col.titulo}
-              </DropdownMenuItem>
-            ))}
+            {/* Mover para coluna: um único item com submenu (abre ao passar o mouse). */}
+            {colunasParaMover.length > 0 && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="text-xs">
+                  <ArrowRight className="w-3.5 h-3.5 mr-2 text-[#5B6470]" />
+                  Mover para
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="text-xs">
+                  {colunasParaMover.map((col) => (
+                    <DropdownMenuItem key={col.id} onClick={() => onMudarStatus(col)}>
+                      {col.titulo}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onConvidarColaborador} className="text-[#0F766E]">
               <User className="w-3.5 h-3.5 mr-2" />
