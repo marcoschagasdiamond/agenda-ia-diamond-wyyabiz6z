@@ -67,6 +67,38 @@ export interface User {
   updated: string
 }
 
+// Chat interno entre colaboradores (coleção chat_mensagens)
+export interface ChatMensagem {
+  id: string
+  remetente: string
+  destinatario: string
+  texto: string
+  lida_em?: string | null
+  created: string
+  updated: string
+  expand?: {
+    remetente?: User
+    destinatario?: User
+  }
+}
+
+// Resumo de uma conversa (agrupamento por interlocutor)
+export interface ChatConversaResumo {
+  usuario_id: string
+  ultima: string
+  ultima_criada_em: string
+  ultima_propria: boolean
+  nao_lidas: number
+}
+
+// Colaborador listável no chat (cadastro da equipe)
+export interface ColaboradorChat {
+  id: string
+  nome: string
+  email: string
+  telefone?: string
+}
+
 export interface Profile {
   id: string
   user: string

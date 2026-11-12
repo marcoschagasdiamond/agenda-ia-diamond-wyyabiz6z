@@ -24,6 +24,7 @@ import {
   PanelLeftOpen,
   ChevronRight,
   Crown,
+  MessageCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,6 +36,7 @@ import SinoNotificacoes from '@/components/SinoNotificacoes'
 import CommandPaletteGlobal from '@/components/CommandPaletteGlobal'
 import BotaoFeedbackFlutuante from '@/components/comercial/BotaoFeedbackFlutuante'
 import { itensMenuPermitidos } from '@/lib/permissoes'
+import { useBadgeChatNaoLidas } from '@/hooks/useBadgeChatNaoLidas'
 
 interface LayoutProps {
   children?: React.ReactNode
@@ -55,6 +57,8 @@ export default function Layout({ children }: LayoutProps) {
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [searchModalOpen, setSearchModalOpen] = useState(false)
+  // Badge de não lidas do chat interno (mesmo padrão da badge da Folha)
+  const badgeChat = useBadgeChatNaoLidas()
 
   // Suporte global a atalho de teclado Ctrl+K ou ⌘K
   useEffect(() => {
@@ -100,6 +104,7 @@ export default function Layout({ children }: LayoutProps) {
     { name: 'Agente IA Diamond', path: '/agente', icon: Bot, highlight: true },
     { name: 'Resumos do Dia', path: '/resumos', icon: History },
     { name: 'Configurações', path: '/config', icon: Settings },
+    { name: 'Chat Interno', path: '/chat', icon: MessageCircle, badgeCount: badgeChat },
   ]
 
   // Se for Administrador Master, injeta no menu o atalho exclusivo do Painel Master
@@ -377,12 +382,17 @@ export default function Layout({ children }: LayoutProps) {
                       onClick={() => {
                         navigate(item.path)
                       }}
-                      className={`w-11 h-11 rounded-lg flex items-center justify-center transition-colors ${
+                      className={`relative w-11 h-11 rounded-lg flex items-center justify-center transition-colors ${
                         active ? 'bg-[#0F766E] text-white' : 'text-zinc-400 hover:text-white'
                       }`}
                       title={item.name}
                     >
                       <Icon className="w-4 h-4" />
+                      {typeof item.badgeCount === 'number' && item.badgeCount > 0 && (
+                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-white font-bold text-[9px] rounded-full flex items-center justify-center shadow-xs">
+                          {item.badgeCount > 9 ? '9+' : item.badgeCount}
+                        </span>
+                      )}
                     </button>
                   )
                 })}

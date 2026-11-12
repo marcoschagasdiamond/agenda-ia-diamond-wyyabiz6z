@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-12T01:21:06.134Z",
+  "generatedAt": "2026-11-12T12:59:40.388Z",
   "collections": [
     {
       "name": "users",
@@ -1833,6 +1833,12 @@
         {
           "name": "is_master",
           "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "telefone",
+          "type": "text",
           "required": false,
           "system": false
         }
@@ -4258,6 +4264,64 @@
       "indexes": [
         "CREATE INDEX idx_arquivos_pastas_drive_criado ON arquivos_pastas_drive (criado_por)",
         "CREATE INDEX idx_arquivos_pastas_drive_created ON arquivos_pastas_drive (created DESC)"
+      ]
+    },
+    {
+      "name": "chat_mensagens",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (remetente = @request.auth.id || destinatario = @request.auth.id)",
+        "view": "@request.auth.id != '' && (remetente = @request.auth.id || destinatario = @request.auth.id)",
+        "create": "@request.auth.id != '' && remetente = @request.auth.id && destinatario != @request.auth.id",
+        "update": "@request.auth.id != '' && destinatario = @request.auth.id && remetente != @request.auth.id",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "remetente",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "destinatario",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "texto",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "lida_em",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_chat_dest_lida ON chat_mensagens (destinatario, lida_em)",
+        "CREATE INDEX idx_chat_par_created ON chat_mensagens (remetente, destinatario, created)",
+        "CREATE INDEX idx_chat_created ON chat_mensagens (created)"
       ]
     }
   ]
