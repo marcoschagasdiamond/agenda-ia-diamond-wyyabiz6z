@@ -28,7 +28,7 @@ import {
   Users,
   Wand2,
 } from 'lucide-react'
-import { iniciaisDeNome } from './CardKanbanHelpers'
+import { estadoPrazo, formatarPrazoCurto, iniciaisDeNome } from './CardKanbanHelpers'
 
 export interface CardKanbanDiamondProps {
   cardId: string
@@ -45,11 +45,11 @@ export interface CardKanbanDiamondProps {
   familia?: GrupoFamilia | null
   colunaAtual?: ColunaFluxo | null
   colunasParaMover: ColunaFluxo[]
+  valorMonetario: number
   totalCamposPreenchidos: number
   totalCardsFamilia: number
   temAnexos: boolean
   temAnotacoes: boolean
-  urlAvatar?: string
   /** Drag & drop (mesmos handlers de antes da refatoração visual) */
   onDragStart: (e: React.DragEvent) => void
   /** Ações */
@@ -150,11 +150,11 @@ export default function CardKanbanDiamond(props: CardKanbanDiamondProps) {
     familia,
     colunaAtual,
     colunasParaMover,
+    valorMonetario,
     totalCamposPreenchidos,
     totalCardsFamilia,
     temAnexos,
     temAnotacoes,
-    urlAvatar,
     onDragStart,
     onAbrirCard,
     onEditarCard,
@@ -234,8 +234,20 @@ export default function CardKanbanDiamond(props: CardKanbanDiamondProps) {
           </div>
         )}
 
-        {/* Badges: prioridade + prazo + projeto */}
+        {/* Badges: valor R$ + prioridade + projeto */}
         <div className="flex flex-wrap items-center gap-1.5">
+          {valorMonetario > 0 && (
+            <span
+              title="Valor monetário (soma dos campos personalizados do tipo Moeda)"
+              className="inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums"
+            >
+              {valorMonetario.toLocaleString('pt-BR', {
+                style: 'currency',
+                currency: 'BRL',
+                maximumFractionDigits: valorMonetario % 1 === 0 ? 0 : 2,
+              })}
+            </span>
+          )}
           <BadgePrioridade prioridade={prioridade} />
           {projeto?.nome && (
             <span
@@ -257,7 +269,6 @@ export default function CardKanbanDiamond(props: CardKanbanDiamondProps) {
         <div className="flex items-center justify-between gap-2 pt-1">
           <div className="flex items-center gap-1.5 min-w-0">
             <Avatar className="w-5 h-5 rounded-full border border-[#E5E1D8] shrink-0">
-              {urlAvatar && <AvatarImage src={urlAvatar} alt={nomeContato || 'Card'} />}
               <AvatarFallback className="bg-[#F4F2EE] text-[#5B6470] text-[8px] font-bold">
                 {iniciais}
               </AvatarFallback>

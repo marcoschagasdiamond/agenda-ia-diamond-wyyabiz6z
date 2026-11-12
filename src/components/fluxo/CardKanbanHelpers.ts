@@ -1,6 +1,7 @@
 // Helpers de exibição do card no Kanban (usados pelo CardKanbanDiamond).
 
-import type { Contato, ValorCampoPersonalizado } from '@/types'
+import type { Contato } from '@/types'
+import type { ValorCampoPersonalizado } from '@/services/camposPersonalizados'
 
 /** Iniciais (máx. 2) para o avatar circular de fallback. */
 export function iniciaisDeNome(nome?: string): string {

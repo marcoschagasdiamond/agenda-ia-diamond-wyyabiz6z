@@ -95,6 +95,17 @@ import PainelCamposPersonalizados, {
 } from '@/components/campos/PainelCamposPersonalizados'
 import { useRef } from 'react'
 import { criarEventoCard, textoEventoCriacao, textoEventoMovimento } from '@/services/eventosCard'
+import {
+  listarCamposPersonalizados,
+  listarValoresPorAlvo,
+  type ValorCampoPersonalizado,
+} from '@/services/camposPersonalizados'
+import CardKanbanDiamond from '@/components/fluxo/CardKanbanDiamond'
+import {
+  contarValoresPreenchidos,
+  encontrarContatoDoCard,
+  valorMonetarioDoCard,
+} from '@/components/fluxo/CardKanbanHelpers'
 
 export default function Fluxo() {
   const navigate = useNavigate()
@@ -133,6 +144,33 @@ export default function Fluxo() {
   const [projetos, setProjetos] = useState<Projeto[]>([])
   const [negocios, setNegocios] = useState<Negocio[]>([])
   const [contatos, setContatos] = useState<Contato[]>([])
+
+  // Valores de campos personalizados por card (contadores + badge de valor R$ no card)
+  const [valoresCamposPorCard, setValoresCamposPorCard] = useState<
+    Record<string, ValorCampoPersonalizado[]>
+  >({})
+  const [idsCamposMoeda, setIdsCamposMoeda] = useState<Set<string>>(new Set())
+
+  const carregarValoresCampos = async (idsCards: string[]) => {
+    if (idsCards.length === 0) {
+      setValoresCamposPorCard({})
+      return
+    }
+    try {
+      const entradas = await Promise.all(
+        idsCards.map(async (cardId) => {
+          try {
+            return [cardId, await listarValoresPorAlvo({ card: cardId })] as const
+          } catch {
+            return [cardId, [] as ValorCampoPersonalizado[]] as const
+          }
+        }),
+      )
+      setValoresCamposPorCard(Object.fromEntries(entradas))
+    } catch (err) {
+      console.error('Erro ao carregar valores de campos personalizados:', err)
+    }
+  }
 
   // Hierarquia: Categorias -> Fluxos -> Fases (Colunas) -> Grupos de Família
   const [categorias, setCategorias] = useState<CategoriaFluxo[]>([])
@@ -305,6 +343,18 @@ export default function Fluxo() {
       setFluxos(flxs)
       setColunas(cols)
       setFamilias(fams)
+      // Valores de campos personalizados por card + campos do tipo Moeda (badge R$)
+      setValoresCamposPorCard({})
+      carregarValoresCampos(c.map((card) => card.id))
+      if (idsCamposMoeda.size === 0) {
+        listarCamposPersonalizados(true)
+          .then((campos) => {
+            setIdsCamposMoeda(
+              new Set(campos.filter((cp) => cp.tipo === 'moeda').map((cp) => cp.id)),
+            )
+          })
+          .catch(() => {})
+      }
       recarregarFluxoGlobal().catch(() => {})
 
       // Inicializa expansão de todas as categorias como abertas
@@ -546,6 +596,21 @@ export default function Fluxo() {
     filtroPrioridade,
     filtroFamilia,
   ])
+
+  // Recarrega os valores dos campos personalizados dos cards exibidos
+  // (cards novos do filtro ainda não têm valores carregados para os contadores/badge R$)
+  const idsCardsFiltrados = useMemo(
+    () => cardsFiltrados.map((c) => c.id).join(','),
+    [cardsFiltrados],
+  )
+  useEffect(() => {
+    if (abaAtiva !== 'QUADRO') return
+    const ids = idsCardsFiltrados ? idsCardsFiltrados.split(',') : []
+    const idsSemValores = ids.filter((id) => !(id in valoresCamposPorCard))
+    if (idsSemValores.length > 0) {
+      carregarValoresCampos(idsSemValores)
+    }
+  }, [idsCardsFiltrados, abaAtiva])
 
   // ==========================================
   // HANDLERS DE CARDS
@@ -1556,197 +1621,53 @@ export default function Fluxo() {
   // o modal rápido de edição fica acessível só pelo menu 3 pontinhos (Editar Modal Rápido).
   function renderKanbanCard(card: CardType) {
     const familiaDoCard = familias.find((f) => f.id === card.grupo_familia)
-    const contato = getContatoDoCard(card)
-    const onEdit = () => abrirModalEditarCard(card)
+    const contato = getContatoDoCard(card) || encontrarContatoDoCard(card, contatos)
+    const colunaAtual = colunasPorChave.get(card.status as string) || null
+    const valoresCard = valoresCamposPorCard[card.id] || []
+    const totalCardsFamilia = familiaDoCard
+      ? cardsNormalizados.filter((c) => c.grupo_familia === familiaDoCard.id).length
+      : 0
 
     return (
-      <div
+      <CardKanbanDiamond
         key={card.id}
-        draggable
+        cardId={card.id}
+        titulo={card.titulo}
+        descricao={card.descricao}
+        proximoPasso={card.proximo_passo}
+        prioridade={card.prioridade}
+        dataPrazo={card.data_prazo}
+        statusOrfao={Boolean((card as unknown as { _statusOrfao?: boolean })._statusOrfao)}
+        criadoPorIa={card.criado_por_ia}
+        cardPai={card.card_pai}
+        projeto={card.expand?.projeto || projetos.find((p) => p.id === card.projeto) || null}
+        contato={contato}
+        familia={familiaDoCard || card.expand?.grupo_familia || null}
+        colunaAtual={colunaAtual}
+        colunasParaMover={colunasOrdenadas.filter((col) => col.chave !== card.status)}
+        valorMonetario={valorMonetarioDoCard(valoresCard, idsCamposMoeda)}
+        totalCamposPreenchidos={contarValoresPreenchidos(valoresCard)}
+        totalCardsFamilia={totalCardsFamilia}
+        temAnexos={false}
+        temAnotacoes={false}
         onDragStart={(e) => handleDragStart(e, card.id)}
-        onClick={() => navigate(`/card/${card.id}`)}
-        className="group relative bg-white rounded-xl border border-[#E5E1D8] p-3.5 shadow-2xs hover:shadow-md transition-all cursor-pointer diamond-card-hover"
-      >
-        {/* Linha Superior: Avatar circular à esquerda, título em maiúsculas ao centro, botão abrir + 3 pontinhos à direita */}
-        <div className="flex items-start justify-between gap-2.5">
-          {/* Avatar circular */}
-          {renderCardAvatar(card)}
-
-          {/* Título do Card em MAIÚSCULAS no modelo DiamondGroup */}
-          <div className="flex-1 min-w-0 pt-0.5">
-            <h4 className="text-xs font-bold text-[#1A1D21] uppercase tracking-tight leading-snug line-clamp-2">
-              {card.titulo}
-            </h4>
-            {contato && (
-              <p className="text-[10px] text-[#5B6470] truncate mt-0.5">
-                {contato.nome} {contato.empresa ? `• ${contato.empresa}` : ''}
-              </p>
-            )}
-          </div>
-
-          {/* Ações do Canto Superior Direito: Botão azul de abrir na página própria + Menu "..." */}
-          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-            {/* 3 Ícones de Ação Rápida com styling nítido e botões destacados */}
-            <button
-              type="button"
-              onClick={() => handleAbrirCardFluxo(card)}
-              title="Fluxos: Ver fluxo vinculado, revincular ou inativar"
-              className="w-7 h-7 rounded-lg bg-[#F4F2EE] hover:bg-[#0F766E]/15 border border-[#E5E1D8] flex items-center justify-center text-[#0F766E] hover:text-[#0D5C56] transition-colors shadow-2xs"
-            >
-              <GitBranch className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleAbrirCardArquivos(card)}
-              title="Arquivos: Ver anexos vinculados e enviar arquivos"
-              className="w-7 h-7 rounded-lg bg-[#F4F2EE] hover:bg-blue-100 border border-[#E5E1D8] flex items-center justify-center text-blue-700 hover:text-blue-800 transition-colors shadow-2xs"
-            >
-              <Download className="w-3.5 h-3.5 rotate-180" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleAbrirCardFamilia(card)}
-              title="Família: Duplicar com destino, criar filho, vincular pai, copiar url"
-              className="w-7 h-7 rounded-lg bg-[#F4F2EE] hover:bg-purple-100 border border-[#E5E1D8] flex items-center justify-center text-purple-700 hover:text-purple-800 transition-colors shadow-2xs"
-            >
-              <Users className="w-3.5 h-3.5" />
-            </button>
-
-            {/* Botão de abrir/página do card (quadrado azul com seta) */}
-            <button
-              type="button"
-              onClick={() => navigate(`/card/${card.id}`)}
-              title="Abrir página completa do card (/card/:id)"
-              className="w-7 h-7 rounded-lg bg-[#2563EB] hover:bg-[#1D4ED8] text-white flex items-center justify-center shadow-xs transition-all"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-            </button>
-
-            {/* Menu 3 pontinhos com ações completas */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  aria-label="Opções do card"
-                  className="w-6 h-6 rounded flex items-center justify-center text-[#5B6470] hover:text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors"
-                >
-                  <MoreVertical className="w-3.5 h-3.5" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="text-xs">
-                <DropdownMenuItem onClick={() => navigate(`/card/${card.id}`)}>
-                  <ExternalLink className="w-3.5 h-3.5 mr-2 text-[#2563EB]" />
-                  Abrir Página do Card
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={onEdit}>
-                  <Edit2 className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
-                  Editar Modal Rápido
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => handleAbrirCardFluxo(card)}>
-                  <GitBranch className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
-                  Fluxos (Revincular / Status)
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleAbrirCardArquivos(card)}>
-                  <Download className="w-3.5 h-3.5 mr-2 rotate-180 text-blue-600" />
-                  Arquivos Anexados
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleAbrirCardFamilia(card)}>
-                  <Users className="w-3.5 h-3.5 mr-2 text-purple-600" />
-                  Família & Relações...
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {/* Mover de coluna */}
-                {colunasOrdenadas.map((col) => {
-                  if (col.chave === card.status) return null
-                  return (
-                    <DropdownMenuItem
-                      key={col.id || col.chave}
-                      onClick={() => handleMudarStatusCard(card.id, col.chave)}
-                    >
-                      <ArrowRight className="w-3.5 h-3.5 mr-2 text-[#5B6470]" />
-                      Mover para {col.titulo}
-                    </DropdownMenuItem>
-                  )
-                })}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => {
-                    const escopoNome = card.expand?.projeto?.nome || card.titulo
-                    setModalConvidarEscopoPadrao({
-                      tipo: card.projeto ? 'projeto' : card.fluxo_id ? 'fluxo' : 'geral',
-                      id: card.projeto || card.fluxo_id || '',
-                      nome: escopoNome,
-                    })
-                    setModalConvidarEquipeOpen(true)
-                  }}
-                  className="text-[#0F766E]"
-                >
-                  <Users className="w-3.5 h-3.5 mr-2 text-[#0F766E]" />
-                  Convidar Colaborador
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => handleExcluirCard(card.id)}
-                  className="text-red-600"
-                >
-                  <Trash2 className="w-3.5 h-3.5 mr-2" />
-                  Excluir Card
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-
-        {/* Detalhes extras preservados: próximo passo, família, projeto, badges */}
-        {card.descricao && (
-          <p className="text-[11px] text-[#5B6470] line-clamp-2 mt-2 leading-relaxed">
-            {card.descricao}
-          </p>
-        )}
-
-        {card.proximo_passo && (
-          <div className="bg-[#F4F2EE]/70 px-2 py-1 rounded-md text-[10px] text-[#0F766E] font-medium flex items-center gap-1.5 mt-2 border border-[#E5E1D8]/50">
-            <ArrowRight className="w-3 h-3 shrink-0" />
-            <span className="line-clamp-1">{card.proximo_passo}</span>
-          </div>
-        )}
-
-        {/* Rodapé do card: prioridade, família, projeto e tags */}
-        <div className="flex flex-wrap items-center gap-1.5 mt-2.5 pt-2 border-t border-[#E5E1D8]/60 text-[10px] text-[#5B6470]">
-          {getPriorityBadge(card.prioridade)}
-
-          {familiaDoCard && (
-            <span
-              className="inline-flex items-center gap-1 font-medium px-1.5 py-0.5 rounded text-[10px]"
-              style={{
-                backgroundColor: `${familiaDoCard.cor || '#3B82F6'}15`,
-                color: familiaDoCard.cor || '#3B82F6',
-              }}
-            >
-              <Layers className="w-2.5 h-2.5" />
-              {familiaDoCard.nome}
-            </span>
-          )}
-
-          {card.expand?.projeto && (
-            <span className="bg-[#F4F2EE] px-1.5 py-0.5 rounded truncate max-w-[110px]">
-              📁 {card.expand.projeto.nome}
-            </span>
-          )}
-
-          {card.criado_por_ia && (
-            <span
-              title="Criado via IA"
-              className="inline-flex items-center gap-0.5 text-[#0F766E] bg-[#0F766E]/10 px-1 py-0.5 rounded ml-auto"
-            >
-              <Sparkles className="w-2.5 h-2.5" />
-              IA
-            </span>
-          )}
-        </div>
-      </div>
+        onAbrirCard={() => navigate(`/card/${card.id}`)}
+        onEditarCard={() => abrirModalEditarCard(card)}
+        onAbrirCardFluxo={() => handleAbrirCardFluxo(card)}
+        onAbrirCardArquivos={() => handleAbrirCardArquivos(card)}
+        onAbrirCardFamilia={() => handleAbrirCardFamilia(card)}
+        onConvidarColaborador={() => {
+          const escopoNome = card.expand?.projeto?.nome || card.titulo
+          setModalConvidarEscopoPadrao({
+            tipo: card.projeto ? 'projeto' : card.fluxo_id ? 'fluxo' : 'geral',
+            id: card.projeto || card.fluxo_id || '',
+            nome: escopoNome,
+          })
+          setModalConvidarEquipeOpen(true)
+        }}
+        onMudarStatus={(col) => handleMudarStatusCard(card.id, col.chave)}
+        onExcluirCard={() => handleExcluirCard(card.id)}
+      />
     )
   }
 
