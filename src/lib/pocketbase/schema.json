@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-12T20:51:18.786Z",
+  "generatedAt": "2026-11-13T12:42:20.385Z",
   "collections": [
     {
       "name": "users",
@@ -600,6 +600,30 @@
           "required": false,
           "system": false,
           "collectionRef": "teses_sementes"
+        },
+        {
+          "name": "semente_parceiro",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "semente_negocio",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "semente_germinada",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "card_germinado_id",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -609,7 +633,8 @@
         "CREATE INDEX `idx_folha_dia_fixado` ON `folha_dia` (fixado)",
         "CREATE INDEX `idx_folha_dia_estado_semente` ON `folha_dia` (estado_semente)",
         "CREATE INDEX `idx_folha_dia_data_revisao_semente` ON `folha_dia` (data_revisao_semente)",
-        "CREATE INDEX `idx_folha_dia_tese_semente` ON `folha_dia` (tese_semente)"
+        "CREATE INDEX `idx_folha_dia_tese_semente` ON `folha_dia` (tese_semente)",
+        "CREATE INDEX `idx_folha_dia_germinada` ON `folha_dia` (semente_germinada)"
       ]
     },
     {

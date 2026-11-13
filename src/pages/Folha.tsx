@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { diamondApi } from '@/services/diamondApi'
 import { useRealtime } from '@/hooks/use-realtime'
 import { useNavegacao } from '@/contexts/NavegacaoContext'
@@ -93,7 +93,11 @@ import {
   type FolhaFiltrosState,
 } from '@/components/folha/PainelBuscaFolha'
 import { SementesAgrupadasPorTese } from '@/components/folha/SementesAgrupadasPorTese'
-import type { TeseSemente, LimitesConsumoConta } from '@/types'
+import ModalGerminarSemente from '@/components/folha/ModalGerminarSemente'
+import type { DestinoMoverCategoria, DestinoMoverFluxo } from '@/components/fluxo/CardKanbanDiamond'
+import type { DestinoCardFluxo } from '@/components/chat/ModalCriarCardMensagem'
+import { listarContatosPaginado, type SugestaoContato } from '@/services/contatosSugestao'
+import type { TeseSemente, LimitesConsumoConta, Card } from '@/types'
 import { BannerConsumoPlano } from '@/components/comercial/BannerConsumoPlano'
 import { ModalDesbloqueioPlano } from '@/components/comercial/ModalDesbloqueioPlano'
 import { useAuth } from '@/hooks/use-auth'
@@ -198,6 +202,7 @@ const rotuloDataAssunto = (chave: string): string => {
 
 export default function Folha() {
   const { toast } = useToast()
+  const navigate = useNavigate()
   const {
     fluxos: fluxosGlobal,
     categorias: categoriasGlobal,
@@ -305,7 +310,38 @@ export default function Folha() {
   })
   const [sementeObservacao, setSementeObservacao] = useState('')
   const [sementeTeseEscolhida, setSementeTeseEscolhida] = useState<string>('none')
+  const [sementeParceiro, setSementeParceiro] = useState('')
+  const [sementeNegocio, setSementeNegocio] = useState('')
   const [salvandoSemente, setSalvandoSemente] = useState(false)
+
+  // Germinar semente → card de demanda (cascata categoria → fluxo → coluna)
+  const [sementeParaGerminar, setSementeParaGerminar] = useState<FolhaDia | null>(null)
+  const [modalGerminarOpen, setModalGerminarOpen] = useState(false)
+  const [germinando, setGerminando] = useState(false)
+
+  // Filtros extras do Cofre (por parceiro e por negócio)
+  const [parceiroFiltro, setParceiroFiltro] = useState<string>('todos')
+  const [negocioFiltro, setNegocioFiltro] = useState<string>('todos')
+
+  // Sugestões de contatos (campo Parceiro) — busca paginada no servidor
+  const [sugestoesContato, setSugestoesContato] = useState<SugestaoContato[]>([])
+  const [buscandoContatos, setBuscandoContatos] = useState(false)
+  useEffect(() => {
+    if (!modalSementeOpen) return
+    let vivo = true
+    const t = setTimeout(async () => {
+      setBuscandoContatos(true)
+      const res = await listarContatosPaginado(sementeParceiro, 1, 20)
+      if (vivo) {
+        setSugestoesContato(res.itens)
+        setBuscandoContatos(false)
+      }
+    }, 300)
+    return () => {
+      vivo = false
+      clearTimeout(t)
+    }
+  }, [sementeParceiro, modalSementeOpen])
   const [mostrarCriarTeseModal, setMostrarCriarTeseModal] = useState(false)
   const [novaTeseNomeModal, setNovaTeseNomeModal] = useState('')
   const [novaTeseDescModal, setNovaTeseDescModal] = useState('')
@@ -315,6 +351,9 @@ export default function Folha() {
     setItemParaSemente(item)
     setSementeCondicao(item.condicao_reativacao || '')
     setSementeTeseEscolhida(item.tese_semente || 'none')
+    setSementeParceiro(item.semente_parceiro || '')
+    setSementeNegocio(item.semente_negocio || '')
+    setSugestoesContato([])
     if (item.data_revisao_semente) {
       setSementeDataRevisao(item.data_revisao_semente.slice(0, 10))
     } else {
@@ -336,6 +375,8 @@ export default function Folha() {
         data_revisao_semente: sementeDataRevisao,
         observacao: sementeObservacao,
         tese_semente: teseIdFinal,
+        semente_parceiro: sementeParceiro,
+        semente_negocio: sementeNegocio,
       })
 
       setFolhaItems((prev) =>
@@ -347,6 +388,8 @@ export default function Folha() {
                 estado_semente: true,
                 arquivado: true,
                 tese_semente: teseIdFinal,
+                semente_parceiro: sementeParceiro.trim(),
+                semente_negocio: sementeNegocio.trim(),
               }
             : i,
         ),
@@ -389,6 +432,67 @@ export default function Folha() {
         description: (err as Error)?.message,
         variant: 'destructive',
       })
+    }
+  }
+
+  /**
+   * Germinar: cria o card de demanda na cascata escolhida (fluxo_id + status
+   * gravados JUNTOS — nunca card órfão) e marca a semente como germinada,
+   * guardando o id do card criado para o link /card/:id.
+   */
+  const handleConfirmarGerminar = async (
+    titulo: string,
+    descricao: string,
+    destino: DestinoCardFluxo,
+  ) => {
+    if (!sementeParaGerminar) return
+    setGerminando(true)
+    try {
+      const payload: Record<string, unknown> = {
+        titulo,
+        descricao,
+        fluxo_id: destino.fluxoId,
+        status: destino.colunaChave, // coluna válida gravada JUNTO com fluxo_id
+      }
+      if (sementeParaGerminar.semente_parceiro) {
+        payload.parceiro = sementeParaGerminar.semente_parceiro
+      }
+      if (sementeParaGerminar.semente_negocio) {
+        payload.negocio_nome = sementeParaGerminar.semente_negocio
+      }
+      const card = await diamondApi.createCard(payload as Partial<Card>)
+      const cardId = (card as { id?: string })?.id || ''
+      if (!cardId) throw new Error('Card criado sem id retornado.')
+      await diamondApi.updateFolhaDia(sementeParaGerminar.id, {
+        semente_germinada: true,
+        card_germinado_id: cardId,
+      })
+      setFolhaItems((prev) =>
+        prev.map((i) =>
+          i.id === sementeParaGerminar.id
+            ? { ...i, semente_germinada: true, card_germinado_id: cardId }
+            : i,
+        ),
+      )
+      toast({
+        title: 'Semente germinou! 🌱',
+        description: `Card "${titulo}" criado em "${destino.colunaTitulo}".`,
+        action: (
+          <Button size="sm" variant="outline" onClick={() => navigate(`/card/${cardId}`)}>
+            Abrir card
+          </Button>
+        ),
+      })
+      setModalGerminarOpen(false)
+      setSementeParaGerminar(null)
+    } catch (err) {
+      toast({
+        title: 'Erro ao germinar semente',
+        description: (err as Error)?.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setGerminando(false)
     }
   }
 
@@ -1683,6 +1787,14 @@ export default function Folha() {
           const temFluxo = Boolean(item.fluxo && item.fluxo !== 'none')
           if (filtrosFolha.estadoFluxo === 'com_fluxo' && !temFluxo) return false
           if (filtrosFolha.estadoFluxo === 'sem_fluxo' && temFluxo) return false
+        }
+
+        // 11. Cofre: filtro por parceiro e por negócio (só na aba Sementes)
+        if (filtrosFolha.estadoArquivo === 'sementes') {
+          if (parceiroFiltro !== 'todos' && (item.semente_parceiro || '') !== parceiroFiltro)
+            return false
+          if (negocioFiltro !== 'todos' && (item.semente_negocio || '') !== negocioFiltro)
+            return false
         }
 
         return true

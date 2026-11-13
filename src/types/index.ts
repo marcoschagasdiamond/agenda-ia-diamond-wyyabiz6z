@@ -328,6 +328,14 @@ export interface FolhaDia {
   reativada_em?: string
   semente_origem_id?: string
   tese_semente?: string
+  /** Parceiro da semente (texto livre, sugestão de contatos existentes). */
+  semente_parceiro?: string
+  /** Negócio da semente (texto livre ou negócio/projeto existente). */
+  semente_negocio?: string
+  /** Marcada pelo botão Germinar — sai do cofre ativo. */
+  semente_germinada?: boolean
+  /** Id do card de demanda criado ao germinar (link /card/:id). */
+  card_germinado_id?: string
   created: string
   updated: string
   expand?: {
