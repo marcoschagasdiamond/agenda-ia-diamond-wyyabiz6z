@@ -89,6 +89,15 @@ interface PainelBuscaFolhaProps {
   fluxos: FluxoKanban[]
   categorias: CategoriaFluxo[]
   marcosTimeline: Array<{ nome: string }>
+  /** Cofre: filtro por parceiro (valor salvo em semente_parceiro). */
+  parceiroFiltro?: string
+  onParceiroFiltroChange?: (valor: string) => void
+  /** Cofre: filtro por negócio (valor salvo em semente_negocio). */
+  negocioFiltro?: string
+  onNegocioFiltroChange?: (valor: string) => void
+  /** Opções distintas existentes nas sementes (para os selects do cofre). */
+  parceirosDisponiveis?: string[]
+  negociosDisponiveis?: string[]
 }
 
 export const PainelBuscaFolha: React.FC<PainelBuscaFolhaProps> = ({
@@ -109,7 +118,14 @@ export const PainelBuscaFolha: React.FC<PainelBuscaFolhaProps> = ({
   fluxos,
   categorias,
   marcosTimeline,
+  parceiroFiltro = 'todos',
+  onParceiroFiltroChange,
+  negocioFiltro = 'todos',
+  onNegocioFiltroChange,
+  parceirosDisponiveis = [],
+  negociosDisponiveis = [],
 }) => {
+>>>>>>>
   const [expandido, setExpandido] = useState(false)
 
   const atualizar = <K extends keyof FolhaFiltrosState>(chave: K, valor: FolhaFiltrosState[K]) => {

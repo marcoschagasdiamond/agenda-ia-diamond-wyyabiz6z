@@ -97,7 +97,7 @@ import ModalGerminarSemente from '@/components/folha/ModalGerminarSemente'
 import type { DestinoMoverCategoria, DestinoMoverFluxo } from '@/components/fluxo/CardKanbanDiamond'
 import type { DestinoCardFluxo } from '@/components/chat/ModalCriarCardMensagem'
 import { listarContatosPaginado, type SugestaoContato } from '@/services/contatosSugestao'
-import type { TeseSemente, LimitesConsumoConta, Card } from '@/types'
+import type { TeseSemente, LimitesConsumoConta, Card as CardTipo } from '@/types'
 import { BannerConsumoPlano } from '@/components/comercial/BannerConsumoPlano'
 import { ModalDesbloqueioPlano } from '@/components/comercial/ModalDesbloqueioPlano'
 import { useAuth } from '@/hooks/use-auth'
@@ -312,6 +312,8 @@ export default function Folha() {
   const [sementeTeseEscolhida, setSementeTeseEscolhida] = useState<string>('none')
   const [sementeParceiro, setSementeParceiro] = useState('')
   const [sementeNegocio, setSementeNegocio] = useState('')
+  /** Controle do Select de Negócio: id do negócio, '__livre__' (texto) ou 'none'. */
+  const [sementeNegocioSelecionada, setSementeNegocioSelecionada] = useState<string>('none')
   const [salvandoSemente, setSalvandoSemente] = useState(false)
 
   // Germinar semente → card de demanda (cascata categoria → fluxo → coluna)
@@ -353,6 +355,12 @@ export default function Folha() {
     setSementeTeseEscolhida(item.tese_semente || 'none')
     setSementeParceiro(item.semente_parceiro || '')
     setSementeNegocio(item.semente_negocio || '')
+    // Preload do Select de Negócio: se o valor salvo é id de negócio existente, seleciona;
+    // caso contrário (texto livre), marca '__livre__' com o texto carregado.
+    const negocioExistente = negocios.find((ng) => ng.id === item.semente_negocio)
+    setSementeNegocioSelecionada(
+      item.semente_negocio ? (negocioExistente ? negocioExistente.id : '__livre__') : 'none',
+    )
     setSugestoesContato([])
     if (item.data_revisao_semente) {
       setSementeDataRevisao(item.data_revisao_semente.slice(0, 10))
@@ -460,7 +468,7 @@ export default function Folha() {
       if (sementeParaGerminar.semente_negocio) {
         payload.negocio_nome = sementeParaGerminar.semente_negocio
       }
-      const card = await diamondApi.createCard(payload as Partial<Card>)
+      const card = await diamondApi.createCard(payload as Partial<CardTipo>)
       const cardId = (card as { id?: string })?.id || ''
       if (!cardId) throw new Error('Card criado sem id retornado.')
       await diamondApi.updateFolhaDia(sementeParaGerminar.id, {
@@ -4273,6 +4281,104 @@ export default function Folha() {
               )}
               <p className="text-[10px] text-[#5B6470] mt-1">
                 Agrupa esta semente dentro da tese de mercado no Cofre.
+              </p>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold text-[#1A1D21] block mb-1">
+                Parceiro
+              </label>
+              <Input
+                placeholder="Nome do parceiro (busca contatos existentes)..."
+                value={sementeParceiro}
+                onChange={(e) => setSementeParceiro(e.target.value)}
+                className="text-xs h-9 bg-white border-[#E5E1D8]"
+              />
+              {sementeParceiro.trim().length > 0 && (
+                <div className="mt-1 max-h-32 overflow-y-auto rounded-lg border border-[#E5E1D8] bg-white">
+                  {buscandoContatos && sugestoesContato.length === 0 ? (
+                    <div className="flex items-center gap-1.5 p-2 text-[10px] text-[#5B6470]">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Buscando contatos...
+                    </div>
+                  ) : sugestoesContato.length === 0 ? (
+                    <div className="p-2 text-[10px] text-[#5B6470]">
+                      Nenhum contato encontrado — o texto digitado será salvo como parceiro livre.
+                    </div>
+                  ) : (
+                    sugestoesContato.map((sc) => (
+                      <button
+                        key={sc.id}
+                        type="button"
+                        onClick={() => {
+                          setSementeParceiro(sc.nome)
+                          setSugestoesContato([])
+                        }}
+                        className="w-full text-left px-2.5 py-1.5 text-[11px] text-[#1A1D21] hover:bg-emerald-50 flex items-center gap-1.5"
+                      >
+                        <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-[9px] font-bold shrink-0">
+                          {sc.nome
+                            .split(' ')
+                            .filter(Boolean)
+                            .slice(0, 2)
+                            .map((p) => p[0]?.toUpperCase())
+                            .join('')}
+                        </span>
+                        <span className="truncate">{sc.nome}</span>
+                        {sc.empresa ? (
+                          <span className="text-[9px] text-[#5B6470] truncate">· {sc.empresa}</span>
+                        ) : null}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+              <p className="text-[10px] text-[#5B6470] mt-1">
+                Texto livre — sugere contatos existentes para agilizar.
+              </p>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold text-[#1A1D21] block mb-1">Negócio</label>
+              <Select
+                value={sementeNegocioSelecionada}
+                onValueChange={(val) => {
+                  setSementeNegocioSelecionada(val)
+                  if (val === 'none') {
+                    setSementeNegocio('')
+                  } else if (val === '__livre__') {
+                    setSementeNegocio('')
+                  } else {
+                    const ng = negocios.find((n) => n.id === val)
+                    setSementeNegocio(ng?.nome || val)
+                  }
+                }}
+              >
+                <SelectTrigger className="text-xs h-9 bg-white border-[#E5E1D8]">
+                  <SelectValue placeholder="Selecione um negócio..." />
+                </SelectTrigger>
+                <SelectContent className="max-h-56">
+                  <SelectItem value="none">
+                    <span className="text-stone-500">Sem negócio</span>
+                  </SelectItem>
+                  {negocios.map((ng) => (
+                    <SelectItem key={ng.id} value={ng.id}>
+                      {ng.nome}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="__livre__">Outro (digitar)</SelectItem>
+                </SelectContent>
+              </Select>
+              {sementeNegocioSelecionada === '__livre__' && (
+                <Input
+                  placeholder="Nome do negócio (texto livre)..."
+                  value={sementeNegocio}
+                  onChange={(e) => setSementeNegocio(e.target.value)}
+                  className="text-xs h-9 bg-white border-[#E5E1D8] mt-1.5"
+                />
+              )}
+              <p className="text-[10px] text-[#5B6470] mt-1">
+                Escolha um negócio existente ou digite um novo — será salvo no cofre.
               </p>
             </div>
 
