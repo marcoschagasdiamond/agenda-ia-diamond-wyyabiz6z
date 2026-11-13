@@ -295,7 +295,7 @@ export default function PainelDetalheConfig({
                           className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border border-[#E5E1D8] bg-white hover:bg-[#F4F2EE] transition-colors text-left"
                         >
                           <span className="text-xs text-[#1A1D21] truncate">
-                            {s.assunto || 'Sem assunto'}
+                            {s.registro || 'Sem registro'}
                           </span>
                           <ChevronRight className="w-3.5 h-3.5 text-[#5B6470] shrink-0" />
                         </button>
@@ -318,7 +318,7 @@ export default function PainelDetalheConfig({
                         className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border border-[#E5E1D8] bg-white hover:bg-[#F4F2EE] transition-colors text-left"
                       >
                         <span className="text-xs text-[#1A1D21] truncate">
-                          {s.assunto || 'Sem assunto'}
+                          {s.registro || 'Sem registro'}
                         </span>
                         <ChevronRight className="w-3.5 h-3.5 text-[#5B6470] shrink-0" />
                       </button>
