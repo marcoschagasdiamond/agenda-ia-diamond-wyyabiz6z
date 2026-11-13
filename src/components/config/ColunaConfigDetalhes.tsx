@@ -95,8 +95,10 @@ export default function PainelDetalheConfig({
 
   const info = TITULOS[tipo]
 
-  const abrirCofre = () => {
-    irPara('/folha?estado=sementes')
+  const abrirCofre = (teseId?: string) => {
+    const p = new URLSearchParams({ estado: 'sementes' })
+    if (teseId) p.set('tese', teseId)
+    irPara(`/folha?${p.toString()}`)
   }
 
   const abrirSemente = (item: FolhaDia) => {
@@ -146,7 +148,9 @@ export default function PainelDetalheConfig({
             <button
               key={c.id}
               type="button"
-              onClick={() => irPara('/config?aba=central&gestao=campos_personalizados')}
+              onClick={() =>
+                irPara(`/config?aba=central&gestao=campos_personalizados&campo_id=${c.id}`)
+              }
               className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg border border-[#E5E1D8] bg-white hover:bg-[#F4F2EE] transition-colors text-left"
             >
               <div className="min-w-0">
@@ -190,7 +194,7 @@ export default function PainelDetalheConfig({
             <button
               key={l.id}
               type="button"
-              onClick={() => irPara('/config?aba=central&gestao=listas_selecao')}
+              onClick={() => irPara(`/config?aba=central&gestao=listas_selecao&lista_id=${l.id}`)}
               className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg border border-[#E5E1D8] bg-white hover:bg-[#F4F2EE] transition-colors text-left"
             >
               <div className="min-w-0">
@@ -229,7 +233,7 @@ export default function PainelDetalheConfig({
             <>
               <button
                 type="button"
-                onClick={abrirCofre}
+                onClick={() => abrirCofre()}
                 className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg border border-emerald-200 bg-emerald-50/60 hover:bg-emerald-50 transition-colors text-left"
               >
                 <div className="flex items-center gap-2 min-w-0">
@@ -245,7 +249,7 @@ export default function PainelDetalheConfig({
                 <button
                   key={t.id}
                   type="button"
-                  onClick={abrirCofre}
+                  onClick={() => abrirCofre(t.id)}
                   className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg border border-[#E5E1D8] bg-white hover:bg-[#F4F2EE] transition-colors text-left"
                 >
                   <span className="text-xs font-semibold text-[#1A1D21] truncate">{t.nome}</span>
