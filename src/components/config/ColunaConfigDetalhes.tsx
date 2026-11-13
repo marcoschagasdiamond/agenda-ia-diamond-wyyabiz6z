@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, ChevronRight, Loader2, Mail, Sprout, Users } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -264,7 +264,7 @@ export default function PainelDetalheConfig({
 
               <button
                 type="button"
-                onClick={abrirCofre}
+                onClick={() => abrirCofre()}
                 className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg border border-[#E5E1D8] bg-white hover:bg-[#F4F2EE] transition-colors text-left"
               >
                 <span className="text-xs font-medium text-[#5B6470] truncate">Sem tese</span>

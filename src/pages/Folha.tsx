@@ -655,6 +655,21 @@ export default function Folha() {
 
   const [searchParams] = useSearchParams()
   const destaqueParam = searchParams.get('destaque')
+  const estadoParam = searchParams.get('estado')
+  const teseParam = searchParams.get('tese')
+
+  // Leitura de estado=sementes vinda da URL (ex.: clique numa tese/semente na 2ª coluna das
+  // Configurações → /folha?estado=sementes&destaque=<id>): ativa o filtro do Cofre por Tese.
+  useEffect(() => {
+    if (estadoParam === 'sementes') {
+      setFiltrosFolha((prev) => ({ ...prev, estadoArquivo: 'sementes' }))
+      if (teseParam) {
+        setTeseFiltroId(teseParam)
+      } else {
+        setTeseFiltroId('todas')
+      }
+    }
+  }, [estadoParam, teseParam])
 
   // Rolagem suave até o item em destaque se fornecido na URL
   useEffect(() => {
