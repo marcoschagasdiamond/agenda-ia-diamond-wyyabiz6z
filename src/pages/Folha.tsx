@@ -761,6 +761,36 @@ export default function Folha() {
     }
   })
 
+  // Colunas/fases dos fluxos (para a cascata do Germinar: categoria → fluxo → coluna)
+  const [colunas, setColunas] = useState<ColunaFluxo[]>([])
+  useEffect(() => {
+    diamondApi
+      .listColunasFluxo()
+      .then(setColunas)
+      .catch(() => setColunas([]))
+  }, [])
+
+  // Destinos em cascata para o modal Germinar (mesmo padrão de montarDestinosMover do /fluxo)
+  const destinosGerminar = useMemo<DestinoMoverCategoria[]>(() => {
+    return categorias
+      .map((cat) => ({
+        id: cat.id,
+        nome: cat.nome,
+        fluxos: fluxos
+          .filter((fl) => fl.categoria === cat.id)
+          .sort((a, b) => (a.ordem || 0) - (b.ordem || 0))
+          .map((fl) => ({
+            id: fl.id,
+            nome: fl.nome,
+            colunas: colunas
+              .filter((c) => c.fluxo_id === fl.id)
+              .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)),
+          }))
+          .filter((fl) => fl.colunas.length > 0),
+      }))
+      .filter((cat) => cat.fluxos.length > 0)
+  }, [categorias, fluxos, colunas])
+
   // Sincroniza fluxos e categorias locais com o NavegacaoContext
   useEffect(() => {
     if (fluxosGlobal && fluxosGlobal.length > 0) {
@@ -1709,7 +1739,9 @@ export default function Folha() {
         if (filtrosFolha.estadoArquivo === 'ativos') {
           if (isSemente || Boolean(item.arquivado)) return false
         } else if (filtrosFolha.estadoArquivo === 'sementes') {
+          // Semente germinada sai do cofre ativo (continua visível com selo quando germinada)
           if (!isSemente) return false
+          if (item.semente_germinada) return false
         } else if (filtrosFolha.estadoArquivo === 'arquivados') {
           if (!isArquivado || isSemente) return false
         }
@@ -1824,7 +1856,28 @@ export default function Folha() {
           return dB.localeCompare(dA)
         }
       })
-  }, [folhaItems, filtrosFolha, demandasCadastradas])
+  }, [folhaItems, filtrosFolha, demandasCadastradas, parceiroFiltro, negocioFiltro])
+
+  // Cofre: opções distintas de parceiro e negócio presentes nas sementes (alimenta os selects)
+  const parceirosDisponiveis = useMemo(() => {
+    const nomes = new Set<string>()
+    folhaItems.forEach((i) => {
+      if (Boolean(i.estado_semente) && (i.semente_parceiro || '').trim()) {
+        nomes.add(i.semente_parceiro!.trim())
+      }
+    })
+    return Array.from(nomes).sort((a, b) => a.localeCompare(b))
+  }, [folhaItems])
+
+  const negociosDisponiveis = useMemo(() => {
+    const nomes = new Set<string>()
+    folhaItems.forEach((i) => {
+      if (Boolean(i.estado_semente) && (i.semente_negocio || '').trim()) {
+        nomes.add(i.semente_negocio!.trim())
+      }
+    })
+    return Array.from(nomes).sort((a, b) => a.localeCompare(b))
+  }, [folhaItems])
 
   // Agrupamento por data (Hoje, Ontem, datas anteriores) — apenas apresentação da lista já filtrada
   const itensAgrupadosPorData = useMemo(() => {
@@ -2629,6 +2682,12 @@ export default function Folha() {
         fluxos={fluxos}
         categorias={categorias}
         marcosTimeline={marcosTimeline}
+        parceiroFiltro={parceiroFiltro}
+        onParceiroFiltroChange={setParceiroFiltro}
+        negocioFiltro={negocioFiltro}
+        onNegocioFiltroChange={setNegocioFiltro}
+        parceirosDisponiveis={parceirosDisponiveis}
+        negociosDisponiveis={negociosDisponiveis}
       />
 
       {/* Listagem de Assuntos na Folha */}

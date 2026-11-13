@@ -125,7 +125,6 @@ export const PainelBuscaFolha: React.FC<PainelBuscaFolhaProps> = ({
   parceirosDisponiveis = [],
   negociosDisponiveis = [],
 }) => {
->>>>>>>
   const [expandido, setExpandido] = useState(false)
 
   const atualizar = <K extends keyof FolhaFiltrosState>(chave: K, valor: FolhaFiltrosState[K]) => {
@@ -154,6 +153,8 @@ export const PainelBuscaFolha: React.FC<PainelBuscaFolhaProps> = ({
     filtros.estadoFluxo !== 'todos',
     filtros.estadoArquivo !== 'ativos',
     filtros.ordenacao !== 'recentes',
+    parceiroFiltro !== 'todos',
+    negocioFiltro !== 'todos',
   ].filter(Boolean).length
 
   const contagensPorTeseCalculada = React.useMemo(() => {
@@ -461,6 +462,54 @@ export const PainelBuscaFolha: React.FC<PainelBuscaFolhaProps> = ({
                   <SelectItem value="todos">Qualquer estado</SelectItem>
                   <SelectItem value="com_fluxo">Com fluxo vinculado</SelectItem>
                   <SelectItem value="sem_fluxo">Sem fluxo vinculado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Cofre: filtro por Parceiro da semente */}
+            <div>
+              <label className="text-[11px] font-semibold text-[#5B6470] block mb-1">
+                Cofre: Parceiro da Semente
+              </label>
+              <Select
+                value={parceiroFiltro}
+                onValueChange={(v) => onParceiroFiltroChange && onParceiroFiltroChange(v)}
+                disabled={parceirosDisponiveis.length === 0}
+              >
+                <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
+                  <SelectValue placeholder="Todos os parceiros" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os parceiros</SelectItem>
+                  {parceirosDisponiveis.map((nome) => (
+                    <SelectItem key={nome} value={nome}>
+                      {nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Cofre: filtro por Negócio da semente */}
+            <div>
+              <label className="text-[11px] font-semibold text-[#5B6470] block mb-1">
+                Cofre: Negócio da Semente
+              </label>
+              <Select
+                value={negocioFiltro}
+                onValueChange={(v) => onNegocioFiltroChange && onNegocioFiltroChange(v)}
+                disabled={negociosDisponiveis.length === 0}
+              >
+                <SelectTrigger className="text-xs h-8 bg-white border-[#E5E1D8]">
+                  <SelectValue placeholder="Todos os negócios" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os negócios</SelectItem>
+                  {negociosDisponiveis.map((nome) => (
+                    <SelectItem key={nome} value={nome}>
+                      {nome}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
