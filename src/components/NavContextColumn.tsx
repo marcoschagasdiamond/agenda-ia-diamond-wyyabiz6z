@@ -4,6 +4,9 @@ import { useNavegacao } from '@/contexts/NavegacaoContext'
 import { useAuth } from '@/hooks/use-auth'
 import NavColunaMaster from '@/components/master/NavColunaMaster'
 import ColunaChat from '@/components/chat/ColunaChat'
+import PainelDetalheConfig, {
+  type DetalheConfigTipo,
+} from '@/components/config/ColunaConfigDetalhes'
 import {
   ChevronRight,
   ChevronDown,
@@ -42,6 +45,10 @@ import {
   Brain,
   MessageSquare,
   Bell,
+  SlidersHorizontal,
+  ListChecks,
+  Sprout,
+  Mail,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -106,6 +113,9 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
 
   // Mini-calendário de navegação na segunda coluna
   const [miniCalMesOffset, setMiniCalMesOffset] = useState<number>(0)
+
+  // Detalhe aberto na segunda coluna de Configurações (modelo DiamondGroup)
+  const [detalheConfig, setDetalheConfig] = useState<DetalheConfigTipo | null>(null)
 
   // Filtro de busca local dentro da segunda coluna
   const [buscaSecundaria, setBuscaSecundaria] = useState('')
@@ -1411,6 +1421,15 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
   // 9. SEGUNDA COLUNA: CONFIGURAÇÕES
   // =========================================================================
   const renderColunaConfig = () => {
+    if (detalheConfig) {
+      return (
+        <PainelDetalheConfig
+          tipo={detalheConfig}
+          onVoltar={() => setDetalheConfig(null)}
+          onCloseMobile={onCloseMobile}
+        />
+      )
+    }
     return (
       <div className="flex flex-col h-full">
         <div className="p-3.5 border-b border-[#E5E1D8] flex items-center justify-between bg-white shrink-0">
@@ -1532,6 +1551,61 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
             >
               <Brain className="w-3.5 h-3.5 text-[#0F766E]" />
               <span>Memória & Conectores</span>
+            </button>
+
+            <button
+              onClick={() => setDetalheConfig('email')}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
+            >
+              <span className="flex items-center gap-2">
+                <Mail className="w-3.5 h-3.5 text-[#0F766E]" />
+                <span>E-mail e Convites</span>
+              </span>
+              <ChevronRight className="w-3 h-3 text-[#5B6470]" />
+            </button>
+
+            <button
+              onClick={() => setDetalheConfig('campos')}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
+            >
+              <span className="flex items-center gap-2">
+                <SlidersHorizontal className="w-3.5 h-3.5 text-[#0F766E]" />
+                <span>Campos Personalizados</span>
+              </span>
+              <ChevronRight className="w-3 h-3 text-[#5B6470]" />
+            </button>
+
+            <button
+              onClick={() => setDetalheConfig('listas')}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
+            >
+              <span className="flex items-center gap-2">
+                <ListChecks className="w-3.5 h-3.5 text-[#0F766E]" />
+                <span>Lista de Seleção</span>
+              </span>
+              <ChevronRight className="w-3 h-3 text-[#5B6470]" />
+            </button>
+
+            <button
+              onClick={() => setDetalheConfig('cofre')}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
+            >
+              <span className="flex items-center gap-2">
+                <Sprout className="w-3.5 h-3.5 text-[#0F766E]" />
+                <span>Cofre por Tese</span>
+              </span>
+              <ChevronRight className="w-3 h-3 text-[#5B6470]" />
+            </button>
+
+            <button
+              onClick={() => setDetalheConfig('sementes')}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
+            >
+              <span className="flex items-center gap-2">
+                <Sprout className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Sementes</span>
+              </span>
+              <ChevronRight className="w-3 h-3 text-[#5B6470]" />
             </button>
           </div>
         </div>
