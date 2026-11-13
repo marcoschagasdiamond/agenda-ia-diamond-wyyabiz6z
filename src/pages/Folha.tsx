@@ -13,6 +13,7 @@ import type {
   CardPrioridade,
   FluxoKanban,
   CategoriaFluxo,
+  ColunaFluxo,
   MarcoTimeline,
   ProjetoTipo,
   Demanda,
@@ -94,7 +95,7 @@ import {
 } from '@/components/folha/PainelBuscaFolha'
 import { SementesAgrupadasPorTese } from '@/components/folha/SementesAgrupadasPorTese'
 import ModalGerminarSemente from '@/components/folha/ModalGerminarSemente'
-import type { DestinoMoverCategoria, DestinoMoverFluxo } from '@/components/fluxo/CardKanbanDiamond'
+import type { DestinoMoverCategoria } from '@/components/fluxo/CardKanbanDiamond'
 import type { DestinoCardFluxo } from '@/components/chat/ModalCriarCardMensagem'
 import { listarContatosPaginado, type SugestaoContato } from '@/services/contatosSugestao'
 import type { TeseSemente, LimitesConsumoConta, Card as CardTipo } from '@/types'
@@ -2786,6 +2787,23 @@ export default function Folha() {
                             </SelectContent>
                           </Select>
 
+                          {/* Botão Germinar: sai do cofre e vira card de demanda no Fluxo */}
+                          {!item.semente_germinada && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => {
+                                setSementeParaGerminar(item)
+                                setModalGerminarOpen(true)
+                              }}
+                              className="h-7 px-2.5 text-[11px] gap-1 bg-[#0F766E] hover:bg-[#0D5C56] text-white font-semibold shadow-2xs"
+                              title="Germinar: criar card de demanda no Fluxo"
+                            >
+                              <Sprout className="w-3.5 h-3.5" />
+                              <span>Germinar 🌱</span>
+                            </Button>
+                          )}
+
                           {/* Botão Reativar direto */}
                           <Button
                             type="button"
@@ -2886,6 +2904,23 @@ export default function Folha() {
                       <p className="text-xs text-[#1A1D21] font-medium leading-relaxed whitespace-pre-wrap break-words">
                         {item.registro}
                       </p>
+
+                      {/* Selo de semente germinada: link para o card criado no Fluxo */}
+                      {item.semente_germinada && item.card_germinado_id && (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/card/${item.card_germinado_id}`)}
+                          className="mt-2.5 inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#0F766E] bg-emerald-50 border border-emerald-300 px-2.5 py-1 rounded-full hover:bg-emerald-100 transition-colors"
+                          title={`Abrir card germinado (${item.card_germinado_id})`}
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>germinou como card</span>
+                          <span className="font-mono text-[10px] truncate max-w-[140px]">
+                            {item.card_germinado_id.slice(0, 8)}
+                          </span>
+                          <ArrowRight className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
 
                     {/* Rodapé do card */}
@@ -3627,6 +3662,32 @@ export default function Folha() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Modal Germinar Semente: cascata categoria → fluxo → coluna; card nunca órfão */}
+      <ModalGerminarSemente
+        aberto={modalGerminarOpen}
+        onFechar={() => {
+          setModalGerminarOpen(false)
+          setSementeParaGerminar(null)
+        }}
+        tituloSemente={sementeParaGerminar?.registro || ''}
+        descricaoSemente={[
+          sementeParaGerminar?.condicao_reativacao
+            ? `Condição de reativação: ${sementeParaGerminar.condicao_reativacao}`
+            : '',
+          sementeParaGerminar?.expand?.projeto?.nome
+            ? `Projeto: ${sementeParaGerminar.expand.projeto.nome}`
+            : '',
+          sementeParaGerminar?.expand?.contato?.nome
+            ? `Contato: ${sementeParaGerminar.expand.contato.nome}`
+            : '',
+        ]
+          .filter(Boolean)
+          .join('\n')}
+        destinos={destinosGerminar}
+        criando={germinando}
+        onConfirmar={handleConfirmarGerminar}
+      />
 
       {/* Modal 1: Criar Novo Projeto Rapidamente */}
       <Dialog open={modalCriarProjetoOpen} onOpenChange={setModalCriarProjetoOpen}>
@@ -4384,9 +4445,6 @@ export default function Folha() {
                             .join('')}
                         </span>
                         <span className="truncate">{sc.nome}</span>
-                        {sc.empresa ? (
-                          <span className="text-[9px] text-[#5B6470] truncate">· {sc.empresa}</span>
-                        ) : null}
                       </button>
                     ))
                   )}

@@ -334,6 +334,10 @@ export const diamondApi = {
       data_revisao_semente?: string
       observacao?: string
       tese_semente?: string
+      /** Parceiro da semente (texto livre, sugestão de contatos existentes). */
+      semente_parceiro?: string
+      /** Negócio da semente (texto livre ou negócio/projeto existente). */
+      semente_negocio?: string
     },
   ): Promise<FolhaDia> {
     const itemAtual = await pb.collection('folha_dia').getOne<FolhaDia>(id)
@@ -342,7 +346,7 @@ export const diamondApi = {
       registroAtualizado = `${registroAtualizado}\n\n[Observação da Semente]: ${dados.observacao.trim()}`
     }
 
-    const payload: Record<string, any> = {
+    const payload: Record<string, unknown> = {
       estado_semente: true,
       arquivado: true,
       condicao_reativacao: dados.condicao_reativacao || '',
@@ -351,6 +355,12 @@ export const diamondApi = {
     }
     if (dados.tese_semente !== undefined) {
       payload.tese_semente = dados.tese_semente || ''
+    }
+    if (dados.semente_parceiro !== undefined) {
+      payload.semente_parceiro = dados.semente_parceiro.trim()
+    }
+    if (dados.semente_negocio !== undefined) {
+      payload.semente_negocio = dados.semente_negocio.trim()
     }
 
     return await pb.collection('folha_dia').update<FolhaDia>(id, payload, {
