@@ -107,23 +107,19 @@ export default function Config() {
   const { toast } = useToast()
   const [searchParams, setSearchParams] = useSearchParams()
 
+  // Estado DERIVADO da URL (padrão WhatsApp & Sincronização): mudar a query string
+  // troca o conteúdo da área principal sem recarregar, mesmo já estando em /config.
   const abaUrl = searchParams.get('aba') || 'central'
   const subAbaUrl = searchParams.get('gestao') || 'categorias_fluxos'
+  const campoIdUrl = searchParams.get('campo_id') || ''
+  const listaIdUrl = searchParams.get('lista_id') || ''
 
-  const [abaPrincipal, setAbaPrincipal] = useState<string>(
-    abaUrl === 'email'
-      ? 'email'
-      : abaUrl === 'whatsapp'
-        ? 'whatsapp'
-        : abaUrl === 'lembretes'
-          ? 'lembretes'
-          : abaUrl === 'formularios'
-            ? 'formularios'
-            : abaUrl === 'preferencias'
-              ? 'preferencias'
-              : 'central',
+  const abaPrincipal = ['email', 'whatsapp', 'lembretes', 'formularios', 'preferencias'].includes(
+    abaUrl,
   )
-  const [abaGestao, setAbaGestao] = useState<string>(subAbaUrl)
+    ? abaUrl
+    : 'central'
+  const abaGestao = subAbaUrl
 
   // Memória Estratégica
   const [posicionamento, setPosicionamento] = useState(profile?.posicionamento || '')
@@ -131,33 +127,24 @@ export default function Config() {
   const [objetivos, setObjetivos] = useState(profile?.objetivos || '')
   const [salvando, setSalvando] = useState(false)
 
-  // Sincronizar com parâmetros da URL
-  useEffect(() => {
-    const pAba = searchParams.get('aba')
-    const pGestao = searchParams.get('gestao')
-    if (pAba) {
-      setAbaPrincipal(pAba)
-    }
-    if (pGestao) {
-      setAbaGestao(pGestao)
-    }
-  }, [searchParams])
-
+  // Ações só mudam a URL — o estado derivado acima reage e troca o conteúdo.
   const mudarAbaPrincipal = (novaAba: string) => {
-    setAbaPrincipal(novaAba)
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.set('aba', novaAba)
+      if (novaAba !== 'central') next.delete('gestao')
       return next
     })
   }
 
   const mudarAbaGestao = (novaGestao: string) => {
-    setAbaGestao(novaGestao)
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.set('aba', 'central')
       next.set('gestao', novaGestao)
+      // Trocar de gestão limpa o item selecionado (campo/lista) da URL
+      next.delete('campo_id')
+      next.delete('lista_id')
       return next
     })
   }
@@ -165,6 +152,16 @@ export default function Config() {
   const recarregarGlobal = () => {
     recarregarFluxo?.()
     recarregarDadosGlobais?.()
+  }
+
+  // A gestão fecha/seleciona outro item → remove campo_id/lista_id da URL
+  const limparItemSelecionado = () => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('campo_id')
+      next.delete('lista_id')
+      return next
+    })
   }
 
   const handleSalvarPreferencias = async (e: React.FormEvent) => {
@@ -231,7 +228,7 @@ export default function Config() {
               className="data-[state=active]:bg-[#0F766E] data-[state=active]:text-white text-xs px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 font-medium"
             >
               <Mail className="w-3.5 h-3.5" />
-              <span>E-mail & Convites</span>
+              <span>E-mail e Convites</span>
             </TabsTrigger>
 
             <TabsTrigger
@@ -247,7 +244,7 @@ export default function Config() {
               className="data-[state=active]:bg-[#0F766E] data-[state=active]:text-white text-xs px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 font-medium"
             >
               <Bell className="w-3.5 h-3.5" />
-              <span>Lembretes & Avisos</span>
+              <span>Lembretes & Disparos</span>
             </TabsTrigger>
 
             <TabsTrigger
@@ -263,7 +260,7 @@ export default function Config() {
               className="data-[state=active]:bg-[#0F766E] data-[state=active]:text-white text-xs px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 font-medium"
             >
               <Brain className="w-3.5 h-3.5" />
-              <span>Memória Estratégica & Conectores</span>
+              <span>Memória & Conectores</span>
             </TabsTrigger>
           </TabsList>
 
@@ -312,9 +309,8 @@ export default function Config() {
                   }`}
                 >
                   <Users className="w-3.5 h-3.5" />
-                  <span>3. Contatos</span>
+                  <span>5. Equipes & Convites</span>
                 </Button>
-
                 <Button
                   size="sm"
                   variant={abaGestao === 'clientes' ? 'default' : 'ghost'}
@@ -340,7 +336,7 @@ export default function Config() {
                   }`}
                 >
                   <Users className="w-3.5 h-3.5" />
-                  <span>5. Equipes</span>
+                  <span>5. Equipes & Convites</span>
                 </Button>
 
                 <Button
@@ -354,7 +350,7 @@ export default function Config() {
                   }`}
                 >
                   <Tag className="w-3.5 h-3.5" />
-                  <span>6. Tags</span>
+                  <span>6. Tags Globais</span>
                 </Button>
 
                 <Button
@@ -428,7 +424,7 @@ export default function Config() {
                 }`}
               >
                 <ListChecks className="w-3.5 h-3.5" />
-                <span>Listas de Seleção</span>
+                <span>Lista de Seleção</span>
               </Button>
             </div>
 
@@ -447,8 +443,18 @@ export default function Config() {
               )}
               {abaGestao === 'cards' && <GestaoCards onRecarregarGlobal={recarregarGlobal} />}
               {abaGestao === 'folha' && <GestaoFolha onRecarregarGlobal={recarregarGlobal} />}
-              {abaGestao === 'campos_personalizados' && <GestaoCamposPersonalizados />}
-              {abaGestao === 'listas_selecao' && <GestaoListasSelecao />}
+              {abaGestao === 'campos_personalizados' && (
+                <GestaoCamposPersonalizados
+                  campoIdSelecionado={campoIdUrl || undefined}
+                  onFecharItemSelecionado={limparItemSelecionado}
+                />
+              )}
+              {abaGestao === 'listas_selecao' && (
+                <GestaoListasSelecao
+                  listaIdSelecionado={listaIdUrl || undefined}
+                  onFecharItemSelecionado={limparItemSelecionado}
+                />
+              )}
             </div>
           </TabsContent>
 

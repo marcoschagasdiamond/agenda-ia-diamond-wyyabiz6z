@@ -110,8 +110,14 @@ function campoPreview(form: FormCampoState): Parameters<typeof CampoValorBox>[0]
 
 export default function GestaoCamposPersonalizados({
   onRecarregarGlobal,
+  campoIdSelecionado,
+  onFecharItemSelecionado,
 }: {
   onRecarregarGlobal?: () => void
+  /** id do campo vindo da URL (?campo_id=) — clique na 2ª coluna de Configurações */
+  campoIdSelecionado?: string
+  /** remove campo_id da URL quando o item não existe ou o modal é fechado */
+  onFecharItemSelecionado?: () => void
 }) {
   const { user } = useAuth()
   const { toast } = useToast()
@@ -150,6 +156,21 @@ export default function GestaoCamposPersonalizados({
     carregar()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Item vindo da URL: abre direto o modal de edição daquele campo (padrão WhatsApp:
+  // o clique na coluna abre o MESMO conteúdo da página grande). Se o campo não existir
+  // mais, limpa o parâmetro da URL.
+  useEffect(() => {
+    if (!campoIdSelecionado || carregando) return
+    const campo = campos.find((c) => c.id === campoIdSelecionado)
+    if (campo) {
+      setAbaLista(campo.ativo ? 'ativos' : 'inativos')
+      abrirEditarCampo(campo)
+    } else {
+      onFecharItemSelecionado?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campoIdSelecionado, campos, carregando])
 
   const abrirNovoCampo = () => {
     setForm({ ...FORM_PADRAO })
@@ -395,7 +416,13 @@ export default function GestaoCamposPersonalizados({
       <GestaoListasSelecao listas={listas} onRecarregar={carregar} />
 
       {/* ===================== MODAL NOVO/EDITAR CAMPO ===================== */}
-      <Dialog open={modalCampoOpen} onOpenChange={setModalCampoOpen}>
+      <Dialog
+        open={modalCampoOpen}
+        onOpenChange={(o) => {
+          setModalCampoOpen(o)
+          if (!o) onFecharItemSelecionado?.()
+        }}
+      >
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-sm font-bold">

@@ -19,9 +19,15 @@ import type { ListaSelecao } from '@/services/camposPersonalizados'
 export function GestaoListasSelecao({
   listas: listasProp,
   onRecarregar,
+  listaIdSelecionado,
+  onFecharItemSelecionado,
 }: {
   listas?: ListaSelecao[]
   onRecarregar?: () => Promise<void>
+  /** id da lista vindo da URL (?lista_id=) — clique na 2ª coluna de Configurações */
+  listaIdSelecionado?: string
+  /** remove lista_id da URL quando o item não existe ou o modal é fechado */
+  onFecharItemSelecionado?: () => void
 }) {
   const { user } = useAuth()
   const { toast } = useToast()
@@ -41,6 +47,23 @@ export function GestaoListasSelecao({
     if (listasProp === undefined) recarregar()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Item vindo da URL: abre direto o modal de edição daquela lista (padrão WhatsApp:
+  // o clique na coluna abre o MESMO conteúdo da página grande). Se não existir mais, limpa.
+  useEffect(() => {
+    if (!listaIdSelecionado || listas.length === 0) return
+    const lista = listas.find((l) => l.id === listaIdSelecionado)
+    if (lista) {
+      setListaEditando(lista)
+      setNomeLista(lista.nome)
+      setItensLista(Array.isArray(lista.itens) ? [...lista.itens] : [])
+      setNovoItemLista('')
+      setOpen(true)
+    } else {
+      onFecharItemSelecionado?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listaIdSelecionado, listas])
 
   const [open, setOpen] = useState(false)
   const [listaEditando, setListaEditando] = useState<ListaSelecao | null>(null)
@@ -206,7 +229,13 @@ export function GestaoListasSelecao({
       )}
 
       {/* Dialog nova/editar lista */}
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o)
+          if (!o) onFecharItemSelecionado?.()
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="text-sm font-bold">

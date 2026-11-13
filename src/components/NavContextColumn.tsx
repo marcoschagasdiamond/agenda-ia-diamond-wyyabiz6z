@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { useNavegacao } from '@/contexts/NavegacaoContext'
 import { useAuth } from '@/hooks/use-auth'
 import NavColunaMaster from '@/components/master/NavColunaMaster'
@@ -114,8 +114,37 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
   // Mini-calendário de navegação na segunda coluna
   const [miniCalMesOffset, setMiniCalMesOffset] = useState<number>(0)
 
-  // Detalhe aberto na segunda coluna de Configurações (modelo DiamondGroup)
-  const [detalheConfig, setDetalheConfig] = useState<DetalheConfigTipo | null>(null)
+  // Detalhe aberto na segunda coluna de Configurações (modelo DiamondGroup).
+  // Campos Personalizados e Listas de Seleção são DERIVADOS da URL (padrão
+  // WhatsApp & Sincronização): /config?aba=central&gestao=campos_personalizados
+  // mostra a lista de campos na coluna E a gestão na página grande — mesmo
+  // conteúdo dos dois lados. Cofre/Sementes não têm célula na página grande
+  // (abrem a /folha), então seguem com detalhe local.
+  const searchParams = useSearchParams()[0]
+  const gestaoUrl = searchParams.get('gestao')
+  const [detalheLocal, setDetalheLocal] = useState<DetalheConfigTipo | null>(null)
+
+  // Saíndo de /config limpa o detalhe local (cofre/sementes)
+  useEffect(() => {
+    if (!pathname.startsWith('/config')) setDetalheLocal(null)
+  }, [pathname])
+
+  const detalheConfig: DetalheConfigTipo | null = useMemo(() => {
+    if (!pathname.startsWith('/config')) return null
+    if (gestaoUrl === 'campos_personalizados') return 'campos'
+    if (gestaoUrl === 'listas_selecao') return 'listas'
+    return detalheLocal
+  }, [pathname, gestaoUrl, detalheLocal])
+
+  // "← Configurações": se o detalhe veio da URL, volta limpando a query;
+  // se é local (cofre/sementes), só fecha o painel.
+  const fecharDetalheConfig = () => {
+    if (gestaoUrl === 'campos_personalizados' || gestaoUrl === 'listas_selecao') {
+      irPara('/config')
+      return
+    }
+    setDetalheLocal(null)
+  }
 
   // Filtro de busca local dentro da segunda coluna
   const [buscaSecundaria, setBuscaSecundaria] = useState('')
@@ -1425,7 +1454,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
       return (
         <PainelDetalheConfig
           tipo={detalheConfig}
-          onVoltar={() => setDetalheConfig(null)}
+          onVoltar={fecharDetalheConfig}
           onCloseMobile={onCloseMobile}
         />
       )
@@ -1554,7 +1583,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
             </button>
 
             <button
-              onClick={() => setDetalheConfig('email')}
+              onClick={() => irPara('/config?aba=email')}
               className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
             >
               <span className="flex items-center gap-2">
@@ -1565,7 +1594,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
             </button>
 
             <button
-              onClick={() => setDetalheConfig('campos')}
+              onClick={() => irPara('/config?aba=central&gestao=campos_personalizados')}
               className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
             >
               <span className="flex items-center gap-2">
@@ -1576,7 +1605,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
             </button>
 
             <button
-              onClick={() => setDetalheConfig('listas')}
+              onClick={() => irPara('/config?aba=central&gestao=listas_selecao')}
               className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
             >
               <span className="flex items-center gap-2">
@@ -1587,7 +1616,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
             </button>
 
             <button
-              onClick={() => setDetalheConfig('cofre')}
+              onClick={() => setDetalheLocal('cofre')}
               className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
             >
               <span className="flex items-center gap-2">
@@ -1598,7 +1627,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
             </button>
 
             <button
-              onClick={() => setDetalheConfig('sementes')}
+              onClick={() => setDetalheLocal('sementes')}
               className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors text-left"
             >
               <span className="flex items-center gap-2">
