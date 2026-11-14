@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-14T01:18:48.223Z",
+  "generatedAt": "2026-11-14T01:37:52.046Z",
   "collections": [
     {
       "name": "users",
@@ -4521,11 +4521,49 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "usuario",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "data_geracao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sugestoes",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "mensagem_vazia",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_sementes",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_maduras",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
         "CREATE INDEX idx_sugestoes_sementes_semente ON sugestoes_sementes (semente)",
-        "CREATE INDEX idx_sugestoes_sementes_status ON sugestoes_sementes (status)"
+        "CREATE INDEX idx_sugestoes_sementes_status ON sugestoes_sementes (status)",
+        "CREATE UNIQUE INDEX `idx_sugestoes_sementes_usuario_dia` ON `sugestoes_sementes` (usuario, data_geracao)"
       ]
     }
   ]
