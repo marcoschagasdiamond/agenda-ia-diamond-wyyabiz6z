@@ -1,4 +1,4 @@
-import { pb } from '@/lib/pocketbase/client'
+import pb from '@/lib/pocketbase/client'
 
 // ─────────────────────────────────────────────────────────────
 // CAMADA 1 — Dossiês consolidados de memória
