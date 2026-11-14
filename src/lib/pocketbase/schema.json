@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-14T02:17:00.443Z",
+  "generatedAt": "2026-11-14T02:50:08.422Z",
   "collections": [
     {
       "name": "users",
@@ -37,6 +37,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "fila_dossies",
+          "type": "json",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -4613,6 +4619,96 @@
         "CREATE INDEX idx_sugestoes_sementes_status ON sugestoes_sementes (status)",
         "CREATE UNIQUE INDEX `idx_sugestoes_sementes_usuario_dia` ON `sugestoes_sementes` (usuario, data_geracao)"
       ]
+    },
+    {
+      "name": "dossies_memoria",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && usuario = @request.auth.id",
+        "view": "@request.auth.id != '' && usuario = @request.auth.id",
+        "create": "@request.auth.id != '' && usuario = @request.auth.id",
+        "update": "@request.auth.id != '' && usuario = @request.auth.id",
+        "delete": "@request.auth.id != '' && usuario = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "tipo_entidade",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["contato", "negocio", "projeto"]
+        },
+        {
+          "name": "entidade_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "entidade_nome",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "resumo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "conteudo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "demandas_abertas",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "atualizado_em",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "gerado_por",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "usuario",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        }
+      ],
+      "indexes": []
     }
   ]
 }

@@ -1,10 +1,26 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Brain, Send, Loader2, RefreshCw, Sparkles, User } from 'lucide-react'
+import {
+  Brain,
+  Send,
+  Loader2,
+  RefreshCw,
+  Sparkles,
+  User,
+  Search,
+  FolderOpen,
+  MessageSquare,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
 import { conversarComAnalistaStream } from '@/services/analistaMemoria'
+import { buscaSemanticaMemoria, type ResultadoSemantico } from '@/services/dossiesMemoria'
+import ListaDossiesMemoria from '@/components/memoria/ListaDossiesMemoria'
+import { cn } from '@/lib/utils'
+
+type AbaMemoria = 'chat' | 'dossies' | 'semantica'
 
 interface Mensagem {
   id: string
@@ -21,20 +37,35 @@ const CHIPS_SUGESTOES = [
   'O que decidimos esta semana?',
 ]
 
+const CHIPS_SEMANTICA = [
+  'aquela conversa em que desistimos do preço alto',
+  'o momento em que o cliente pediu agilidade',
+  'quando o projeto ficou travado por falta de aprovação',
+]
+
 const MENSAGEM_BOAS_VINDAS: Mensagem = {
   id: 'welcome',
   sender: 'assistant',
   content:
-    'Olá! Eu sou a Diamantina, sua Analista de Memória — o segundo cérebro do Agenda IA Diamond.\nPergunte em português sobre seus contatos, projetos, fluxos, conversas, sementes do cofre ou resumos do dia, e eu respondo com base nos dados reais do sistema, indicando sempre de onde tirei cada informação.',
+    'Olá! Eu sou a Diamantina, sua Analista de Memória — o segundo cérebro do Agenda IA Diamond.\nPergunte em português sobre seus contatos, projetos, fluxos, conversas, sementes do cofre ou resumos do dia, e eu respondo com base nos dados reais do sistema, indicando sempre de onde tirei cada informação. Começo pelos dossiês consolidados — mais rápidos e consistentes — e vou além quando o dossiê não cobre.',
 }
 
 export default function Memoria() {
   const { toast } = useToast()
+  const [aba, setAba] = useState<AbaMemoria>('chat')
   const [mensagens, setMensagens] = useState<Mensagem[]>([MENSAGEM_BOAS_VINDAS])
   const [texto, setTexto] = useState('')
   const [carregando, setCarregando] = useState(false)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const fimRef = useRef<HTMLDivElement>(null)
+
+  // Busca semântica
+  const [perguntaSemantica, setPerguntaSemantica] = useState('')
+  const [resultadosSemanticos, setResultadosSemanticos] = useState<ResultadoSemantico[] | null>(
+    null,
+  )
+  const [observacaoSemantica, setObservacaoSemantica] = useState('')
+  const [buscandoSemantica, setBuscandoSemantica] = useState(false)
 
   useEffect(() => {
     fimRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -99,6 +130,37 @@ export default function Memoria() {
     [carregando, conversationId, toast],
   )
 
+  const rodarBuscaSemantica = useCallback(
+    async (perguntaOriginal: string) => {
+      const pergunta = perguntaOriginal.trim()
+      if (!pergunta || buscandoSemantica) return
+      setBuscandoSemantica(true)
+      setPerguntaSemantica(pergunta)
+      setResultadosSemanticos(null)
+      setObservacaoSemantica('')
+      try {
+        const res = await buscaSemanticaMemoria(pergunta)
+        setResultadosSemanticos(res.resultados || [])
+        setObservacaoSemantica(res.observacao || '')
+        if (!res.resultados || res.resultados.length === 0) {
+          toast({
+            title: 'Nada encontrado por significado',
+            description: res.observacao || 'Tente reformular a pergunta.',
+          })
+        }
+      } catch (err) {
+        toast({
+          title: 'Erro na busca semântica',
+          description: (err as Error)?.message || 'Falha desconhecida.',
+          variant: 'destructive',
+        })
+      } finally {
+        setBuscandoSemantica(false)
+      }
+    },
+    [buscandoSemantica, toast],
+  )
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -133,119 +195,267 @@ export default function Memoria() {
                 className="bg-emerald-50 text-emerald-700 text-[10px] border-emerald-200"
                 variant="outline"
               >
-                Segundo cérebro · Memória persistente
+                Segundo cérebro · Memória em camadas
               </Badge>
             </div>
             <p className="text-[11px] text-[#5B6470]">
-              Diamantina responde em português sobre contatos, projetos, fluxos, conversas, sementes
-              e resumos — citando a origem de cada informação.
+              Dossiês consolidados + busca por significado + dados em tempo real — citando sempre a
+              origem de cada informação.
             </p>
           </div>
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={novaSessao}
-          className="text-xs h-8 border-[#E5E1D8] text-[#5B6470] gap-1"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          Nova conversa
-        </Button>
-      </div>
-
-      {/* Feed de mensagens */}
-      <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-[#F4F2EE]/40">
-        {mensagens.map((msg) => {
-          const isUser = msg.sender === 'user'
-          return (
-            <div
-              key={msg.id}
-              className={`flex items-start gap-2.5 max-w-[85%] ${isUser ? 'ml-auto flex-row-reverse' : ''}`}
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant={aba === 'chat' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setAba('chat')}
+            className={cn(
+              'text-xs h-8 gap-1 border-[#E5E1D8]',
+              aba === 'chat' && 'bg-[#0F766E] hover:bg-[#0D5C56] text-white border-transparent',
+            )}
+          >
+            <MessageSquare className="w-3.5 h-3.5" /> Conversar
+          </Button>
+          <Button
+            variant={aba === 'dossies' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setAba('dossies')}
+            className={cn(
+              'text-xs h-8 gap-1 border-[#E5E1D8]',
+              aba === 'dossies' && 'bg-[#0F766E] hover:bg-[#0D5C56] text-white border-transparent',
+            )}
+          >
+            <FolderOpen className="w-3.5 h-3.5" /> Dossiês
+          </Button>
+          <Button
+            variant={aba === 'semantica' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setAba('semantica')}
+            className={cn(
+              'text-xs h-8 gap-1 border-[#E5E1D8]',
+              aba === 'semantica' &&
+                'bg-[#0F766E] hover:bg-[#0D5C56] text-white border-transparent',
+            )}
+          >
+            <Search className="w-3.5 h-3.5" /> Busca semântica
+          </Button>
+          {aba === 'chat' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={novaSessao}
+              className="text-xs h-8 border-[#E5E1D8] text-[#5B6470] gap-1"
             >
-              <div
-                className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
-                  isUser ? 'bg-[#E5E1D8] text-[#1A1D21]' : 'bg-[#0F766E] text-white shadow-2xs'
-                }`}
-              >
-                {isUser ? <User className="w-4 h-4" /> : <Brain className="w-4 h-4" />}
-              </div>
-
-              <div
-                className={`p-3.5 rounded-2xl text-xs leading-relaxed shadow-2xs whitespace-pre-wrap ${
-                  msg.erro
-                    ? 'bg-red-50 text-red-900 border border-red-200 rounded-tl-none'
-                    : isUser
-                      ? 'bg-[#0F766E] text-white rounded-tr-none'
-                      : 'bg-white text-[#1A1D21] border border-[#E5E1D8] rounded-tl-none'
-                }`}
-              >
-                {msg.content || '…'}
-              </div>
-            </div>
-          )
-        })}
-
-        {carregando && (
-          <div className="flex items-center gap-2 text-xs text-[#5B6470] p-2 animate-pulse">
-            <Sparkles className="w-4 h-4 text-[#0F766E]" />
-            <span>Diamantina está pensando…</span>
-          </div>
-        )}
-        <div ref={fimRef} />
-      </div>
-
-      {/* Chips de sugestões */}
-      <div className="px-4 pt-3 pb-1 bg-white border-t border-[#E5E1D8]">
-        <div className="flex flex-wrap gap-1.5">
-          {CHIPS_SUGESTOES.map((chip) => (
-            <button
-              key={chip}
-              type="button"
-              disabled={carregando}
-              onClick={() => enviarPergunta(chip)}
-              className="text-[11px] px-2.5 py-1 rounded-full border border-[#E5E1D8] bg-[#FAFAF9] text-[#5B6470] hover:bg-[#0F766E]/5 hover:border-[#0F766E]/40 hover:text-[#0F766E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {chip}
-            </button>
-          ))}
+              <RefreshCw className="w-3.5 h-3.5" />
+              Nova conversa
+            </Button>
+          )}
         </div>
       </div>
 
-      {/* Campo de envio */}
-      <div className="p-3 bg-white">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            enviarPergunta(texto)
-          }}
-          className="flex items-end gap-2"
-        >
-          <Textarea
-            rows={2}
-            value={texto}
-            onChange={(e) => setTexto(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={carregando}
-            placeholder="Pergunte sobre seus negócios: 'O que decidimos com o cliente X?', 'Quais demandas estão paradas?'…"
-            className="text-xs resize-none border-[#E5E1D8] focus-visible:ring-1 focus-visible:ring-[#0F766E]"
-          />
-          <Button
-            type="submit"
-            disabled={carregando || !texto.trim()}
-            className="bg-[#0F766E] hover:bg-[#0D5C56] text-white h-14 px-4 shrink-0 shadow-sm"
-          >
-            {carregando ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4" />
+      {aba === 'chat' && (
+        <>
+          {/* Feed de mensagens */}
+          <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-[#F4F2EE]/40 min-h-0">
+            {mensagens.map((msg) => {
+              const isUser = msg.sender === 'user'
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex items-start gap-2.5 max-w-[85%] ${isUser ? 'ml-auto flex-row-reverse' : ''}`}
+                >
+                  <div
+                    className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
+                      isUser ? 'bg-[#E5E1D8] text-[#1A1D21]' : 'bg-[#0F766E] text-white shadow-2xs'
+                    }`}
+                  >
+                    {isUser ? <User className="w-4 h-4" /> : <Brain className="w-4 h-4" />}
+                  </div>
+
+                  <div
+                    className={`p-3.5 rounded-2xl text-xs leading-relaxed shadow-2xs whitespace-pre-wrap ${
+                      msg.erro
+                        ? 'bg-red-50 text-red-900 border border-red-200 rounded-tl-none'
+                        : isUser
+                          ? 'bg-[#0F766E] text-white rounded-tr-none'
+                          : 'bg-white text-[#1A1D21] border border-[#E5E1D8] rounded-tl-none'
+                    }`}
+                  >
+                    {msg.content || '…'}
+                  </div>
+                </div>
+              )
+            })}
+
+            {carregando && (
+              <div className="flex items-center gap-2 text-xs text-[#5B6470] p-2 animate-pulse">
+                <Sparkles className="w-4 h-4 text-[#0F766E]" />
+                <span>Diamantina está pensando…</span>
+              </div>
             )}
-          </Button>
-        </form>
-        <p className="text-[10px] text-[#5B6470] mt-1.5 text-center">
-          Pressione Enter para enviar. Shift + Enter para quebra de linha.
-        </p>
-      </div>
+            <div ref={fimRef} />
+          </div>
+
+          {/* Chips de sugestões */}
+          <div className="px-4 pt-3 pb-1 bg-white border-t border-[#E5E1D8]">
+            <div className="flex flex-wrap gap-1.5">
+              {CHIPS_SUGESTOES.map((chip) => (
+                <button
+                  key={chip}
+                  type="button"
+                  disabled={carregando}
+                  onClick={() => enviarPergunta(chip)}
+                  className="text-[11px] px-2.5 py-1 rounded-full border border-[#E5E1D8] bg-[#FAFAF9] text-[#5B6470] hover:bg-[#0F766E]/5 hover:border-[#0F766E]/40 hover:text-[#0F766E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Campo de envio */}
+          <div className="p-3 bg-white">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                enviarPergunta(texto)
+              }}
+              className="flex items-end gap-2"
+            >
+              <Textarea
+                rows={2}
+                value={texto}
+                onChange={(e) => setTexto(e.target.value)}
+                onKeyDown={handleKeyDown}
+                disabled={carregando}
+                placeholder="Pergunte sobre seus negócios: 'O que decidimos com o cliente X?', 'Quais demandas estão paradas?'…"
+                className="text-xs resize-none border-[#E5E1D8] focus-visible:ring-1 focus-visible:ring-[#0F766E]"
+              />
+              <Button
+                type="submit"
+                disabled={carregando || !texto.trim()}
+                className="bg-[#0F766E] hover:bg-[#0D5C56] text-white h-14 px-4 shrink-0 shadow-sm"
+              >
+                {carregando ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+              </Button>
+            </form>
+            <p className="text-[10px] text-[#5B6470] mt-1.5 text-center">
+              Pressione Enter para enviar. Shift + Enter para quebra de linha.
+            </p>
+          </div>
+        </>
+      )}
+
+      {aba === 'dossies' && (
+        <div className="flex-1 p-4 overflow-hidden bg-[#F4F2EE]/40 min-h-0">
+          <ListaDossiesMemoria />
+        </div>
+      )}
+
+      {aba === 'semantica' && (
+        <div className="flex-1 p-4 overflow-y-auto bg-[#F4F2EE]/40 min-h-0 space-y-3">
+          <div>
+            <h3 className="text-sm font-bold text-[#1A1D21]">Busca por significado</h3>
+            <p className="text-[11px] text-[#5B6470]">
+              Descreva o que você lembra — mesmo sem as palavras exatas do registro. A Diamantina
+              encontra pelo significado.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {CHIPS_SEMANTICA.map((chip) => (
+              <button
+                key={chip}
+                type="button"
+                disabled={buscandoSemantica}
+                onClick={() => rodarBuscaSemantica(chip)}
+                className="text-[11px] px-2.5 py-1 rounded-full border border-[#E5E1D8] bg-[#FAFAF9] text-[#5B6470] hover:bg-[#0F766E]/5 hover:border-[#0F766E]/40 hover:text-[#0F766E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              rodarBuscaSemantica(perguntaSemantica)
+            }}
+            className="flex items-center gap-2"
+          >
+            <Input
+              value={perguntaSemantica}
+              onChange={(e) => setPerguntaSemantica(e.target.value)}
+              placeholder="Ex.: 'aquela conversa em que desistimos do preço alto'…"
+              className="text-xs h-9 bg-white border-[#E5E1D8]"
+              disabled={buscandoSemantica}
+            />
+            <Button
+              type="submit"
+              disabled={buscandoSemantica || !perguntaSemantica.trim()}
+              className="bg-[#0F766E] hover:bg-[#0D5C56] text-white h-9 px-4 shrink-0"
+            >
+              {buscandoSemantica ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Search className="w-4 h-4" />
+              )}
+            </Button>
+          </form>
+
+          {resultadosSemanticos !== null && (
+            <div className="space-y-2">
+              {resultadosSemanticos.length === 0 ? (
+                <div className="text-xs text-[#5B6470] bg-white border border-[#E5E1D8] rounded-xl p-4">
+                  {observacaoSemantica || 'Nada encontrado ainda com esse significado.'}
+                </div>
+              ) : (
+                resultadosSemanticos.map((r) => (
+                  <div
+                    key={r.id}
+                    className="bg-white border border-[#E5E1D8] rounded-xl p-3 shadow-2xs"
+                  >
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-xs font-semibold text-[#1A1D21]">{r.fonte}</span>
+                      <div className="flex items-center gap-1.5">
+                        <Badge
+                          variant="outline"
+                          className="text-[9px] border-[#E5E1D8] text-[#5B6470]"
+                        >
+                          {r.tipo}
+                        </Badge>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'text-[9px]',
+                            r.confianca === 'alta'
+                              ? 'border-emerald-200 text-emerald-700 bg-emerald-50'
+                              : r.confianca === 'media'
+                                ? 'border-amber-200 text-amber-700 bg-amber-50'
+                                : 'border-[#E5E1D8] text-[#5B6470] bg-[#FAFAF9]',
+                          )}
+                        >
+                          confiança {r.confianca}
+                        </Badge>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-[#1A1D21] mt-1.5 whitespace-pre-wrap leading-relaxed">
+                      {r.trecho}
+                    </p>
+                    <p className="text-[10px] text-[#5B6470] mt-1.5 italic">
+                      {r.justificativa}
+                      {r.data ? ` · ${new Date(r.data).toLocaleDateString('pt-BR')}` : ''}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
