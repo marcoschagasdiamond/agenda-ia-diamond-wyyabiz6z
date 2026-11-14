@@ -6,11 +6,21 @@ import pb from '@/lib/pocketbase/client'
 // Endpoints (hook dossies_memoria.js):
 //   GET  /backend/v1/dossies            — lista paginada
 //   POST /backend/v1/dossies/regenerar  — regenera/cria 1 dossiê sob demanda
-// CAMADA 2 — Busca semântica
+// CAMADA 2 — Busca semântica com filtros (hook busca_semantica_memoria.js)
 //   POST /backend/v1/analista-memoria/busca-semantica
+// CAMADA 3 — Linha do tempo episódica (coleção episodios_memoria)
 // ─────────────────────────────────────────────────────────────
 
 export type TipoEntidadeDossie = 'contato' | 'negocio' | 'projeto'
+
+export type TipoFiltroBusca =
+  | 'dossie'
+  | 'resumo_dia'
+  | 'folha'
+  | 'card'
+  | 'chat'
+  | 'episodio'
+  | 'memoria_compartilhada'
 
 export interface DossieMemoria {
   id: string
@@ -33,10 +43,21 @@ export interface ResultadoSemantico {
   confianca: 'alta' | 'media' | 'baixa'
 }
 
+export interface FiltrosBuscaSemantica {
+  tipo_entidade?: TipoFiltroBusca | ''
+  data_inicio?: string
+  data_fim?: string
+  pessoa?: string
+  negocio?: string
+  projeto?: string
+  limite?: number
+}
+
 export interface RespostaBuscaSemantica {
   resultados: ResultadoSemantico[]
   observacao: string
   total_candidatos: number
+  filtros_aplicados?: string[]
 }
 
 export async function listarDossies(
@@ -72,10 +93,45 @@ export async function regenerarDossie(
   })
 }
 
-export async function buscaSemanticaMemoria(pergunta: string): Promise<RespostaBuscaSemantica> {
+export async function buscaSemanticaMemoria(
+  pergunta: string,
+  filtros: FiltrosBuscaSemantica = {},
+): Promise<RespostaBuscaSemantica> {
   return pb.send('/backend/v1/analista-memoria/busca-semantica', {
     method: 'POST',
-    body: JSON.stringify({ pergunta }),
+    body: JSON.stringify({ pergunta, ...filtros }),
     headers: { 'Content-Type': 'application/json' },
   })
+}
+
+// ─────────────────────────────────────────────────────────────
+// CAMADA 3 — Episódios (linha do tempo episódica)
+// Coleção: episodios_memoria (um episódio por usuario+data; encadeados
+// via episodio_anterior, com pendencias_carregadas herdadas do dia anterior)
+// ─────────────────────────────────────────────────────────────
+
+export interface EpisodioMemoria {
+  id: string
+  data: string
+  titulo?: string
+  resumo: string
+  total_registros?: number
+  pendencias_carregadas: string | string[] | null
+  created: string
+  updated: string
+}
+
+export async function listarEpisodiosMemoria(
+  page = 1,
+  perPage = 7,
+): Promise<{ itens: EpisodioMemoria[]; page: number; totalItens: number }> {
+  const res = await pb.collection('episodios_memoria').getList(page, perPage, {
+    sort: '-data',
+    fields: 'id,data,resumo,pendencias_carregadas,created,updated',
+  })
+  return {
+    itens: (res.items || []) as unknown as EpisodioMemoria[],
+    page: res.page || page,
+    totalItens: res.totalItems || 0,
+  }
 }

@@ -369,6 +369,11 @@ Regras: seja conservador(a) — prefira poucas sementes realmente prontas a uma 
           const c = porId[fid]
           const score = c ? c.score : 0
           const tipoMotivo = c ? c.tipoMotivo : 'outros'
+          // Selo "insistente": total de aparições = aparições já persistidas na
+          // folha_dia (incrementadas abaixo) + aparições em caçadas anteriores.
+          const aparicoesTotal = c
+            ? c.aparicoes + (aparicoesAnteriores[c.rec.id] || 0)
+            : aparicoesAnteriores[fid] || 0
           return {
             folha_id: fid,
             tese: valorTexto(s.tese, 160),
@@ -379,6 +384,7 @@ Regras: seja conservador(a) — prefira poucas sementes realmente prontas a uma 
             urgente: Boolean(s.urgente),
             score,
             tipo_motivo: tipoMotivo,
+            aparicoes: aparicoesTotal,
           }
         })
         .sort((a, b) => (b.score || 0) - (a.score || 0))

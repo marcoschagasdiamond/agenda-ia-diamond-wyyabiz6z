@@ -394,9 +394,10 @@ Devolva SOMENTE um bloco JSON puro (sem markdown):
 }
 Regras: use APENAS ids da lista acima; no máximo ${limite} resultados; ordene do mais relevante ao menos; se a lista vier vazia, devolve resultados: [] e a observação.`
 
-      const res = $ai
-        .agent('diamantina-analista-memoria')
-        .chat({ message: promptCorrespondencia, conversation: null })
+      const res = $ai.agent('diamantina-analista-memoria').chat({
+        message: promptCorrespondencia,
+        user_id: userId,
+      })
       const bruto = res && res.content ? String(res.content).trim() : ''
       const m = bruto.match(/\{[\s\S]*\}/)
       let parsed = null
