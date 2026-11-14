@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-14T00:29:32.148Z",
+  "generatedAt": "2026-11-14T01:15:55.338Z",
   "collections": [
     {
       "name": "users",
@@ -4446,6 +4446,87 @@
         }
       ],
       "indexes": ["CREATE INDEX idx_chat_grupos_criado_por ON chat_grupos (criado_por)"]
+    },
+    {
+      "name": "sugestoes_sementes",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "semente",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "folha_dia"
+        },
+        {
+          "name": "tese",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "teses_sementes"
+        },
+        {
+          "name": "parceiro",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "negocio",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "urgencia",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "motivo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "gerado_por",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_sugestoes_sementes_semente ON sugestoes_sementes (semente)",
+        "CREATE INDEX idx_sugestoes_sementes_status ON sugestoes_sementes (status)"
+      ]
     }
   ]
 }
