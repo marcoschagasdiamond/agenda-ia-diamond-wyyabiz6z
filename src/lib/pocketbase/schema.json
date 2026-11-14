@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-13T17:15:23.333Z",
+  "generatedAt": "2026-11-14T00:15:26.460Z",
   "collections": [
     {
       "name": "users",
@@ -1091,6 +1091,36 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "sugestoes_cards",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "gerado_por",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_registros",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "mensagem_sem_registros",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "updated_manual",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": []

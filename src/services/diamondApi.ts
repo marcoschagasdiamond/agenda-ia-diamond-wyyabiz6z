@@ -864,6 +864,36 @@ export const diamondApi = {
     return await pb.collection('resumos_dia').create<ResumoDia>(data)
   },
 
+  /** Histórico de resumos paginado (dias anteriores) — painel Resumo do Dia da /folha */
+  async listResumosPaginado(
+    pagina: number,
+    porPagina = 30,
+  ): Promise<{ itens: ResumoDia[]; total: number }> {
+    const list = await pb.collection('resumos_dia').getList<ResumoDia>(pagina, porPagina, {
+      sort: '-data',
+    })
+    return { itens: list.items, total: list.totalItems }
+  },
+
+  /** Pede à Diamantina que (re)gere o Resumo do Dia via endpoint /backend/v1/resumo-dia/gerar */
+  async gerarResumoDia(
+    data?: string,
+  ): Promise<{ sucesso: boolean; resumo_id?: string; atualizado?: boolean }> {
+    const res = await fetch(`${import.meta.env.VITE_POCKETBASE_URL}/backend/v1/resumo-dia/gerar`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: pb.authStore.token,
+      },
+      body: JSON.stringify({ data }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || 'Falha ao gerar o Resumo do Dia')
+    }
+    return await res.json()
+  },
+
   // Clientes e Clientes_Projetos
   async listClientes(): Promise<Cliente[]> {
     return await pb.collection('clientes').getFullList<Cliente>({

@@ -557,6 +557,14 @@ export interface Arquivo {
   }
 }
 
+export interface SugestaoCardIA {
+  folha_id?: string
+  trecho?: string
+  titulo_sugerido?: string
+  destino_sugerido?: string
+  justificativa?: string
+}
+
 export interface ResumoDia {
   id: string
   data: string
@@ -566,6 +574,12 @@ export interface ResumoDia {
   decisoes?: string
   proximos_passos?: string
   contagem_cards_criados?: number
+  /** Novos campos da Diamantina — Organizadora Diária (migration 0004b) */
+  sugestoes_cards?: SugestaoCardIA[] | string | null
+  gerado_por?: string
+  total_registros?: number
+  mensagem_sem_registros?: string
+  updated_manual?: string
   created: string
   updated: string
 }
