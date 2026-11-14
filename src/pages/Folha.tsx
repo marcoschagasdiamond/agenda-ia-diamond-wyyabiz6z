@@ -102,6 +102,7 @@ import { listarContatosPaginado, type SugestaoContato } from '@/services/contato
 import type { TeseSemente, LimitesConsumoConta, Card as CardTipo } from '@/types'
 import { BannerConsumoPlano } from '@/components/comercial/BannerConsumoPlano'
 import { ModalDesbloqueioPlano } from '@/components/comercial/ModalDesbloqueioPlano'
+import { PainelResumoDia } from '@/components/folha/PainelResumoDia'
 import { useAuth } from '@/hooks/use-auth'
 
 export interface ItemRascunhoAssunto {
@@ -2125,6 +2126,11 @@ export default function Folha() {
           )}
         </div>
       </div>
+
+      {/* Resumo do Dia — Diamantina, funcionária de IA (agente nativo Skip Cloud) */}
+      <PainelResumoDia
+        onDestacarRegistro={(folhaId) => navigate(`/folha?destaque=${encodeURIComponent(folhaId)}`)}
+      />
 
       {/* Captura Rápida: Enter lança o assunto direto na Folha, sem abrir o formulário completo */}
       <form
