@@ -18,6 +18,10 @@
  *   gravar APRENDIZADOS de volta na mesma coleção (dedupe por
  *   usuario+agente_origem+tipo+chave), completando o ciclo de aprendizado.
  *
+ * SCHEMA REAL (bug corrigido): folha_dia e resumos_dia NÃO têm campo
+ * "usuario" — o escopo dos registros é a DATA. Somente sugestoes_sementes e
+ * memoria_compartilhada têm usuario (aí sim filtrado pelo usuário alvo).
+ *
  * IMPORTANTE (JSVM do PocketBase): os callbacks do cronAdd/routerAdd rodam em
  * um pool de VM separado — funções e variáveis de topo do arquivo NÃO estão no
  * escopo dentro deles. Por isso TODA a lógica vive DENTRO do corpo de cada
@@ -167,9 +171,6 @@ cronAdd('resumo_diario_diamantina', '0 22 * * *', () => {
   // —— Memória Compartilhada entre agentes: fatos ativos entram no prompt ——
 
   // dedupe por (usuario, agente_origem, tipo, chave) — mesmo critério do índice único
-  const chaveUnica = (usuarioId, agente, tipo, chave) =>
-    [usuarioId, agente, tipo, chave].map((p) => String(p || '')).join('||')
-
   const gravarFatoCompartilhado = (
     usuarioId,
     tipo,
@@ -306,155 +307,137 @@ Produza o Resumo Automático do Dia em pt-BR e devolva SOMENTE um bloco JSON pur
 Regras: "sugestoes" deve conter APENAS registros soltos (vínculos: nenhum) que mereçam virar card/fluxo. Se nenhum registro estiver solto, devolva "sugestoes": []. Use os ids exatos informados (folha_id).`
   }
 
-  const usuarios = $app.findRecordsByFilter('users', '', '-created', 100, 0)
-  // dedupe por email (evita reprocessar o mesmo usuário em contas duplicadas/ghost)
-  const vistos = {}
-  const usuariosAtivos = usuarios.filter((u) => {
-    let chave = u.id
+  // Geração inline (JSVM: callbacks não veem declarações de topo — a função
+  // gerarResumoDoDia do router NÃO existe aqui, então a lógica vive inline).
+  try {
+    const dataDia = dataDeHoje()
+    const AGENTE_SLUG = 'diamantina-organizadora-diaria'
+
+    // —— usuário alvo: primeiro usuário ativo (não convidado) ——
+    // Necessário para o $ai.agent (user_id) e para a memória compartilhada
+    // (usuario é required lá). folha_dia e resumos_dia NÃO têm campo usuario
+    // (schema real): o escopo dos registros é o DIA, não o usuário.
+    let usuarioId = ''
     try {
-      const email = String(u.getString('email') || '')
-        .toLowerCase()
-        .trim()
-      if (email) chave = email
-    } catch (_) {}
-    if (vistos[chave]) return false
-    vistos[chave] = true
-    return true
-  })
-  console.log(`[resumo-diario] Cron iniciado — ${usuariosAtivos.length} usuário(s) elegível(is).`)
-
-  for (const usuarioAlvo of usuariosAtivos) {
-    try {
-      const dataDia = dataDeHoje()
-      const oppDia = carregarOportunidadesDoDia(dataDia, usuarioAlvo.id)
-      const linhaCacador = oppDia.disponivel ? linhaOportunidades(oppDia) : ''
-      // —— fatos da memória compartilhada entre agentes entram no prompt ——
-      const fatosMemoria = carregarFatosCompartilhados(usuarioAlvo.id)
-      console.log(
-        `[resumo-diario] Memória compartilhada: ${fatosMemoria.length} fato(s) carregado(s) (usuario=${usuarioAlvo.id}).`,
-      )
-      const linhaMemoria =
-        fatosMemoria.length > 0
-          ? `MEMÓRIA COMPARTILHADA ENTRE AGENTES (${fatosMemoria.length} fato(s) ativo(s) — use como contexto, não repita o que já está nos registros de hoje):\n${fatosMemoria.join('\n')}`
-          : ''
-      const registros = $app.findRecordsByFilter(
-        'folha_dia',
-        `((data = "${dataDia}" || data_hora ~ "${dataDia}" || created ~ "${dataDia}") && estado_semente != true) || usuario = "${usuarioAlvo.id}"`,
-        '-created',
-        80,
-        0,
-      )
-      const prompt = montarPromptResumo(dataDia, registros, linhaCacador, linhaMemoria)
-
-      if (registros.length === 0 && !linhaCacador && !linhaMemoria) {
-        continue // nada a resumir para este usuário hoje
-      }
-
-      const AGENTE_SLUG = 'diamantina-organizadora-diaria'
-      const res = $ai.agent(AGENTE_SLUG).chat({
-        message: prompt,
-        user_id: usuarioAlvo.id,
-      })
-
-      const conteudo = res && res.content ? res.content : ''
-      const parsed = extrairJson(conteudo) || {}
-      const fezRegistros = registros.length > 0
-
-      const payload = {
-        data: dataDia,
-        feito: valorTexto(parsed.feito, 6000),
-        a_fazer: valorTexto(parsed.a_fazer, 6000),
-        prioridades: valorTexto(parsed.prioridades, 3000),
-        decisoes: valorTexto(parsed.decisoes, 3000),
-        proximos_passos: '',
-        contagem_cards_criados: 0,
-        gerado_por: AGENTE_SLUG,
-        total_registros: registros.length,
-        sugestoes_cards: JSON.stringify(normalizarSugestoes(parsed.sugestoes)),
-        mensagem_sem_registros: fezRegistros
-          ? ''
-          : valorTexto(parsed.feito, 500) ||
-            'Sua Folha está em branco hoje. Quando registrar assuntos, eu organizo tudo por aqui. 💎',
-        cacador: JSON.stringify(oppDia),
-      }
-
-      const col = $app.findCollectionByNameOrId('resumos_dia')
-      const existentes = $app.findRecordsByFilter(
-        'resumos_dia',
-        `data = "${dataDia}" && usuario = "${usuarioAlvo.id}"`,
-        '-created',
-        1,
-        0,
-      )
-      const payloadMemoria = {
-        data: dataDia,
-        feito: valorTexto(parsed.feito, 6000),
-        a_fazer: valorTexto(parsed.a_fazer, 6000),
-        prioridades: valorTexto(parsed.prioridades, 3000),
-        decisoes: valorTexto(parsed.decisoes, 3000),
-        proximos_passos: '',
-        contagem_cards_criados: 0,
-        gerado_por: AGENTE_SLUG,
-        total_registros: registros.length,
-        sugestoes_cards: JSON.stringify(normalizarSugestoes(parsed.sugestoes)),
-        mensagem_sem_registros: fezRegistros
-          ? ''
-          : valorTexto(parsed.feito, 500) ||
-            'Sua Folha está em branco hoje. Quando registrar assuntos, eu organizo tudo por aqui. 💎',
-        cacador: JSON.stringify(oppDia),
-      }
-
-      let resumoId = ''
-      if (existentes.length > 0) {
-        const existente = existentes[0]
-        for (const k in payloadMemoria) existente.set(k, payloadMemoria[k])
-        existente.set('updated_manual', new Date().toISOString())
-        $app.save(existente)
-        resumoId = existente.id
-        console.log(
-          `[resumo-diario] Resumo de ${dataDia} atualizado (gatilho=cron22h, usuario=${usuarioAlvo.id}, registros=${registros.length}, cacador=${oppDia.total}).`,
-        )
-      } else {
-        const novo = new Record(col)
-        for (const k in payloadMemoria) novo.set(k, payloadMemoria[k])
-        $app.save(novo)
-        resumoId = novo.id
-        console.log(
-          `[resumo-diario] Resumo de ${dataDia} criado (gatilho=cron22h, usuario=${usuarioAlvo.id}, registros=${registros.length}, cacador=${oppDia.total}).`,
-        )
-      }
-
-      // —— aprendizados de volta para a memória compartilhada (ciclo completo) ——
-      try {
-        const fatos = extrairAprendizados(conteudo, parsed)
-        const dataOrigem = dataDia
-        fatos.forEach((f, idx) => {
-          gravarFatoCompartilhado(
-            usuarioAlvo.id,
-            'aprendizado',
-            `aprendizado ${dataOrigem} #${idx + 1}`,
-            f,
-            'Resumo do Dia',
-            dataOrigem,
-            'resumo_diario',
-          )
-        })
-        if (fatos.length > 0) {
-          console.log(
-            `[resumo-diario] ${fatos.length} aprendizado(s) gravado(s) na memória compartilhada (usuario=${usuarioAlvo.id}, data=${dataDia}, resumo=${resumoId}).`,
-          )
+      const usuarios = $app.findRecordsByFilter('users', '', '-created', 50, 0)
+      for (const u of usuarios) {
+        let funcao = ''
+        try {
+          funcao = u.getString('funcao')
+        } catch (_) {}
+        if (!funcao || funcao === 'undefined' || funcao !== 'convidado') {
+          usuarioId = u.id
+          break
         }
-      } catch (errMc) {
-        console.error(
-          `[resumo-diario] Falha ao gravar aprendizados na memória compartilhada: ${errMc.message}`,
-        )
       }
-    } catch (err) {
-      console.error(
-        `[resumo-diario] Falha no Resumo do Dia do usuário ${usuarioAlvo.id}: ${err.message}`,
+    } catch (_) {}
+    if (!usuarioId) {
+      console.log('[resumo-diario] Nenhum usuário ativo encontrado — cron encerrado.')
+      return
+    }
+
+    const oppDia = carregarOportunidadesDoDia(dataDia, usuarioId)
+    const linhaCacador = oppDia.disponivel ? linhaOportunidades(oppDia) : ''
+    const fatosMemoria = carregarFatosCompartilhados(usuarioId)
+    const linhaMemoria =
+      fatosMemoria.length > 0
+        ? `MEMÓRIA COMPARTILHADA ENTRE AGENTES (${fatosMemoria.length} fato(s) ativo(s) — use como contexto, não repita o que já está nos registros de hoje):\n${fatosMemoria.join('\n')}`
+        : ''
+    // folha_dia NÃO tem campo usuario (schema real): escopo = registros do dia
+    const registros = $app.findRecordsByFilter(
+      'folha_dia',
+      `(data = "${dataDia}" || data_hora ~ "${dataDia}" || created ~ "${dataDia}") && estado_semente != true`,
+      '-created',
+      80,
+      0,
+    )
+    console.log(
+      `[resumo-diario] Cron 22h: usuario=${usuarioId}, data=${dataDia}, registros=${registros.length}, cacador=${oppDia.total}, memoria=${fatosMemoria.length}.`,
+    )
+    const prompt = montarPromptResumo(dataDia, registros, linhaCacador, linhaMemoria)
+
+    const res = $ai.agent(AGENTE_SLUG).chat({
+      message: prompt,
+      user_id: usuarioId,
+    })
+    const conteudo = res && res.content ? res.content : ''
+    const parsed = extrairJson(conteudo) || {}
+    const fezRegistros = registros.length > 0
+
+    const payload = {
+      data: dataDia,
+      feito: valorTexto(parsed.feito, 6000),
+      a_fazer: valorTexto(parsed.a_fazer, 6000),
+      prioridades: valorTexto(parsed.prioridades, 3000),
+      decisoes: valorTexto(parsed.decisoes, 3000),
+      proximos_passos: '',
+      contagem_cards_criados: 0,
+      gerado_por: AGENTE_SLUG,
+      total_registros: registros.length,
+      sugestoes_cards: JSON.stringify(normalizarSugestoes(parsed.sugestoes)),
+      mensagem_sem_registros: fezRegistros
+        ? ''
+        : valorTexto(parsed.feito, 500) ||
+          'Sua Folha está em branco hoje. Quando registrar assuntos, eu organizo tudo por aqui. 💎',
+      cacador: JSON.stringify(oppDia),
+    }
+
+    // resumos_dia NÃO tem campo usuario (schema real): um resumo por DATA
+    const col = $app.findCollectionByNameOrId('resumos_dia')
+    const existentes = $app.findRecordsByFilter(
+      'resumos_dia',
+      `data = "${dataDia}"`,
+      '-created',
+      1,
+      0,
+    )
+    let resumoId = ''
+    if (existentes.length > 0) {
+      const existente = existentes[0]
+      for (const k in payload) existente.set(k, payload[k])
+      existente.set('updated_manual', new Date().toISOString())
+      $app.save(existente)
+      resumoId = existente.id
+      console.log(
+        `[resumo-diario] Resumo de ${dataDia} atualizado (gatilho=cron22h, usuario=${usuarioId}, registros=${registros.length}, cacador=${oppDia.total}).`,
+      )
+    } else {
+      const novo = new Record(col)
+      for (const k in payload) novo.set(k, payload[k])
+      $app.save(novo)
+      resumoId = novo.id
+      console.log(
+        `[resumo-diario] Resumo de ${dataDia} criado (gatilho=cron22h, usuario=${usuarioId}, registros=${registros.length}, cacador=${oppDia.total}).`,
       )
     }
-  } // for usuariosAtivos
+
+    // —— aprendizados de volta para a memória compartilhada (ciclo completo) ——
+    try {
+      const fatos = extrairAprendizados(conteudo, parsed)
+      fatos.forEach((f, idx) => {
+        gravarFatoCompartilhado(
+          usuarioId,
+          'aprendizado',
+          `aprendizado ${dataDia} #${idx + 1}`,
+          f,
+          'Resumo do Dia',
+          dataDia,
+          'resumo_diario',
+        )
+      })
+      if (fatos.length > 0) {
+        console.log(
+          `[resumo-diario] ${fatos.length} aprendizado(s) gravado(s) na memória compartilhada (usuario=${usuarioId}, data=${dataDia}, resumo=${resumoId}).`,
+        )
+      }
+    } catch (errMc) {
+      console.error(
+        `[resumo-diario] Falha ao gravar aprendizados na memória compartilhada: ${errMc.message}`,
+      )
+    }
+  } catch (err) {
+    console.error(`[resumo-diario] Falha no cron das 22h: ${err.message}`)
+  }
 })
 
 // ————— Endpoint sob demanda (botão "Gerar resumo agora") —————
@@ -752,9 +735,10 @@ Regras: "sugestoes" deve conter APENAS registros soltos (vínculos: nenhum) que 
         fatosMemoria.length > 0
           ? `MEMÓRIA COMPARTILHADA ENTRE AGENTES (${fatosMemoria.length} fato(s) ativo(s) — use como contexto, não repita o que já está nos registros de hoje):\n${fatosMemoria.join('\n')}`
           : ''
+      // folha_dia NÃO tem campo usuario (schema real): escopo = registros do dia
       const registros = $app.findRecordsByFilter(
         'folha_dia',
-        `((data = "${dataAlvo}" || data_hora ~ "${dataAlvo}" || created ~ "${dataAlvo}") && estado_semente != true) || usuario = "${usuarioId}"`,
+        `(data = "${dataAlvo}" || data_hora ~ "${dataAlvo}" || created ~ "${dataAlvo}") && estado_semente != true`,
         '-created',
         80,
         0,
@@ -789,10 +773,11 @@ Regras: "sugestoes" deve conter APENAS registros soltos (vínculos: nenhum) que 
         cacador: JSON.stringify(oppDia),
       }
 
+      // resumos_dia NÃO tem campo usuario (schema real): um resumo por DATA
       const col = $app.findCollectionByNameOrId('resumos_dia')
       const existentes = $app.findRecordsByFilter(
         'resumos_dia',
-        `data = "${dataAlvo}" && usuario = "${usuarioId}"`,
+        `data = "${dataAlvo}"`,
         '-created',
         1,
         0,
