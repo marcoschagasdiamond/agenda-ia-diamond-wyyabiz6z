@@ -103,6 +103,7 @@ import type { TeseSemente, LimitesConsumoConta, Card as CardTipo } from '@/types
 import { BannerConsumoPlano } from '@/components/comercial/BannerConsumoPlano'
 import { ModalDesbloqueioPlano } from '@/components/comercial/ModalDesbloqueioPlano'
 import { PainelResumoDia } from '@/components/folha/PainelResumoDia'
+import PainelCacadorSementes from '@/components/folha/PainelCacadorSementes'
 import { useAuth } from '@/hooks/use-auth'
 
 export interface ItemRascunhoAssunto {
@@ -505,6 +506,31 @@ export default function Folha() {
     } finally {
       setGerminando(false)
     }
+  }
+
+  /**
+   * Clique numa sugestão do Caçador de Sementes: localiza o item da folha
+   * correspondente (folha_id) e abre o ModalGerminarSemente com o título
+   * pré-preenchido (mais a razão da maturidade na descrição).
+   */
+  const handleSugestaoCacador = (folhaId: string) => {
+    if (!folhaId) {
+      toast({
+        title: 'Sugestão sem vínculo',
+        description: 'Esta sugestão não aponta para um assunto da Folha.',
+      })
+      return
+    }
+    const item = folhaItems.find((i) => i.id === folhaId)
+    if (!item) {
+      toast({
+        title: 'Assunto não encontrado na Folha',
+        description: 'Ele pode ter sido reativado ou removido desde a última caçada.',
+      })
+      return
+    }
+    setSementeParaGerminar(item)
+    setModalGerminarOpen(true)
   }
 
   const handleAtribuirTeseRapida = async (item: FolhaDia, novaTeseId: string) => {
@@ -2712,6 +2738,11 @@ export default function Folha() {
         parceirosDisponiveis={parceirosDisponiveis}
         negociosDisponiveis={negociosDisponiveis}
       />
+
+      {/* Sugestões do Caçador de Sementes — Diamantina, funcionária de IA (aba Sementes) */}
+      {filtrosFolha.estadoArquivo === 'sementes' && (
+        <PainelCacadorSementes onSugerirGerminacao={handleSugestaoCacador} />
+      )}
 
       {/* Listagem de Assuntos na Folha */}
       <div className="space-y-4">
