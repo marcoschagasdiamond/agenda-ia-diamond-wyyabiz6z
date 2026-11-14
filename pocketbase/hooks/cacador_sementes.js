@@ -23,6 +23,13 @@
  * vive DENTRO de cada callback, duplicada inline de propósito.
  */
 
+// IMPORTANTE: a coleção sugestoes_sementes tem `semente` (relation → folha_dia)
+// REQUIRED. Todo registro gravado aqui PRECISA apontar para uma semente válida
+// da folha_dia — um "placeholder vazio" sem semente morre com
+// "semente: cannot be blank" e derruba o cron das 21h.
+// A JSVM do PocketBase não tem require/module.exports — cada callback é
+// autocontido (helpers duplicados inline de propósito).
+
 cronAdd('cacador_sementes_diario', '0 21 * * *', () => {
   const AGENTE_SLUG = 'diamantina-cacador-sementes'
   const dataDeHoje = () => {
@@ -52,21 +59,229 @@ cronAdd('cacador_sementes_diario', '0 21 * * *', () => {
           1,
           0,
         )
-        if (existentes.length === 0) {
-          const col = $app.findCollectionByNameOrId('sugestoes_sementes')
-          const novo = new Record(col)
-          novo.set('usuario', u.id)
-          novo.set('data_geracao', dataDia)
-          novo.set('sugestoes', '[]')
-          novo.set('status', 'sem_sugestoes')
-          novo.set('gerado_por', AGENTE_SLUG)
-          novo.set('total_sementes', 0)
-          novo.set('total_maduras', 0)
-          $app.save(novo)
-          console.log(`[cacador-sementes] Placeholder vazio criado para ${u.id} (${dataDia}).`)
+        if (existentes.length > 0) {
+          console.log(
+            `[cacador-sementes] Caçada de ${dataDia} de ${u.id} já existente — cron nada a fazer.`,
+          )
+          return
         }
+        // —— Cofre por Tese (mesmos critérios do endpoint gerar) ——
+        const agora = new Date()
+        const desde7 = new Date(agora.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+        const cofre = $app.findRecordsByFilter(
+          'folha_dia',
+          'estado_semente = true && semente_germinada != true',
+          '-created',
+          300,
+          0,
+        )
+        // movimento recente por parceiro/negócio
+        const nomesMovimento = {}
+        try {
+          const recentes = $app.findRecordsByFilter(
+            'folha_dia',
+            `estado_semente != true && created > "${desde7}"`,
+            '-created',
+            200,
+            0,
+          )
+          recentes.forEach((r) => {
+            const p = String(r.getString('semente_parceiro') || '')
+              .toLowerCase()
+              .trim()
+            const n = String(r.getString('semente_negocio') || '')
+              .toLowerCase()
+              .trim()
+            if (p) nomesMovimento[p] = true
+            if (n) nomesMovimento[n] = true
+          })
+        } catch (_) {}
+        // teses aquecidas (germinação nos últimos 30 dias)
+        const tesesAquecidas = {}
+        try {
+          const desde30 = new Date(agora.getTime() - 30 * 24 * 60 * 60 * 1000)
+            .toISOString()
+            .slice(0, 10)
+          const germinadas = $app.findRecordsByFilter(
+            'folha_dia',
+            `estado_semente = true && semente_germinada = true && updated >= "${desde30}" && tese_semente != ""`,
+            '-updated',
+            200,
+            0,
+          )
+          germinadas.forEach((g) => {
+            const teseId = String(g.getString('tese_semente') || '')
+            if (teseId) tesesAquecidas[teseId] = true
+          })
+        } catch (_) {}
+        const maduras = []
+        cofre.forEach((s) => {
+          let criadoEm = ''
+          try {
+            criadoEm = String(s.created || '')
+          } catch (_) {}
+          const revisao = String(s.getString('data_revisao_semente') || '').slice(0, 10)
+          const antiga = criadoEm ? new Date(criadoEm.replace(' ', 'T')).getTime() : 0
+          const diasNoCofre = antiga
+            ? Math.floor((agora.getTime() - antiga) / (24 * 60 * 60 * 1000))
+            : 0
+          const diasVencida = revisao
+            ? Math.floor(
+                (agora.getTime() - new Date(revisao + 'T23:59:59Z').getTime()) /
+                  (24 * 60 * 60 * 1000),
+              )
+            : 0
+          const parceiro = String(s.getString('semente_parceiro') || '')
+            .toLowerCase()
+            .trim()
+          const negocio = String(s.getString('semente_negocio') || '')
+            .toLowerCase()
+            .trim()
+          const movimento = Boolean(
+            (parceiro && nomesMovimento[parceiro]) || (negocio && nomesMovimento[negocio]),
+          )
+          const teseId = String(s.getString('tese_semente') || '')
+          const teseAquecida = Boolean(teseId && tesesAquecidas[teseId])
+          const madura = diasNoCofre >= 30 || diasVencida > 0 || movimento || teseAquecida
+          if (madura) maduras.push(s)
+        })
+        if (maduras.length === 0) {
+          console.log(
+            `[cacador-sementes] ${dataDia}: ${cofre.length} semente(s) no cofre, nenhuma madura — nada a gravar.`,
+          )
+          return
+        }
+        // —— Uma única caçada com o agente (cron roda no server; usa o id do dono
+        // como user_id — só o primeiro usuário ativo da conta é elegível) ——
+        const userId = ativos[0].id
+        const lista = maduras
+          .slice(0, 60)
+          .map((s) => {
+            let teseNome = ''
+            try {
+              const teseId = String(s.getString('tese_semente') || '')
+              if (teseId) teseNome = $app.findRecordById('teses_sementes', teseId).getString('nome')
+            } catch (_) {}
+            return `- id=${s.id} | tese="${teseNome}" | guardada há ${Math.floor(
+              (agora.getTime() - new Date(String(s.created || '').replace(' ', 'T')).getTime()) /
+                (24 * 60 * 60 * 1000),
+            )} dia(s) | parceiro="${s.getString('semente_parceiro')}" | negócio="${s.getString(
+              'semente_negocio',
+            )}" | texto="${String(s.getString('registro') || '').slice(0, 180)}"`
+          })
+          .join('\n')
+        const prompt = `Você é a Diamantina, o Caçador de Sementes do Agenda IA Diamond. Data da caçada: ${dataDia}. Abaixo as sementes maduras do Cofre por Tese (pré-filtro determinístico). Avalie quais realmente merecem germinar HOJE e devolva SOMENTE um bloco JSON puro (sem markdown) no formato:
+{
+  "tem_sugestoes": true,
+  "mensagem": "",
+  "sugestoes": [
+    {
+      "folha_id": "id exato da semente referenciada",
+      "tese": "nome da tese de mercado (a mesma da lista)",
+      "motivo": "por que esta semente amadureceu HOJE (pt-BR, 1 a 3 frases)",
+      "contra_argumento": "por que esperar mais um pouco (pt-BR, 1 a 2 frases)",
+      "titulo_card_sugerido": "título do card de demanda a criar ao germinar",
+      "prioridade": "alta | media | baixa",
+      "urgente": true ou false
+    }
+  ]
+}
+Regras: seja conservador(a) — prefira poucas sementes realmente prontas a uma lista inflada; use os ids exatos (folha_id); nunca invente nomes, datas ou movimentos; se nenhuma merecer germinar, devolva "tem_sugestoes": false com uma "mensagem" educada explicando.
+
+${lista}`
+        const res = $ai.agent(AGENTE_SLUG).chat({ message: prompt, user_id: userId })
+        const conteudo = res && res.content ? res.content : ''
+        const m = String(conteudo).match(/\{[\s\S]*\}/)
+        let parsed = null
+        if (m) {
+          try {
+            parsed = JSON.parse(m[0])
+          } catch (_) {}
+        }
+        const sugestoes = (parsed && Array.isArray(parsed.sugestoes) ? parsed.sugestoes : [])
+          .filter((s) => s && s.folha_id)
+          .slice(0, 20)
+          .map((s) => {
+            const fid = String(s.folha_id || '')
+              .trim()
+              .slice(0, 60)
+            const rec = maduras.find((x) => x.id === fid)
+            return {
+              folha_id: fid,
+              tese: String(s.tese || '')
+                .trim()
+                .slice(0, 160),
+              motivo: String(s.motivo || '')
+                .trim()
+                .slice(0, 300),
+              contra_argumento: String(s.contra_argumento || '')
+                .trim()
+                .slice(0, 300),
+              titulo_card_sugerido: String(s.titulo_card_sugerido || '')
+                .trim()
+                .slice(0, 160),
+              prioridade:
+                String(s.prioridade || '')
+                  .trim()
+                  .slice(0, 30) || 'media',
+              urgente: Boolean(s.urgente),
+              score: 0,
+              tipo_motivo: 'agente',
+              aparicoes: 0,
+            }
+          })
+          .filter((s) => s.folha_id)
+        if (sugestoes.length === 0) {
+          console.log(
+            `[cacador-sementes] ${dataDia}: agente não sugeriu nenhuma semente válida — nada a gravar.`,
+          )
+          return
+        }
+        // —— Grava o registro do dia SOMENTE com sugestões cuja semente existe ——
+        const col = $app.findCollectionByNameOrId('sugestoes_sementes')
+        const validas = []
+        sugestoes.forEach((s) => {
+          try {
+            $app.findRecordById('folha_dia', s.folha_id)
+            validas.push(s)
+          } catch (_) {
+            console.error(`[cacador-sementes] Semente ${s.folha_id} não existe — descartada.`)
+          }
+        })
+        if (validas.length === 0) {
+          console.error(
+            `[cacador-sementes] ${dataDia}: nenhuma sugestão com semente válida — nada gravado.`,
+          )
+          return
+        }
+        const nov = new Record(col)
+        nov.set('usuario', userId)
+        nov.set('semente', validas[0].folha_id)
+        nov.set('data_geracao', dataDia)
+        nov.set('sugestoes', JSON.stringify(validas))
+        nov.set('mensagem_vazia', '')
+        nov.set('total_sementes', cofre.length)
+        nov.set('total_maduras', maduras.length)
+        nov.set('gerado_por', AGENTE_SLUG)
+        nov.set('status', 'nova')
+        nov.set('status_registros', JSON.stringify({}))
+        nov.set('preferencias_cacador', JSON.stringify({ germinou: {}, ignorou: {} }))
+        nov.set(
+          'resumo',
+          JSON.stringify({
+            texto: `Foram sugeridas ${validas.length} semente(s) para germinar hoje.`,
+            total_urgentes: validas.filter((s) => s.urgente).length,
+          }),
+        )
+        nov.set('total_geradas', validas.length)
+        nov.set('total_germinadas', 0)
+        nov.set('total_ignoradas', 0)
+        $app.save(nov)
+        console.log(
+          `[cacador-sementes] Cron 21h concluído (usuario=${userId}, sementes=${cofre.length}, maduras=${maduras.length}, sugestoes=${validas.length}).`,
+        )
       } catch (err) {
-        console.error(`[cacador-sementes] Falha no placeholder do usuário ${u.id}: ${err.message}`)
+        console.error(`[cacador-sementes] Falha na caçada do usuário ${u.id}: ${err.message}`)
       }
     })
   } catch (err) {
@@ -352,7 +567,7 @@ Regras: seja conservador(a) — prefira poucas sementes realmente prontas a uma 
       }
 
       // —— 8. Uma única caçada com o agente ——
-      const res = $ai.agent(AGENTE_SLUG).chat({ message: prompt, conversation: null })
+      const res = $ai.agent(AGENTE_SLUG).chat({ message: prompt, user_id: userId })
       const conteudo = res && res.content ? res.content : ''
       const parsed = extrairJson(conteudo) || {}
 
@@ -389,7 +604,20 @@ Regras: seja conservador(a) — prefira poucas sementes realmente prontas a uma 
         })
         .sort((a, b) => (b.score || 0) - (a.score || 0))
 
-      const temSugestoes = sugestoes.length > 0
+      // NUNCA gravar registro sem semente válida: descarta sugestões cuja
+      // folha_id não existe na folha_dia (a coleção exige `semente`).
+      const validadas = []
+      sugestoes.forEach((s) => {
+        try {
+          $app.findRecordById('folha_dia', s.folha_id)
+          validadas.push(s)
+        } catch (_) {
+          console.error(`[cacador-sementes] Semente ${s.folha_id} não existe — descartada.`)
+        }
+      })
+      const sugestoesFinais = validadas
+
+      const temSugestoes = sugestoesFinais.length > 0
       const mensagemVazia = temSugestoes
         ? ''
         : valorTexto(parsed.mensagem, 600) ||
@@ -413,7 +641,7 @@ Regras: seja conservador(a) — prefira poucas sementes realmente prontas a uma 
 
       // —— 10. Rastro (status por sugestão): germinada / ignorada / ainda madura ——
       const statusMap = {}
-      sugestoes.forEach((s) => {
+      sugestoesFinais.forEach((s) => {
         statusMap[s.folha_id] = { status: 'madura', tipo_motivo: s.tipo_motivo }
       })
 
@@ -429,6 +657,22 @@ Regras: seja conservador(a) — prefira poucas sementes realmente prontas a uma 
       let alvo
       if (existentes.length > 0) {
         alvo = existentes[0]
+        // Um registro legado sem semente (placeholder do cron antigo) não pode
+        // ser atualizado — a coleção exige `semente`. Substitui por um novo.
+        let semSemente = false
+        try {
+          const sid = alvo.getString('semente')
+          if (!sid || sid === 'undefined' || sid === '') semSemente = true
+        } catch (_) {
+          semSemente = true
+        }
+        if (semSemente) {
+          try {
+            $app.delete(alvo)
+          } catch (_) {}
+          alvo = new Record(col)
+          alvo.set('usuario', userId)
+        }
       } else {
         alvo = new Record(col)
         alvo.set('usuario', userId)
@@ -480,8 +724,13 @@ Regras: seja conservador(a) — prefira poucas sementes realmente prontas a uma 
       ).length
 
       alvo.set('data_geracao', dataDia)
-      alvo.set('sugestoes', JSON.stringify(sugestoes))
+      alvo.set('sugestoes', JSON.stringify(sugestoesFinais))
       alvo.set('mensagem_vazia', mensagemVazia)
+      // A coleção exige `semente` (relation required). Só persiste com uma
+      // semente real: primeira sugestão válida; sem sugestão, NADA é gravado.
+      if (sugestoesFinais.length > 0) {
+        alvo.set('semente', sugestoesFinais[0].folha_id)
+      }
       alvo.set('total_sementes', sementes.length)
       alvo.set('total_maduras', totalMaduras)
       alvo.set('gerado_por', AGENTE_SLUG)
@@ -489,9 +738,23 @@ Regras: seja conservador(a) — prefira poucas sementes realmente prontas a uma 
       alvo.set('status_registros', JSON.stringify(statusFinal))
       alvo.set('preferencias_cacador', JSON.stringify(prefsAtuais))
       alvo.set('resumo', JSON.stringify({ texto: resumoTexto, total_urgentes: totalUrgentes }))
-      alvo.set('total_geradas', sugestoes.length)
+      alvo.set('total_geradas', sugestoesFinais.length)
       alvo.set('total_germinadas', totalGerminadas)
       alvo.set('total_ignoradas', totalIgnoradas)
+      if (sugestoesFinais.length === 0) {
+        console.log(
+          `[cacador-sementes] Caçada de ${dataDia}: nenhuma sugestão com semente válida — registro não gravado (gatilho=manual).`,
+        )
+        return e.json(200, {
+          sucesso: true,
+          atualizado: false,
+          gravado: false,
+          mensagem: mensagemVazia,
+          total_sementes: sementes.length,
+          total_maduras: totalMaduras,
+          total_sugestoes: 0,
+        })
+      }
       $app.save(alvo)
 
       // —— 12. Selo "insistente": incrementa aparicoes das sementes sugeridas hoje ——
@@ -512,9 +775,10 @@ Regras: seja conservador(a) — prefira poucas sementes realmente prontas a uma 
       return e.json(200, {
         sucesso: true,
         atualizado: true,
+        gravado: true,
         total_sementes: sementes.length,
         total_maduras: totalMaduras,
-        total_sugestoes: sugestoes.length,
+        total_sugestoes: sugestoesFinais.length,
       })
     } catch (err) {
       return e.json(500, {
