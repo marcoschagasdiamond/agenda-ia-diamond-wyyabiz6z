@@ -1,21 +1,22 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 /**
- * Memória compartilhada entre agentes (memoria_compartilhada).
+ * CAMADA 4 — Memória compartilhada entre agentes (coleção memoria_compartilhada).
  *
- * POST /backend/v1/memoria/compartilhada  { tipo, chave, resumo, detalhe?, entidade_ref? }
+ * POST /backend/v1/memoria/compartilhada  { tipo, chave, conteudo, entidade?, data_origem?, fonte?, agente_origem? }
  *   Grava/atualiza um fato duradouro — deduplicado por
- *   (usuario, agente_origem, tipo, chave): se a chave já existe, atualiza o
- *   resumo em vez de criar um novo registro (não cresce sem limite).
+ *   (usuario, agente_origem, tipo, chave): se a chave já existe, ATUALIZA o
+ *   conteudo em vez de criar um novo registro (não cresce sem limite).
  *
  * GET /backend/v1/memoria/compartilhada?page=1&perPage=30&tipo=fato
  *   Lista paginada dos fatos ativos do usuário.
  *
- * Usada pelos três agentes nativos (tools de leitura já ligadas na migration
- * 1762800032) e pela rotina diária: a Diamantina Organizadora lê os fatos no
- * prompt do resumo; a Caçadora e o Analista têm acesso por tool.
+ * Usada pelos agentes nativos (tools já ligadas na migration 1762800032) e
+ * pela rotina diária: a Diamantina Organizadora lê os fatos no prompt do
+ * resumo (resumo_diario.js) e grava aprendizados de volta aqui.
  *
- * IMPORTANTE (JSVM): toda a lógica vive INLINE dentro de cada callback.
+ * IMPORTANTE (JSVM do PocketBase): callbacks cronAdd/routerAdd NÃO veem
+ * declarações de topo — TODA a lógica vive inline dentro de cada callback.
  */
 
 routerAdd(
@@ -23,8 +24,19 @@ routerAdd(
   '/backend/v1/memoria/compartilhada',
   (e) => {
     try {
-      const userId = e.auth?.id
+      const userId = e.auth && e.auth.id ? e.auth.id : ''
       if (!userId) return e.unauthorizedError('autenticação obrigatória')
+
+      // —— helpers inline (JSVM) ——
+      const esc = (s) => String(s || '').replace(/"/g, '\\"')
+      const campo = (r, n) => {
+        try {
+          const v = r.getString(n)
+          return v === 'undefined' ? '' : v
+        } catch (_) {
+          return ''
+        }
+      }
 
       const body = e.requestInfo().body || {}
       const tipo = ['fato', 'preferencia', 'decisao', 'aprendizado'].includes(String(body.tipo))
@@ -34,32 +46,35 @@ routerAdd(
         .trim()
         .toLowerCase()
         .slice(0, 120)
-      const resumo = String(body.resumo || '')
-        .trim()
-        .slice(0, 1200)
-      const detalhe = String(body.detalhe || '')
+      const conteudo = String(body.conteudo || body.resumo || '')
         .trim()
         .slice(0, 4000)
-      const entidadeRef = String(body.entidade_ref || '')
+      const entidade = String(body.entidade || body.entidade_ref || '')
+        .trim()
+        .slice(0, 160)
+      const dataOrigem = String(body.data_origem || '')
+        .trim()
+        .slice(0, 10)
+      const fonte = String(body.fonte || '')
         .trim()
         .slice(0, 160)
       const agenteOrigem = String(body.agente_origem || 'diamantina-analista-memoria').slice(0, 60)
 
-      if (!chave || !resumo) return e.badRequestError('chave e resumo são obrigatórios.')
+      if (!chave || !conteudo) return e.badRequestError('chave e conteudo são obrigatórios.')
 
       const col = $app.findCollectionByNameOrId('memoria_compartilhada')
       const existentes = $app.findRecordsByFilter(
         'memoria_compartilhada',
-        `usuario = "${userId}" && agente_origem = "${agenteOrigem}" && tipo = "${tipo}" && chave = "${chave}"`,
+        `usuario = "${esc(userId)}" && agente_origem = "${esc(agenteOrigem)}" && tipo = "${esc(tipo)}" && chave = "${esc(chave)}"`,
         '-created',
         1,
         0,
       )
       let rec
+      let atualizado = false
       if (existentes.length > 0) {
         rec = existentes[0]
-        const citadas = rec.getInt('vezes_citada') || 0
-        rec.set('vezes_citada', citadas)
+        atualizado = true
       } else {
         rec = new Record(col)
         rec.set('usuario', userId)
@@ -67,14 +82,15 @@ routerAdd(
       }
       rec.set('tipo', tipo)
       rec.set('chave', chave)
-      rec.set('resumo', resumo)
-      rec.set('detalhe', detalhe)
-      rec.set('entidade_ref', entidadeRef)
+      rec.set('conteudo', conteudo)
+      rec.set('entidade', entidade)
+      rec.set('data_origem', dataOrigem)
+      rec.set('fonte', fonte)
       rec.set('agente_origem', agenteOrigem)
       rec.set('ativo', true)
       $app.save(rec)
 
-      return e.json(200, { sucesso: true, id: rec.id })
+      return e.json(200, { sucesso: true, id: rec.id, atualizado })
     } catch (err) {
       return e.json(500, { error: err.message || 'Falha ao gravar memória compartilhada' })
     }
@@ -87,18 +103,30 @@ routerAdd(
   '/backend/v1/memoria/compartilhada',
   (e) => {
     try {
-      const userId = e.auth?.id
+      const userId = e.auth && e.auth.id ? e.auth.id : ''
       if (!userId) return e.unauthorizedError('autenticação obrigatória')
+
+      // —— helpers inline (JSVM) ——
+      const campo = (r, n) => {
+        try {
+          const v = r.getString(n)
+          return v === 'undefined' ? '' : v
+        } catch (_) {
+          return ''
+        }
+      }
 
       const q = e.requestInfo().query || {}
       const page = Math.max(1, Number(q.page) || 1)
       const perPage = Math.min(60, Math.max(1, Number(q.perPage) || 30))
-      const tipo = String(q.tipo || '').slice(0, 20)
+      const tipo = String(q.tipo || '')
+        .trim()
+        .slice(0, 20)
 
       let filtro = `usuario = "${userId}" && ativo = true`
       if (tipo) filtro += ` && tipo = "${tipo}"`
 
-      const itens = $app.findRecordsByFilter(
+      const registros = $app.findRecordsByFilter(
         'memoria_compartilhada',
         filtro,
         '-updated',
@@ -107,22 +135,22 @@ routerAdd(
       )
       const total = $app.countRecords('memoria_compartilhada', filtro)
 
-      return e.json(200, {
-        page,
-        perPage,
-        total,
-        itens: itens.map((r) => ({
+      const itens = []
+      for (const r of registros) {
+        itens.push({
           id: r.id,
-          tipo: r.getString('tipo'),
-          chave: r.getString('chave'),
-          resumo: r.getString('resumo'),
-          detalhe: r.getString('detalhe'),
-          entidade_ref: r.getString('entidade_ref'),
-          agente_origem: r.getString('agente_origem'),
-          vezes_citada: r.getInt('vezes_citada'),
+          tipo: campo(r, 'tipo'),
+          chave: campo(r, 'chave'),
+          conteudo: campo(r, 'conteudo'),
+          entidade: campo(r, 'entidade'),
+          data_origem: campo(r, 'data_origem'),
+          fonte: campo(r, 'fonte'),
+          agente_origem: campo(r, 'agente_origem'),
+          vezes_citada: r.getInt('vezes_citada') || 0,
           updated: r.getString('updated'),
-        })),
-      })
+        })
+      }
+      return e.json(200, { itens, page, perPage, totalItens: total })
     } catch (err) {
       return e.json(500, { error: err.message || 'Falha ao listar memória compartilhada' })
     }
