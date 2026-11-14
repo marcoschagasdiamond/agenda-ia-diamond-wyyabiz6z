@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-14T01:37:52.046Z",
+  "generatedAt": "2026-11-14T02:08:53.047Z",
   "collections": [
     {
       "name": "users",
@@ -624,6 +624,12 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "cacador_aparicoes",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -1119,6 +1125,12 @@
         {
           "name": "updated_manual",
           "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cacador",
+          "type": "json",
           "required": false,
           "system": false
         }
@@ -4555,6 +4567,42 @@
         },
         {
           "name": "total_maduras",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_registros",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "preferencias_cacador",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "resumo",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_geradas",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_germinadas",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_ignoradas",
           "type": "number",
           "required": false,
           "system": false
