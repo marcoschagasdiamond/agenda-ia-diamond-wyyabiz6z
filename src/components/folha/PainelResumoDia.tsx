@@ -19,8 +19,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import { diamondApi } from '@/services/diamondApi'
+import { listarOportunidadesCacador, type OportunidadesCacador } from '@/services/cacadorSementes'
 import type { ResumoDia, SugestaoCardIA } from '@/types'
 import { cn } from '@/lib/utils'
+import { Sprout } from 'lucide-react'
 
 interface PainelResumoDiaProps {
   /** Navega para /folha?destaque=<folha_id> destacando o registro de origem da sugestão */
@@ -126,6 +128,8 @@ export const PainelResumoDia: React.FC<PainelResumoDiaProps> = ({ onDestacarRegi
   const [dataSelecionada, setDataSelecionada] = useState<string | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [gerando, setGerando] = useState(false)
+  const [oportunidades, setOportunidades] = useState<OportunidadesCacador | null>(null)
+  const [carregandoOportunidades, setCarregandoOportunidades] = useState(false)
 
   const carregar = useCallback(
     async (paginaDesejada = 1) => {
@@ -186,6 +190,25 @@ export const PainelResumoDia: React.FC<PainelResumoDiaProps> = ({ onDestacarRegi
   const sugestoes = parseSugestoes(resumoSelecionado)
   const totalPaginas = Math.max(1, Math.ceil(totalHistorico / POR_PAGINA_HISTORICO))
   const rotuloDiaSelecionado = rotuloRelativoDia(resumoSelecionado?.data)
+
+  /** Oportunidades do Caçador para o dia do resumo selecionado. */
+  useEffect(() => {
+    let vivo = true
+    setCarregandoOportunidades(true)
+    listarOportunidadesCacador(resumoSelecionado?.data?.slice(0, 10))
+      .then((opp) => {
+        if (vivo) setOportunidades(opp && opp.disponivel && opp.total > 0 ? opp : null)
+      })
+      .catch(() => {
+        if (vivo) setOportunidades(null)
+      })
+      .finally(() => {
+        if (vivo) setCarregandoOportunidades(false)
+      })
+    return () => {
+      vivo = false
+    }
+  }, [resumoSelecionado?.data])
 
   return (
     <Card className="border-[#0F766E]/25 bg-gradient-to-br from-white via-white to-[#0F766E]/[0.04] shadow-sm">
@@ -321,6 +344,61 @@ export const PainelResumoDia: React.FC<PainelResumoDiaProps> = ({ onDestacarRegi
                 texto={resumoSelecionado.decisoes}
               />
             </div>
+
+            {/* Oportunidades do Caçador (sementes maduras aguardando decisão) */}
+            {carregandoOportunidades ? (
+              <div className="flex items-center gap-1.5 px-1 text-[11px] text-[#5B6470]">
+                <Loader2 className="w-3 h-3 animate-spin text-emerald-600" />
+                Consultando o Caçador de Sementes...
+              </div>
+            ) : oportunidades ? (
+              <div className="rounded-xl p-3 space-y-2 bg-emerald-50/60 border border-emerald-100">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-emerald-700">
+                  <Sprout className="w-3.5 h-3.5" />
+                  <span>
+                    Oportunidades do Caçador
+                    <span className="text-[#5B6470] font-semibold normal-case">
+                      {' '}
+                      · {oportunidades.total} semente{oportunidades.total === 1 ? '' : 's'} madura
+                      {oportunidades.total === 1 ? '' : 's'}
+                      {oportunidades.urgentes > 0 ? ` · ${oportunidades.urgentes} urgente(s)` : ''}
+                    </span>
+                  </span>
+                </div>
+                {oportunidades.texto && (
+                  <p className="text-xs text-[#1A1D21] leading-relaxed">{oportunidades.texto}</p>
+                )}
+                <ul className="space-y-1.5">
+                  {oportunidades.itens.slice(0, 5).map((item, i) => (
+                    <li
+                      key={`${item.folha_id || 'opp'}-${i}`}
+                      className="text-xs text-[#1A1D21] leading-relaxed flex items-start gap-1.5"
+                    >
+                      <span className="mt-1.5 w-1 h-1 rounded-full shrink-0 bg-emerald-600" />
+                      <span>
+                        <span className="font-semibold">{item.titulo || item.tese}</span>
+                        {item.motivo && <span> — {item.motivo}</span>}
+                        {item.urgente && (
+                          <Badge className="bg-rose-100 text-rose-800 hover:bg-rose-100 border-none text-[9px] px-1 py-0 font-bold ml-1">
+                            urgente
+                          </Badge>
+                        )}
+                        {item.contra_argumento && (
+                          <span className="block text-[11px] text-[#5B6470] italic">
+                            Contra: {item.contra_argumento}
+                          </span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {oportunidades.itens.length > 5 && (
+                  <p className="text-[11px] text-[#5B6470] italic">
+                    +{oportunidades.itens.length - 5} oportunidade(s) na aba Sementes da Folha.
+                  </p>
+                )}
+              </div>
+            ) : null}
 
             {/* Sugestões de conversão em card (registros soltos) */}
             <div className="space-y-2">

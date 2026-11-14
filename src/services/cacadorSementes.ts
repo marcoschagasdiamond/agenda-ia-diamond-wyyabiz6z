@@ -18,6 +18,8 @@ export interface SugestaoGerminacao {
   score?: number
   /** Tipo do motivo principal: movimento_recente | revisao_vencida | tempo_cofre | tese_aquecida. */
   tipo_motivo?: string
+  /** Aparições acumuladas da semente nas caçadas (folha_dia.cacador_aparicoes). */
+  aparicoes?: number
 }
 
 /** Rastro por sugestão (json status_registros): madura / germinada / ignorada. */
@@ -211,6 +213,16 @@ export async function marcarFeedbackIgnorada(
   return await res.json()
 }
 
+/** Registra o feedback (germinar | ignorar) numa sugestão, via endpoint do hook. */
+export async function registrarFeedbackSugestao(
+  dataGeracao: string,
+  folhaId: string,
+  tipo: 'germinar' | 'ignorar',
+): Promise<{ sucesso: boolean; total_germinadas?: number; total_ignoradas?: number }> {
+  if (tipo === 'germinar') return await marcarFeedbackGerminada(dataGeracao, folhaId)
+  return await marcarFeedbackIgnorada(dataGeracao, folhaId)
+}
+
 /** Pede à Diamantina que (re)cace sementes maduras agora via hook backend. */
 export async function gerarSugestoesAgora(): Promise<{
   sucesso: boolean
@@ -245,4 +257,48 @@ export async function listarOportunidadesCacador(
   } catch {
     return null
   }
+}
+
+// ——— Helpers de datas e rastro usados pelo painel e pelo dashboard ———
+
+/** Datas "AAAA-MM-DD" viram "DD/MM/AAAA" (vazio quando a data não vem). */
+export const formatarDataPtBr = (dataIso?: string): string => {
+  if (!dataIso) return ''
+  const soData = dataIso.slice(0, 10)
+  const [ano, mes, dia] = soData.split('-')
+  if (!ano || !mes || !dia) return soData
+  return `${dia}/${mes}/${ano}`
+}
+
+/** "Hoje" / "Ontem" — vazio nos outros dias. */
+export const rotuloRelativoDia = (dataIso?: string): string => {
+  if (!dataIso) return ''
+  const hoje = dataDeHojeLocal()
+  if (dataIso.slice(0, 10) === hoje) return 'Hoje'
+  const ontem = new Date()
+  ontem.setDate(ontem.getDate() - 1)
+  const dataOntem = new Date(ontem.getTime() - ontem.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 10)
+  if (dataIso.slice(0, 10) === dataOntem) return 'Ontem'
+  return ''
+}
+
+/**
+ * Total de aparições da sugestão nas caçadas: o hook incrementa
+ * folha_dia.cacador_aparicoes a cada caçada em que ela volta a ser sugerida.
+ * Cai para 1 (apareceu nesta caçada) quando o contador ainda não existe.
+ */
+export const totalAparicoes = (sugestao?: SugestaoGerminacao | null): number => {
+  if (!sugestao) return 0
+  return Math.max(1, Number(sugestao.aparicoes) || 1)
+}
+
+/** Dias inteiros desde uma data ISO (created de registro, germinada_em…). */
+export const idadeDias = (dataIso?: string): number => {
+  if (!dataIso) return 0
+  const então = new Date(dataIso)
+  if (Number.isNaN(então.getTime())) return 0
+  const agora = new Date()
+  return Math.max(0, Math.floor((agora.getTime() - então.getTime()) / 86400000))
 }
