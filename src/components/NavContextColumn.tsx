@@ -220,6 +220,7 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
     if (pathname.startsWith('/clientes')) return 'clientes'
     if (pathname.startsWith('/equipe')) return 'equipe'
     if (pathname.startsWith('/agente')) return 'agente'
+    if (pathname.startsWith('/memoria')) return 'memoria'
     if (pathname.startsWith('/resumos')) return 'resumos'
     if (pathname.startsWith('/config')) return 'config'
     if (pathname.startsWith('/portal')) return 'portal'
@@ -1447,6 +1448,74 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
   }
 
   // =========================================================================
+  // 8b. SEGUNDA COLUNA: ANALISTA DE MEMÓRIA (mesma persona, sem chat contextual)
+  // Mantém "Visão Geral" padrão: apenas um atalho para a rota — decisões 0.0.123.
+  // =========================================================================
+  const renderColunaMemoria = () => {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="p-3.5 border-b border-[#E5E1D8] flex items-center justify-between bg-white shrink-0">
+          <div>
+            <h2 className="text-sm font-bold text-[#1A1D21] tracking-tight">Analista de Memória</h2>
+            <p className="text-[10px] text-[#5B6470]">Segundo Cérebro Diamond</p>
+          </div>
+          <Badge
+            className="bg-emerald-50 text-emerald-700 text-[10px] border-emerald-200"
+            variant="outline"
+          >
+            Ativo
+          </Badge>
+        </div>
+
+        <div className="flex-1 p-3 space-y-3 overflow-y-auto">
+          <div className="p-3 rounded-lg bg-[#0F766E]/5 border border-[#0F766E]/20 text-xs text-[#0D5C56] space-y-2">
+            <div className="flex items-center gap-1.5 font-bold">
+              <Brain className="w-3.5 h-3.5 text-[#0F766E]" />
+              <span>Memória Persistente</span>
+            </div>
+            <p className="text-[11px] leading-relaxed">
+              A Diamantina lembra das conversas anteriores: pergunte "e o projeto Y?" e ela entende
+              o contexto. Responde com base nos dados reais do sistema, sempre citando a origem.
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <span className="text-[11px] font-bold text-[#5B6470] uppercase tracking-wider px-1 block">
+              Perguntas Frequentes
+            </span>
+            <button
+              onClick={() => irPara('/memoria')}
+              className="w-full text-left p-2 rounded-lg bg-white border border-[#E5E1D8] hover:border-[#0F766E] text-xs text-[#1A1D21] transition-all block"
+            >
+              "O que decidimos com o cliente X?"
+            </button>
+            <button
+              onClick={() => irPara('/memoria')}
+              className="w-full text-left p-2 rounded-lg bg-white border border-[#E5E1D8] hover:border-[#0F766E] text-xs text-[#1A1D21] transition-all block"
+            >
+              "Quais demandas estão paradas?"
+            </button>
+            <button
+              onClick={() => irPara('/memoria')}
+              className="w-full text-left p-2 rounded-lg bg-white border border-[#E5E1D8] hover:border-[#0F766E] text-xs text-[#1A1D21] transition-all block"
+            >
+              "Quais sementes tenho no cofre?"
+            </button>
+          </div>
+
+          <button
+            onClick={() => irPara('/memoria')}
+            className="w-full flex items-center justify-center gap-1.5 p-2 rounded-lg bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs font-bold transition-colors"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Abrir Analista de Memória</span>
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // =========================================================================
   // 9. SEGUNDA COLUNA: CONFIGURAÇÕES
   // =========================================================================
   const renderColunaConfig = () => {
@@ -1707,6 +1776,17 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
           </button>
 
           <button
+            onClick={() => irPara('/memoria')}
+            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Brain className="w-3.5 h-3.5 text-[#0F766E]" />
+              <span>Analista de Memória</span>
+            </div>
+            <Sparkles className="w-3 h-3 text-[#0F766E]" />
+          </button>
+
+          <button
             onClick={() => irPara('/resumos')}
             className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#1A1D21] hover:bg-[#F4F2EE] transition-colors"
           >
@@ -1862,6 +1942,8 @@ export default function NavContextColumn({ onCloseMobile }: NavContextColumnProp
       return renderColunaEquipe()
     case 'agente':
       return renderColunaAgente()
+    case 'memoria':
+      return renderColunaMemoria()
     case 'config':
       return renderColunaConfig()
     case 'master':

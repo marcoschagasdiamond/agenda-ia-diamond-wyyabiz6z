@@ -28,6 +28,7 @@ import Arquivos from '@/pages/Arquivos'
 import Listas from '@/pages/Listas'
 import Clientes from '@/pages/Clientes'
 import Agente from '@/pages/Agente'
+import Memoria from '@/pages/Memoria'
 import Resumos from '@/pages/Resumos'
 import Config from '@/pages/Config'
 import Equipe from '@/pages/Equipe'
@@ -54,6 +55,7 @@ const ROTULOS_RECURSO: Record<RecursoApp, string> = {
   clientes: 'Clientes & Portal',
   equipe: 'Equipe & Convites',
   agente: 'Agente IA Diamond',
+  memoria: 'Analista de Memória',
   resumos: 'Resumos do Dia',
   config: 'Configurações',
   master: 'Painel Master',
@@ -79,6 +81,7 @@ function ProtectedRoute({
     | 'clientes'
     | 'equipe'
     | 'agente'
+    | 'memoria'
     | 'resumos'
     | 'config'
     | 'chat'
@@ -306,6 +309,15 @@ export default function App() {
                 element={
                   <ProtectedRoute recursoTipo="resumos">
                     <Resumos />
+                  </ProtectedRoute>
+                }
+              />
+              {/* Analista de Memória — segundo funcionário de IA (conversável) */}
+              <Route
+                path="/memoria"
+                element={
+                  <ProtectedRoute recursoTipo="memoria">
+                    <Memoria />
                   </ProtectedRoute>
                 }
               />

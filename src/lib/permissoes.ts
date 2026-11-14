@@ -16,6 +16,7 @@ export type RecursoApp =
   | 'clientes'
   | 'equipe'
   | 'agente'
+  | 'memoria'
   | 'resumos'
   | 'config'
   | 'chat'
@@ -46,6 +47,7 @@ const ACESSO_POR_RECURSO: Record<RecursoApp, FuncaoAcesso[]> = {
   clientes: ['master', 'admin', 'membro'],
   equipe: ['master', 'admin'],
   agente: ['master', 'admin', 'membro'],
+  memoria: ['master', 'admin', 'membro'],
   resumos: ['master', 'admin', 'membro'],
   chat: ['master', 'admin', 'membro'],
   config: ['master', 'admin'],
@@ -121,6 +123,7 @@ const RECURSO_POR_ROTA: Record<string, RecursoApp> = {
   '/clientes': 'clientes',
   '/equipe': 'equipe',
   '/agente': 'agente',
+  '/memoria': 'memoria',
   '/resumos': 'resumos',
   '/chat': 'chat',
   '/config': 'config',
