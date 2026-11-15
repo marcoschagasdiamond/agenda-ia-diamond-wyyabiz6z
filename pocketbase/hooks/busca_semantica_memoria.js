@@ -376,6 +376,123 @@ routerAdd(
       if (negocioFiltro) filtroDesc.push('negócio=' + negocioFiltro)
       if (projetoFiltro) filtroDesc.push('projeto=' + projetoFiltro)
 
+      // —— 1b) ETAPA VETORIAL (embeddings OpenAI text-embedding-3-small) ——
+      // Usa o cache de vetores (coleção embeddings_memoria) e a similaridade
+      // de cosseno para achar por significado. Qualquer falha (OpenAI fora,
+      // sem conta conectada, erro de runtime) cai no fluxo de 2 etapas abaixo —
+      // a busca NUNCA fica sem resposta.
+      const cosSimilaridade = (a, b) => {
+        const n = Math.min(a.length, b.length)
+        let dot = 0
+        let na = 0
+        let nb = 0
+        for (let i = 0; i < n; i++) {
+          dot += a[i] * b[i]
+          na += a[i] * a[i]
+          nb += b[i] * b[i]
+        }
+        if (!na || !nb) return 0
+        return dot / (Math.sqrt(na) * Math.sqrt(nb))
+      }
+      const colecaoDeTipo = {
+        dossie: 'dossies_memoria',
+        resumo_dia: 'resumos_dia',
+        folha: 'folha_dia',
+        episodio: 'episodios_memoria',
+        memoria_compartilhada: 'memoria_compartilhada',
+      }
+
+      let vetorPergunta = null
+      try {
+        const brutoV = $connectors.executeAsOwner('openai', 'OPENAI_CREATE_EMBEDDINGS', {
+          input: [pergunta.slice(0, 6000)],
+          model: 'text-embedding-3-small',
+        })
+        const dadosV = brutoV && brutoV.data ? brutoV.data : brutoV
+        const arrV = dadosV && dadosV.data ? dadosV.data : null
+        if (arrV && arrV.length > 0 && arrV[0] && arrV[0].embedding) {
+          vetorPergunta = arrV[0].embedding
+        }
+      } catch (errVetor) {
+        vetorPergunta = null
+      }
+
+      if (vetorPergunta) {
+        const pontuados = []
+        let semVetor = 0
+        for (const c of candidatos) {
+          const colecaoOrigem = colecaoDeTipo[c.tipo]
+          if (!colecaoOrigem) {
+            semVetor++
+            continue
+          }
+          let slot = null
+          try {
+            slot = $app.findFirstRecordByFilter(
+              'embeddings_memoria',
+              `colecao = "${colecaoOrigem}" && registro = "${esc(c.id)}"`,
+            )
+          } catch (_) {
+            slot = null
+          }
+          if (!slot) {
+            semVetor++
+            continue
+          }
+          let vetor = null
+          try {
+            vetor = JSON.parse(slot.getString('vetor') || 'null')
+          } catch (_) {
+            vetor = null
+          }
+          if (!Array.isArray(vetor) || vetor.length === 0) {
+            semVetor++
+            continue
+          }
+          const sim = cosSimilaridade(vetorPergunta, vetor)
+          if (sim >= 0.3) pontuados.push({ c, sim })
+        }
+        pontuados.sort((a, b) => b.sim - a.sim)
+        const cobertura = candidatos.length ? (candidatos.length - semVetor) / candidatos.length : 0
+
+        if (pontuados.length > 0) {
+          const resultadosVet = pontuados.slice(0, limite).map(({ c, sim }) => ({
+            id: c.id,
+            tipo: c.tipo,
+            fonte: c.fonte,
+            data: c.data,
+            trecho: c.texto,
+            justificativa: `Encontrado por similaridade de significado (${(sim * 100).toFixed(0)}%).`,
+            confianca: sim >= 0.45 ? 'alta' : sim >= 0.35 ? 'media' : 'baixa',
+          }))
+          return e.json(200, {
+            resultados: resultadosVet,
+            so_candidatos: false,
+            modo: 'vetorial',
+            observacao: `Busca vetorial (embeddings OpenAI): ${resultadosVet.length} registro(s) encontrado(s) por significado.`,
+            total_candidatos: candidatos.length,
+            total_resultados: resultadosVet.length,
+            filtros_aplicados: filtroDesc,
+          })
+        }
+        if (cobertura >= 0.5) {
+          // Base já embutida e ainda assim nada semelhante — resposta vetorial
+          // legítima de "nada encontrado" (sem aviso de candidatos).
+          return e.json(200, {
+            resultados: [],
+            so_candidatos: false,
+            modo: 'vetorial',
+            observacao:
+              'A etapa vetorial rodou, mas nenhum registro é suficientemente semelhante à pergunta — tente reformular.',
+            total_candidatos: candidatos.length,
+            total_resultados: 0,
+            filtros_aplicados: filtroDesc,
+          })
+        }
+        // cobertura baixa (backfill em andamento) — segue para a busca de 2 etapas
+      }
+      // —— fim da etapa vetorial; abaixo, fallback de 2 etapas (candidatos + agente) ——
+
       const promptCorrespondencia = `Você é a Diamantina, Analista de Memória do Agenda IA Diamond. A pergunta do usuário é:
 
 "${pergunta}"

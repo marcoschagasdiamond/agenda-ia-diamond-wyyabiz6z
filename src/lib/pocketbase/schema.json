@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-15T01:47:29.332Z",
+  "generatedAt": "2026-11-15T02:34:44.514Z",
   "collections": [
     {
       "name": "users",
@@ -4900,6 +4900,60 @@
         }
       ],
       "indexes": []
+    },
+    {
+      "name": "embeddings_memoria",
+      "type": "base",
+      "apiRules": {
+        "list": "",
+        "view": "",
+        "create": "",
+        "update": "",
+        "delete": ""
+      },
+      "fields": [
+        {
+          "name": "usuario",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "hash",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "colecao",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "registro",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "dims",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vetor",
+          "type": "text",
+          "required": false,
+          "system": false
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX `idx_emb_hash_unico` ON `embeddings_memoria` (hash)",
+        "CREATE INDEX `idx_emb_fila` ON `embeddings_memoria` (dims)",
+        "CREATE INDEX `idx_emb_busca` ON `embeddings_memoria` (colecao, registro)"
+      ]
     }
   ]
 }
