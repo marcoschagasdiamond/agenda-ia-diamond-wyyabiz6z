@@ -126,12 +126,14 @@ export default function PainelEstadoMemoria({ onConsolidado }: PainelEstadoMemor
       chave: 'busca',
       titulo: 'Busca semântica',
       icone: Search,
-      total: null,
-      detalhe: 'Modo',
+      total: estado?.busca_semantica?.total_embeddings ?? 0,
+      detalhe: 'Embeddings gravados (dims > 0)',
       quando: estado?.busca_semantica?.modo || '2 etapas',
       extra: estado?.busca_semantica?.descricao || '',
     },
   ]
+
+  const ehBusca = (c: (typeof camadas)[number]) => c.chave === 'busca'
 
   return (
     <Card>
@@ -176,6 +178,7 @@ export default function PainelEstadoMemoria({ onConsolidado }: PainelEstadoMemor
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {camadas.map((c) => {
               const Icone = c.icone
+              const busca = ehBusca(c)
               return (
                 <div key={c.chave} className="rounded-lg border bg-card p-4 flex flex-col gap-2">
                   <div className="flex items-center gap-2">
@@ -185,15 +188,26 @@ export default function PainelEstadoMemoria({ onConsolidado }: PainelEstadoMemor
                     <span className="text-sm font-medium leading-tight">{c.titulo}</span>
                   </div>
                   <div className="text-2xl font-semibold tabular-nums">
-                    {c.total === null ? c.quando : c.total}
+                    {busca ? c.total : c.total === null ? c.quando : c.total}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {c.total === null ? c.extra : `${c.detalhe}: ${formatarDataHora(c.quando)}`}
+                    {busca
+                      ? c.detalhe
+                      : c.total === null
+                        ? c.extra
+                        : `${c.detalhe}: ${formatarDataHora(c.quando)}`}
                   </div>
-                  {c.total !== null && c.extra ? (
+                  {busca ? (
+                    <Badge variant="secondary" className="w-fit text-[11px] font-normal">
+                      Modo: {c.quando}
+                    </Badge>
+                  ) : c.total !== null && c.extra ? (
                     <Badge variant="secondary" className="w-fit text-[11px] font-normal">
                       {c.extra}
                     </Badge>
+                  ) : null}
+                  {busca && c.extra ? (
+                    <p className="text-[11px] leading-snug text-muted-foreground">{c.extra}</p>
                   ) : null}
                 </div>
               )
