@@ -222,8 +222,28 @@ export function GestaoWhatsApp({ onRecarregarGlobal }: GestaoWhatsAppProps) {
       setContatosLista(resListas.contatos || [])
       setGruposLista(resListas.grupos || [])
     } catch (err: unknown) {
+      const apiErr = err as { data?: { motivo?: string; error?: string } }
+      const motivo = apiErr?.data?.motivo || ''
       const msg = err instanceof Error ? err.message : 'Falha ao sincronizar'
-      toast({ title: 'Erro na Sincronização', description: msg, variant: 'destructive' })
+
+      if (motivo === 'conta_desconectada') {
+        toast({
+          title: 'Conta WhatsApp não conectada',
+          description:
+            'A conta do WhatsApp não está conectada (ou a conexão expirou/foi revogada). Reconecte em Configurações → Conectores e tente sincronizar novamente.',
+          variant: 'destructive',
+        })
+      } else if (motivo === 'numero_nao_detectavel') {
+        toast({
+          title: 'Número não detectado',
+          description:
+            'A conta está conectada, mas o conector WhatsApp não devolveu nenhum número de telefone utilizável. Detalhe: ' +
+            (msg || 'resposta vazia do conector'),
+          variant: 'destructive',
+        })
+      } else {
+        toast({ title: 'Erro na Sincronização', description: msg, variant: 'destructive' })
+      }
     } finally {
       setSincronizando(false)
     }

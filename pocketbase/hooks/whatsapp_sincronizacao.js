@@ -24,6 +24,80 @@ routerAdd(
 
       const app = $app
 
+      // Extrai a lista de números de telefone de vários formatos de resposta do conector
+      const extrairListaNumeros = (res) => {
+        const saida = []
+        if (!res) return saida
+        const empurrar = (obj) => {
+          if (!obj || typeof obj !== 'object') return
+          const id = obj.id || obj.phone_number_id || obj.account_number_id || obj.wa_id
+          const numero =
+            obj.display_phone_number ||
+            obj.phone_number ||
+            obj.numero ||
+            obj.display ||
+            obj.number ||
+            (id ? String(id) : '')
+          if (!id && !numero) return
+          saida.push({
+            id: id ? String(id) : '',
+            display_phone_number: numero ? String(numero) : '',
+            verified_name:
+              obj.verified_name ||
+              obj.name ||
+              obj.account_name ||
+              obj.business_name ||
+              'WhatsApp Business',
+          })
+        }
+
+        const varrer = (node, prof) => {
+          if (!node || prof > 6) return
+          if (Array.isArray(node)) {
+            for (const item of node) varrer(item, prof + 1)
+            return
+          }
+          if (typeof node === 'object') {
+            if (
+              node.id &&
+              (node.display_phone_number ||
+                node.phone_number ||
+                node.numero ||
+                node.account_number_id)
+            ) {
+              empurrar(node)
+            }
+            for (const k in node) {
+              if (
+                ['data', 'phone_numbers', 'numbers', 'items', 'accounts', 'results'].includes(k)
+              ) {
+                varrer(node[k], prof + 1)
+              }
+            }
+          }
+        }
+
+        if (Array.isArray(res)) {
+          for (const item of res) varrer(item, 0)
+        } else if (typeof res === 'object') {
+          if (res.data || res.phone_numbers || res.numbers) {
+            varrer(res.data || res.phone_numbers || res.numbers, 0)
+          } else if (res.id && (res.display_phone_number || res.phone_number)) {
+            empurrar(res)
+          } else {
+            varrer(res, 0)
+          }
+        }
+        // dedup por id
+        const vistos = {}
+        return saida.filter((n) => {
+          if (!n.id) return true
+          if (vistos[n.id]) return false
+          vistos[n.id] = true
+          return true
+        })
+      }
+
       // Obter ou criar config do usuário
       let configRec = null
       try {
@@ -81,54 +155,83 @@ routerAdd(
         ]
       }
 
+      // Tenta WHATSAPP_GET_PHONE_NUMBERS e, em falha, WHATSAPP_LIST_PHONE_NUMBERS
+      let tentativa1 = null
+      let tentativa2 = null
+      let listaPhones = []
       try {
         const resPhones = $connectors.execute(authUser, 'WHATSAPP_GET_PHONE_NUMBERS', {})
+        tentativa1 = resPhones
+        console.log(
+          '[WhatsApp Status] resposta exata WHATSAPP_GET_PHONE_NUMBERS:',
+          JSON.stringify(resPhones).slice(0, 2000),
+        )
         if (resPhones.successful && resPhones.data) {
           const raw = resPhones.data
-          let extracted = []
-          if (Array.isArray(raw)) {
-            extracted = raw
-          } else if (raw && Array.isArray(raw.data)) {
-            extracted = raw.data
-          } else if (raw && Array.isArray(raw.phone_numbers)) {
-            extracted = raw.phone_numbers
-          }
-
-          if (extracted.length > 0) {
-            phoneNumbers = extracted
-            if (configRec && extracted[0]?.id && String(extracted[0].id) !== savedPhoneId) {
-              configRec.set('phone_number_id', String(extracted[0].id))
-              try {
-                app.save(configRec)
-              } catch (_) {}
-            }
-          }
+          listaPhones = extrairListaNumeros(raw)
         } else if (!resPhones.successful) {
-          const errStr = String(resPhones.error || '')
-          phoneFetchError = errStr || 'Falha ao consultar números de telefone da conta'
-          // Detectar apenas se for erro conclusivo de não conectado ou credencial revogada/expirada
-          const errLower = errStr.toLowerCase()
-          if (
-            errLower.includes('not connected') ||
-            errLower.includes('não conectada') ||
-            errLower.includes('unauthorized') ||
-            errLower.includes('token expired') ||
-            errLower.includes('token revog') ||
-            errLower.includes('invalid credentials') ||
-            errLower.includes('disconnected')
-          ) {
-            isUnconnected = true
+          try {
+            const resAlt = $connectors.execute(authUser, 'WHATSAPP_LIST_PHONE_NUMBERS', {})
+            tentativa2 = resAlt
+            console.log(
+              '[WhatsApp Status] resposta exata WHATSAPP_LIST_PHONE_NUMBERS:',
+              JSON.stringify(resAlt).slice(0, 2000),
+            )
+            if (resAlt.successful && resAlt.data) {
+              listaPhones = extrairListaNumeros(resAlt.data)
+            } else {
+              phoneFetchError = String(
+                resAlt.error ||
+                  resPhones.error ||
+                  'Falha ao consultar números de telefone da conta',
+              )
+            }
+          } catch (errAlt) {
+            console.log(
+              '[WhatsApp Status] WHATSAPP_LIST_PHONE_NUMBERS lançou:',
+              errAlt && errAlt.message ? errAlt.message : String(errAlt),
+            )
+            phoneFetchError = String(resPhones.error || '')
           }
         }
       } catch (err) {
-        const errStr = err && err.message ? err.message : String(err)
-        phoneFetchError = errStr
-        const errLower = errStr.toLowerCase()
+        console.log(
+          '[WhatsApp Status] WHATSAPP_GET_PHONE_NUMBERS lançou:',
+          err && err.message ? err.message : String(err),
+        )
+        phoneFetchError = err && err.message ? err.message : String(err)
+      }
+      if (!phoneFetchError && listaPhones.length === 0 && !tentativa2) {
+        // resposta bem-sucedida mas sem lista reconhecida: registrar o formato exato
+        console.log(
+          '[WhatsApp Status] resposta sem lista reconhecida — bruto:',
+          JSON.stringify(tentativa1 && tentativa1.data).slice(0, 1000),
+        )
+      }
+
+      if (listaPhones.length > 0) {
+        phoneNumbers = listaPhones
+        if (configRec && listaPhones[0]?.id && String(listaPhones[0].id) !== savedPhoneId) {
+          configRec.set('phone_number_id', String(listaPhones[0].id))
+          try {
+            app.save(configRec)
+          } catch (_) {}
+        }
+      } else if (!phoneFetchError) {
+        phoneFetchError =
+          'Conta conectada, mas nenhum número de telefone foi devolvido pelo conector'
+      }
+
+      // Classificar o erro: desconectado/revogado ou erro transitório
+      if (phoneFetchError) {
+        const errLower = String(phoneFetchError).toLowerCase()
         if (
           errLower.includes('not connected') ||
           errLower.includes('não conectada') ||
           errLower.includes('unauthorized') ||
           errLower.includes('token expired') ||
+          errLower.includes('token revog') ||
+          errLower.includes('invalid credentials') ||
           errLower.includes('disconnected')
         ) {
           isUnconnected = true
@@ -197,6 +300,74 @@ routerAdd(
 
       if (!configRec) return e.json(500, { error: 'Não foi possível carregar a configuração' })
 
+      // Extrai a lista de números de telefone de vários formatos de resposta do conector
+      const extrairListaNumeros = (res) => {
+        const saida = []
+        if (!res) return saida
+        const empurrar = (obj) => {
+          if (!obj || typeof obj !== 'object') return
+          const id = obj.id || obj.phone_number_id || obj.account_number_id || obj.wa_id
+          const numero =
+            obj.display_phone_number ||
+            obj.phone_number ||
+            obj.numero ||
+            obj.display ||
+            obj.number ||
+            (id ? String(id) : '')
+          if (!id && !numero) return
+          saida.push({
+            id: id ? String(id) : '',
+            display_phone_number: numero ? String(numero) : '',
+            verified_name:
+              obj.verified_name ||
+              obj.name ||
+              obj.account_name ||
+              obj.business_name ||
+              'WhatsApp Business',
+          })
+        }
+        const varrer = (node, prof) => {
+          if (!node || prof > 6) return
+          if (Array.isArray(node)) {
+            for (const item of node) varrer(item, prof + 1)
+            return
+          }
+          if (typeof node === 'object') {
+            if (
+              node.id &&
+              (node.display_phone_number ||
+                node.phone_number ||
+                node.numero ||
+                node.account_number_id)
+            ) {
+              empurrar(node)
+            }
+            for (const k in node) {
+              if (['data', 'phone_numbers', 'numbers', 'items', 'accounts', 'results'].includes(k))
+                varrer(node[k], prof + 1)
+            }
+          }
+        }
+        if (Array.isArray(res)) {
+          for (const item of res) varrer(item, 0)
+        } else if (typeof res === 'object') {
+          if (res.data || res.phone_numbers || res.numbers) {
+            varrer(res.data || res.phone_numbers || res.numbers, 0)
+          } else if (res.id && (res.display_phone_number || res.phone_number)) {
+            empurrar(res)
+          } else {
+            varrer(res, 0)
+          }
+        }
+        const vistos = {}
+        return saida.filter((n) => {
+          if (!n.id) return true
+          if (vistos[n.id]) return false
+          vistos[n.id] = true
+          return true
+        })
+      }
+
       const body = e.requestInfo().body || {}
 
       if (body.modo_selecao !== undefined) {
@@ -263,16 +434,16 @@ routerAdd(
 
       // Se phoneId não estiver salvo, tenta obter via WHATSAPP_GET_PHONE_NUMBERS
       if (!phoneId) {
+        let resPhones = null
         try {
-          const resPhones = $connectors.execute(authUser, 'WHATSAPP_GET_PHONE_NUMBERS', {})
+          resPhones = $connectors.execute(authUser, 'WHATSAPP_GET_PHONE_NUMBERS', {})
+          console.log(
+            '[WhatsApp Contatos] resposta exata WHATSAPP_GET_PHONE_NUMBERS:',
+            JSON.stringify(resPhones).slice(0, 2000),
+          )
           if (resPhones.successful && resPhones.data) {
-            const raw = resPhones.data
-            let lista = []
-            if (Array.isArray(raw)) lista = raw
-            else if (raw && Array.isArray(raw.data)) lista = raw.data
-            else if (raw && Array.isArray(raw.phone_numbers)) lista = raw.phone_numbers
-
-            if (lista.length > 0 && lista[0].id) {
+            const lista = extrairListaNumeros(resPhones.data)
+            if (lista.length > 0 && lista[0]?.id) {
               phoneId = String(lista[0].id)
               if (configRec) {
                 configRec.set('phone_number_id', phoneId)
@@ -280,7 +451,12 @@ routerAdd(
               }
             }
           }
-        } catch (_) {}
+        } catch (errP) {
+          console.log(
+            '[WhatsApp Contatos] WHATSAPP_GET_PHONE_NUMBERS lançou:',
+            errP && errP.message ? errP.message : String(errP),
+          )
+        }
       }
 
       // Buscar grupos via WHATSAPP_LIST_GROUPS se phoneId estiver disponível
@@ -448,6 +624,74 @@ routerAdd(
 
       if (!configRec) return e.json(500, { error: 'Configuração do WhatsApp não encontrada' })
 
+      // Extrai a lista de números de telefone de vários formatos de resposta do conector
+      const extrairListaNumeros = (res) => {
+        const saida = []
+        if (!res) return saida
+        const empurrar = (obj) => {
+          if (!obj || typeof obj !== 'object') return
+          const id = obj.id || obj.phone_number_id || obj.account_number_id || obj.wa_id
+          const numero =
+            obj.display_phone_number ||
+            obj.phone_number ||
+            obj.numero ||
+            obj.display ||
+            obj.number ||
+            (id ? String(id) : '')
+          if (!id && !numero) return
+          saida.push({
+            id: id ? String(id) : '',
+            display_phone_number: numero ? String(numero) : '',
+            verified_name:
+              obj.verified_name ||
+              obj.name ||
+              obj.account_name ||
+              obj.business_name ||
+              'WhatsApp Business',
+          })
+        }
+        const varrer = (node, prof) => {
+          if (!node || prof > 6) return
+          if (Array.isArray(node)) {
+            for (const item of node) varrer(item, prof + 1)
+            return
+          }
+          if (typeof node === 'object') {
+            if (
+              node.id &&
+              (node.display_phone_number ||
+                node.phone_number ||
+                node.numero ||
+                node.account_number_id)
+            ) {
+              empurrar(node)
+            }
+            for (const k in node) {
+              if (['data', 'phone_numbers', 'numbers', 'items', 'accounts', 'results'].includes(k))
+                varrer(node[k], prof + 1)
+            }
+          }
+        }
+        if (Array.isArray(res)) {
+          for (const item of res) varrer(item, 0)
+        } else if (typeof res === 'object') {
+          if (res.data || res.phone_numbers || res.numbers) {
+            varrer(res.data || res.phone_numbers || res.numbers, 0)
+          } else if (res.id && (res.display_phone_number || res.phone_number)) {
+            empurrar(res)
+          } else {
+            varrer(res, 0)
+          }
+        }
+        const vistos = {}
+        return saida.filter((n) => {
+          if (!n.id) return true
+          if (vistos[n.id]) return false
+          vistos[n.id] = true
+          return true
+        })
+      }
+
       const modoSelecao = configRec.getString('modo_selecao') || 'todos_exceto'
       if (modoSelecao === 'desligado') {
         return e.json(200, {
@@ -480,48 +724,113 @@ routerAdd(
       )
 
       let phoneId = configRec.getString('phone_number_id')
+      let motivoSemNumero = ''
       if (!phoneId) {
+        let resPhones = null
+        let resAlt = null
         try {
-          const resPhones = $connectors.execute(authUser, 'WHATSAPP_GET_PHONE_NUMBERS', {})
+          resPhones = $connectors.execute(authUser, 'WHATSAPP_GET_PHONE_NUMBERS', {})
+          console.log(
+            '[WhatsApp Sync] resposta exata WHATSAPP_GET_PHONE_NUMBERS (rota manual):',
+            JSON.stringify(resPhones).slice(0, 2000),
+          )
           if (resPhones.successful && resPhones.data) {
-            const raw = resPhones.data
-            let lista = []
-            if (Array.isArray(raw)) lista = raw
-            else if (raw && Array.isArray(raw.data)) lista = raw.data
-            else if (raw && Array.isArray(raw.phone_numbers)) lista = raw.phone_numbers
-
-            if (lista.length > 0 && lista[0].id) {
+            const lista = extrairListaNumeros(resPhones.data)
+            if (lista.length > 0 && lista[0]?.id) {
               phoneId = String(lista[0].id)
               configRec.set('phone_number_id', phoneId)
               app.save(configRec)
             }
+          } else {
+            try {
+              resAlt = $connectors.execute(authUser, 'WHATSAPP_LIST_PHONE_NUMBERS', {})
+              console.log(
+                '[WhatsApp Sync] resposta exata WHATSAPP_LIST_PHONE_NUMBERS (rota manual):',
+                JSON.stringify(resAlt).slice(0, 2000),
+              )
+              if (resAlt.successful && resAlt.data) {
+                const listaAlt = extrairListaNumeros(resAlt.data)
+                if (listaAlt.length > 0 && listaAlt[0]?.id) {
+                  phoneId = String(listaAlt[0].id)
+                  configRec.set('phone_number_id', phoneId)
+                  app.save(configRec)
+                }
+              }
+            } catch (errAlt) {
+              console.log(
+                '[WhatsApp Sync] WHATSAPP_LIST_PHONE_NUMBERS lançou:',
+                errAlt && errAlt.message ? errAlt.message : String(errAlt),
+              )
+            }
           }
-        } catch (_) {}
-      }
-
-      if (!phoneId) {
-        // Fallback: se houver histórico de sincronização anterior, tentar extrair o phoneId das mensagens já sincronizadas
-        try {
-          const syncExemplos = app.findRecordsByFilter(
-            'mensagens_whatsapp_sincronizadas',
-            `usuario = "${authUser.id}"`,
-            '-created',
-            1,
-            0,
+        } catch (errP) {
+          console.log(
+            '[WhatsApp Sync] WHATSAPP_GET_PHONE_NUMBERS lançou (rota manual):',
+            errP && errP.message ? errP.message : String(errP),
           )
-          if (syncExemplos.length > 0) {
-            phoneId =
-              syncExemplos[0].getString('grupo_id') ||
-              syncExemplos[0].getString('remetente_numero') ||
-              ''
-          }
-        } catch (_) {}
+        }
+        if (!phoneId) {
+          const errConector = String(
+            (resPhones && resPhones.error) || (resAlt && resAlt.error) || '',
+          ).slice(0, 200)
+          motivoSemNumero = errConector
+          console.log(
+            '[WhatsApp Sync] número não detectado — resPhones:',
+            JSON.stringify(resPhones).slice(0, 1000),
+            '| resAlt:',
+            JSON.stringify(resAlt).slice(0, 1000),
+          )
+          // Fallback: se houver histórico de sincronização anterior, tentar extrair o phoneId das mensagens já sincronizadas
+          try {
+            const syncExemplos = app.findRecordsByFilter(
+              'mensagens_whatsapp_sincronizadas',
+              `usuario = "${authUser.id}"`,
+              '-created',
+              1,
+              0,
+            )
+            if (syncExemplos.length > 0) {
+              phoneId =
+                syncExemplos[0].getString('grupo_id') ||
+                syncExemplos[0].getString('remetente_numero') ||
+                ''
+              if (phoneId)
+                console.log(
+                  '[WhatsApp Sync] phoneId recuperado do histórico de sincronizações:',
+                  phoneId,
+                )
+            }
+          } catch (_) {}
+        }
       }
 
       if (!phoneId) {
+        const errLower = motivoSemNumero.toLowerCase()
+        const desconectado =
+          errLower.includes('not connected') ||
+          errLower.includes('não conectada') ||
+          errLower.includes('unauthorized') ||
+          errLower.includes('token expired') ||
+          errLower.includes('token revog') ||
+          errLower.includes('invalid credentials') ||
+          errLower.includes('disconnected') ||
+          errLower.includes('no connected account') ||
+          errLower.includes('account not found')
+        if (desconectado) {
+          return e.json(400, {
+            error:
+              'A conta do WhatsApp NÃO está conectada (ou a conexão expirou/foi revogada). Reconecte em Configurações → Conectores e tente novamente. Detalhe do conector: ' +
+              (motivoSemNumero || 'sem resposta do conector'),
+            motivo: 'conta_desconectada',
+          })
+        }
         return e.json(400, {
           error:
-            'Não foi possível detectar o número de telefone da conta conectada. Tente sincronizar novamente ou reconectar.',
+            'A conta do WhatsApp está conectada, mas nenhum número de telefone foi detectável nela (o conector devolveu: ' +
+            (motivoSemNumero ||
+              'resposta vazia — verifique se o número está registrado na conta WhatsApp Business') +
+            '). Tente sincronizar novamente ou reconectar.',
+          motivo: 'numero_nao_detectavel',
         })
       }
 
@@ -1016,6 +1325,75 @@ routerAdd(
 cronAdd('sincronizar_whatsapp_diamond', '*/5 * * * *', () => {
   try {
     const app = $app
+
+    // Extrai a lista de números de telefone de vários formatos de resposta do conector
+    const extrairListaNumeros = (res) => {
+      const saida = []
+      if (!res) return saida
+      const empurrar = (obj) => {
+        if (!obj || typeof obj !== 'object') return
+        const id = obj.id || obj.phone_number_id || obj.account_number_id || obj.wa_id
+        const numero =
+          obj.display_phone_number ||
+          obj.phone_number ||
+          obj.numero ||
+          obj.display ||
+          obj.number ||
+          (id ? String(id) : '')
+        if (!id && !numero) return
+        saida.push({
+          id: id ? String(id) : '',
+          display_phone_number: numero ? String(numero) : '',
+          verified_name:
+            obj.verified_name ||
+            obj.name ||
+            obj.account_name ||
+            obj.business_name ||
+            'WhatsApp Business',
+        })
+      }
+      const varrer = (node, prof) => {
+        if (!node || prof > 6) return
+        if (Array.isArray(node)) {
+          for (const item of node) varrer(item, prof + 1)
+          return
+        }
+        if (typeof node === 'object') {
+          if (
+            node.id &&
+            (node.display_phone_number ||
+              node.phone_number ||
+              node.numero ||
+              node.account_number_id)
+          ) {
+            empurrar(node)
+          }
+          for (const k in node) {
+            if (['data', 'phone_numbers', 'numbers', 'items', 'accounts', 'results'].includes(k))
+              varrer(node[k], prof + 1)
+          }
+        }
+      }
+      if (Array.isArray(res)) {
+        for (const item of res) varrer(item, 0)
+      } else if (typeof res === 'object') {
+        if (res.data || res.phone_numbers || res.numbers) {
+          varrer(res.data || res.phone_numbers || res.numbers, 0)
+        } else if (res.id && (res.display_phone_number || res.phone_number)) {
+          empurrar(res)
+        } else {
+          varrer(res, 0)
+        }
+      }
+      const vistos = {}
+      return saida.filter((n) => {
+        if (!n.id) return true
+        if (vistos[n.id]) return false
+        vistos[n.id] = true
+        return true
+      })
+    }
+
     const folhaCol = app.findCollectionByNameOrId('folha_dia')
     const syncCol = app.findCollectionByNameOrId('mensagens_whatsapp_sincronizadas')
     const notifCol = app.findCollectionByNameOrId('notificacoes_sistema')
@@ -1085,22 +1463,57 @@ cronAdd('sincronizar_whatsapp_diamond', '*/5 * * * *', () => {
 
       let phoneId = configRec.getString('phone_number_id')
       if (!phoneId) {
+        let resPhones = null
+        let resAlt = null
         try {
-          const resPhones = $connectors.execute(userRecord, 'WHATSAPP_GET_PHONE_NUMBERS', {})
+          resPhones = $connectors.execute(userRecord, 'WHATSAPP_GET_PHONE_NUMBERS', {})
+          console.log(
+            '[WhatsApp Cron] resposta exata WHATSAPP_GET_PHONE_NUMBERS para ' + userId + ':',
+            JSON.stringify(resPhones).slice(0, 2000),
+          )
           if (resPhones.successful && resPhones.data) {
-            const raw = resPhones.data
-            let lista = []
-            if (Array.isArray(raw)) lista = raw
-            else if (raw && Array.isArray(raw.data)) lista = raw.data
-            else if (raw && Array.isArray(raw.phone_numbers)) lista = raw.phone_numbers
-
-            if (lista.length > 0 && lista[0].id) {
+            const lista = extrairListaNumeros(resPhones.data)
+            if (lista.length > 0 && lista[0]?.id) {
               phoneId = String(lista[0].id)
               configRec.set('phone_number_id', phoneId)
               app.save(configRec)
             }
+          } else {
+            try {
+              resAlt = $connectors.execute(userRecord, 'WHATSAPP_LIST_PHONE_NUMBERS', {})
+              console.log(
+                '[WhatsApp Cron] resposta exata WHATSAPP_LIST_PHONE_NUMBERS para ' + userId + ':',
+                JSON.stringify(resAlt).slice(0, 2000),
+              )
+              if (resAlt.successful && resAlt.data) {
+                const listaAlt = extrairListaNumeros(resAlt.data)
+                if (listaAlt.length > 0 && listaAlt[0]?.id) {
+                  phoneId = String(listaAlt[0].id)
+                  configRec.set('phone_number_id', phoneId)
+                  app.save(configRec)
+                }
+              }
+            } catch (errAlt) {
+              console.log(
+                '[WhatsApp Cron] WHATSAPP_LIST_PHONE_NUMBERS lançou para ' + userId + ':',
+                errAlt && errAlt.message ? errAlt.message : String(errAlt),
+              )
+            }
           }
-        } catch (_) {}
+        } catch (errP) {
+          console.log(
+            '[WhatsApp Cron] WHATSAPP_GET_PHONE_NUMBERS lançou para ' + userId + ':',
+            errP && errP.message ? errP.message : String(errP),
+          )
+        }
+        if (!phoneId) {
+          console.log(
+            '[WhatsApp Cron] número não detectado para ' + userId + ' — resPhones:',
+            JSON.stringify(resPhones).slice(0, 1000),
+            '| resAlt:',
+            JSON.stringify(resAlt).slice(0, 1000),
+          )
+        }
       }
 
       if (!phoneId) {
