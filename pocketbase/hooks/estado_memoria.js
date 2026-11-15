@@ -125,12 +125,34 @@ routerAdd(
         totalCompartilhada = rs.length
       } catch (_) {}
 
-      // —— CAMADA 4: status da busca semântica ——
-      const estadoBusca = {
-        modo: '2 etapas',
-        descricao:
-          'Candidatos pré-filtrados + escolha por significado feita pela Diamantina. Embeddings ficam prontos quando a conta OpenAI for conectada nos Conectores.',
+      // —— CAMADA 4: busca semântica — contagem REAL de embeddings ——
+      let totalEmbeddings = 0
+      try {
+        totalEmbeddings = $app.countRecords(
+          'embeddings_memoria',
+          '(' + filtroUser + ') && dims > 0',
+        )
+      } catch (_) {
+        try {
+          totalEmbeddings = $app.countRecords('embeddings_memoria', filtroUser)
+        } catch (__) {
+          totalEmbeddings = 0
+        }
       }
+      const estadoBusca =
+        totalEmbeddings > 0
+          ? {
+              modo: 'vetorial',
+              total_embeddings: totalEmbeddings,
+              descricao:
+                'Busca em 2 etapas com etapa vetorial ativa: a pergunta é embutida (OpenAI text-embedding-3-small, conta do dono) e os registros da memória são pontuados por similaridade de cosseno.',
+            }
+          : {
+              modo: '2 etapas',
+              total_embeddings: 0,
+              descricao:
+                'Candidatos pré-filtrados + escolha por significado feita pela Diamantina. A etapa vetorial (OpenAI, conta do dono) entra automaticamente quando os primeiros vetores forem gravados.',
+            }
 
       return e.json(200, {
         dossies: {

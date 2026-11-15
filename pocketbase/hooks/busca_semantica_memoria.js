@@ -404,7 +404,9 @@ routerAdd(
 
       let vetorPergunta = null
       try {
-        const brutoV = $connectors.executeAsOwner('openai', 'OPENAI_CREATE_EMBEDDINGS', {
+        // assinatura com 2 args (convenção deste projeto, ver convites_equipe.js):
+        // executeAsOwner('FERRAMENTA', args) — 3 args dá "args must be an object"
+        const brutoV = $connectors.executeAsOwner('OPENAI_CREATE_EMBEDDINGS', {
           input: [pergunta.slice(0, 6000)],
           model: 'text-embedding-3-small',
         })

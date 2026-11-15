@@ -78,6 +78,7 @@ export interface EstadoMemoria {
     ultima_consolidacao: string
     ultimo_dossie_nome?: string
   }
+  busca_semantica_total_embeddings?: number
   episodios: {
     total: number
     ultimo_created: string

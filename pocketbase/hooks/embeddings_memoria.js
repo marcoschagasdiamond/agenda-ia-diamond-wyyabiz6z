@@ -129,7 +129,9 @@ cronAdd('embMemoriaBackfill', '*/10 * * * *', function () {
 
   var resultado = null
   try {
-    resultado = $connectors.executeAsOwner('openai', 'OPENAI_CREATE_EMBEDDINGS', {
+    // assinatura com 2 args (convenção deste projeto, ver convites_equipe.js):
+    // executeAsOwner('FERRAMENTA', args) — 3 args dá "args must be an object"
+    resultado = $connectors.executeAsOwner('OPENAI_CREATE_EMBEDDINGS', {
       input: entradas.map(function (it) {
         return it.texto
       }),
@@ -146,6 +148,15 @@ cronAdd('embMemoriaBackfill', '*/10 * * * *', function () {
     if (arr && arr.length > 0 && arr[0] && arr[0].embedding) vetores = arr
   } catch (err10) {
     vetores = null
+  }
+  if (!vetores) {
+    // sem embeddings: provável chave do OpenAI do dono inválida/expirada ou
+    // conector indisponível — NÃO marca os slots como falha (dims = -1); eles
+    // voltam a ser tentados quando a conta voltar a funcionar.
+    console.warn(
+      'embMemoriaBackfill: OpenAI não devolveu embeddings — fila fica para a próxima rodada',
+    )
+    return
   }
   if (!vetores || vetores.length !== entradas.length) {
     console.error(
@@ -193,7 +204,8 @@ routerAdd('POST', '/backend/v1/diag/embeddings-openai', function (e) {
   var erro = ''
   var bruto = null
   try {
-    bruto = $connectors.executeAsOwner('openai', 'OPENAI_CREATE_EMBEDDINGS', {
+    // assinatura com 2 args (convenção deste projeto): executeAsOwner('FERRAMENTA', args)
+    bruto = $connectors.executeAsOwner('OPENAI_CREATE_EMBEDDINGS', {
       input: [String(textoTeste)],
       model: MODELO,
     })
@@ -234,7 +246,8 @@ routerAdd('POST', '/backend/v1/memoria/embed-consulta', function (e) {
   if (!texto) return e.json(400, { ok: false, error: 'texto obrigatório' })
   var bruto = null
   try {
-    bruto = $connectors.executeAsOwner('openai', 'OPENAI_CREATE_EMBEDDINGS', {
+    // assinatura com 2 args (convenção deste projeto): executeAsOwner('FERRAMENTA', args)
+    bruto = $connectors.executeAsOwner('OPENAI_CREATE_EMBEDDINGS', {
       input: [texto.slice(0, 6000)],
       model: 'text-embedding-3-small',
     })
@@ -297,7 +310,8 @@ routerAdd('POST', '/backend/v1/memoria/embed-backfill', function (e) {
   if (entradas.length === 0)
     return e.json(200, { ok: true, processados: 0, fila: pendentes.length })
   try {
-    var bruto = $connectors.executeAsOwner('openai', 'OPENAI_CREATE_EMBEDDINGS', {
+    // assinatura com 2 args (convenção deste projeto): executeAsOwner('FERRAMENTA', args)
+    var bruto = $connectors.executeAsOwner('OPENAI_CREATE_EMBEDDINGS', {
       input: entradas.map(function (it) {
         return it.texto
       }),
