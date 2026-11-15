@@ -98,6 +98,40 @@ routerAdd(
         })
       }
 
+      // Tenta descobrir o WABA_ID (conta de negócios) a partir de QUALQUER resposta do conector
+      const extrairWabaId = (res) => {
+        if (!res || typeof res !== 'object') return ''
+        try {
+          const candidatos = []
+          if (res.data) candidatos.push(res.data)
+          if (res.error) candidatos.push(res.error)
+          for (const c of candidatos) {
+            if (typeof c === 'string') {
+              try {
+                candidatos.push(JSON.parse(c))
+              } catch (_) {}
+            } else if (c && typeof c === 'object') {
+              const w =
+                c.waba_id || c.id || c.account_id || c.business_id || c.whatsapp_business_account_id
+              if (w && String(w).length >= 8) return String(w)
+              if (Array.isArray(c.data) && c.data.length > 0) {
+                const inner = c.data[0]
+                if (inner && typeof inner === 'object') {
+                  const wi =
+                    inner.waba_id ||
+                    inner.id ||
+                    inner.account_id ||
+                    inner.business_id ||
+                    inner.whatsapp_business_account_id
+                  if (wi) return String(wi)
+                }
+              }
+            }
+          }
+        } catch (_) {}
+        return ''
+      }
+
       // Obter ou criar config do usuário
       let configRec = null
       try {
@@ -297,8 +331,53 @@ routerAdd(
           configRec = rec
         } catch (_) {}
       }
+      if (!configRec) return e.json(500, { error: 'Configuração não encontrada' })
 
-      if (!configRec) return e.json(500, { error: 'Não foi possível carregar a configuração' })
+      const body = e.requestInfo().body
+      const campos = [
+        'modo_selecao',
+        'contatos_escolhidos',
+        'contatos_ignorados',
+        'grupos_escolhidos',
+      ]
+      for (const c of campos) {
+        if (body[c] === undefined) continue
+        if (Array.isArray(body[c])) {
+          configRec.set(c, JSON.stringify(body[c]))
+        } else {
+          configRec.set(c, String(body[c]))
+        }
+      }
+      app.save(configRec)
+
+      return e.json(200, {
+        sucesso: true,
+        config: {
+          modo_selecao: configRec.getString('modo_selecao'),
+          contatos_escolhidos: JSON.parse(configRec.getString('contatos_escolhidos')) || [],
+          contatos_ignorados: JSON.parse(configRec.getString('contatos_ignorados')) || [],
+          grupos_escolhidos: JSON.parse(configRec.getString('grupos_escolhidos')) || [],
+        },
+      })
+    } catch (err) {
+      return e.json(500, {
+        error: err && err.message ? err.message : 'Erro ao salvar configurações do WhatsApp',
+      })
+    }
+  },
+  $apis.requireAuth(),
+)
+
+// 3. Rota: lista contatos e grupos com base na conta conectada + contatos cadastrados
+routerAdd(
+  'GET',
+  '/backend/v1/whatsapp/contatos-grupos',
+  (e) => {
+    try {
+      const authUser = e.auth
+      if (!authUser || !authUser.id) return e.unauthorizedError('Autenticação necessária')
+
+      const app = $app
 
       // Extrai a lista de números de telefone de vários formatos de resposta do conector
       const extrairListaNumeros = (res) => {
@@ -326,6 +405,7 @@ routerAdd(
               'WhatsApp Business',
           })
         }
+
         const varrer = (node, prof) => {
           if (!node || prof > 6) return
           if (Array.isArray(node)) {
@@ -343,11 +423,15 @@ routerAdd(
               empurrar(node)
             }
             for (const k in node) {
-              if (['data', 'phone_numbers', 'numbers', 'items', 'accounts', 'results'].includes(k))
+              if (
+                ['data', 'phone_numbers', 'numbers', 'items', 'accounts', 'results'].includes(k)
+              ) {
                 varrer(node[k], prof + 1)
+              }
             }
           }
         }
+
         if (Array.isArray(res)) {
           for (const item of res) varrer(item, 0)
         } else if (typeof res === 'object') {
@@ -368,50 +452,41 @@ routerAdd(
         })
       }
 
-      const body = e.requestInfo().body || {}
-
-      if (body.modo_selecao !== undefined) {
-        configRec.set('modo_selecao', body.modo_selecao)
+      // Tenta descobrir o WABA_ID (conta de negócios) a partir de QUALQUER resposta do conector
+      const extrairWabaId = (res) => {
+        if (!res || typeof res !== 'object') return ''
+        try {
+          const candidatos = []
+          if (res.data) candidatos.push(res.data)
+          if (res.error) candidatos.push(res.error)
+          for (const c of candidatos) {
+            if (typeof c === 'string') {
+              try {
+                candidatos.push(JSON.parse(c))
+              } catch (_) {}
+            } else if (c && typeof c === 'object') {
+              const w =
+                c.waba_id || c.id || c.account_id || c.business_id || c.whatsapp_business_account_id
+              if (w && String(w).length >= 8) return String(w)
+              if (Array.isArray(c.data) && c.data.length > 0) {
+                const inner = c.data[0]
+                if (inner && typeof inner === 'object') {
+                  const wi =
+                    inner.waba_id ||
+                    inner.id ||
+                    inner.account_id ||
+                    inner.business_id ||
+                    inner.whatsapp_business_account_id
+                  if (wi) return String(wi)
+                }
+              }
+            }
+          }
+        } catch (_) {}
+        return ''
       }
-      if (body.contatos_escolhidos !== undefined) {
-        configRec.set('contatos_escolhidos', JSON.stringify(body.contatos_escolhidos))
-      }
-      if (body.contatos_ignorados !== undefined) {
-        configRec.set('contatos_ignorados', JSON.stringify(body.contatos_ignorados))
-      }
-      if (body.grupos_escolhidos !== undefined) {
-        configRec.set('grupos_escolhidos', JSON.stringify(body.grupos_escolhidos))
-      }
-      if (body.phone_number_id !== undefined) {
-        configRec.set('phone_number_id', body.phone_number_id)
-      }
 
-      app.save(configRec)
-
-      return e.json(200, {
-        sucesso: true,
-        mensagem: 'Configurações de WhatsApp salvas com sucesso',
-      })
-    } catch (err) {
-      return e.json(500, {
-        error: err && err.message ? err.message : 'Erro ao salvar configuração',
-      })
-    }
-  },
-  $apis.requireAuth(),
-)
-
-// 3. Rota para Listar Contatos e Grupos Detectados
-routerAdd(
-  'GET',
-  '/backend/v1/whatsapp/contatos-grupos',
-  (e) => {
-    try {
-      const authUser = e.auth
-      if (!authUser || !authUser.id) return e.unauthorizedError('Autenticação necessária')
-
-      const app = $app
-
+      // Obter ou criar config do usuário
       let configRec = null
       try {
         configRec = app.findFirstRecordByData('configuracoes_whatsapp', 'usuario', authUser.id)
@@ -538,62 +613,91 @@ routerAdd(
 
       // 2. Remetentes que já mandaram mensagem sincronizada
       for (const s of sincronizadas) {
-        const isGrupo = s.getBool('is_grupo')
-        if (isGrupo) {
-          const gId = s.getString('grupo_id') || s.getString('grupo_nome')
-          if (gId) {
-            if (!gruposWhatsApp.some((g) => g.id === gId || g.name === gId)) {
-              gruposWhatsApp.push({
-                id: gId,
-                name: s.getString('grupo_nome') || gId,
-              })
+        const rem = s.getString('remetente_numero') || ''
+        if (rem) {
+          const existe = remetentesMap[rem]
+          if (existe) {
+            existe.mensagens_count++
+          } else {
+            remetentesMap[rem] = {
+              identificador: rem,
+              nome: s.getString('remetente_nome') || rem,
+              empresa: '',
+              telefone: rem,
+              contato_id: '',
+              is_grupo: false,
+              mensagens_count: 1,
+              origem: 'whatsapp',
             }
           }
-        } else {
-          const num = (s.getString('remetente_numero') || '').replace(/\D/g, '')
-          const autor = s.getString('autor_mensagem') || s.getString('remetente_nome') || num
-          if (num) {
-            if (remetentesMap[num]) {
-              remetentesMap[num].mensagens_count = (remetentesMap[num].mensagens_count || 0) + 1
-              if (!remetentesMap[num].nome && autor) remetentesMap[num].nome = autor
-            } else {
-              remetentesMap[num] = {
-                identificador: num,
-                nome: autor || num,
-                empresa: '',
-                telefone: s.getString('remetente_numero') || num,
-                contato_id: null,
-                is_grupo: false,
-                mensagens_count: 1,
-                origem: 'historico_whatsapp',
-              }
+        }
+        // grupos
+        const gid = s.getString('grupo_id') || ''
+        const gname = s.getString('grupo_nome') || ''
+        if (gid && gname) {
+          const chave = 'g:' + gid
+          if (!remetentesMap[chave]) {
+            remetentesMap[chave] = {
+              identificador: gid,
+              nome: gname,
+              empresa: '',
+              telefone: '',
+              contato_id: '',
+              is_grupo: true,
+              mensagens_count: 1,
+              origem: 'whatsapp',
             }
+          } else {
+            remetentesMap[chave].mensagens_count++
           }
         }
       }
 
-      const listaRemetentes = Object.values(remetentesMap)
+      // 3. Grupos vindos do conector WhatsApp (só se ainda não mapeados)
+      for (const g of gruposWhatsApp) {
+        const gid = String(g.id || g.group_id || g.wa_id || '')
+        if (!gid) continue
+        const chave = 'g:' + gid
+        if (!remetentesMap[chave]) {
+          remetentesMap[chave] = {
+            identificador: gid,
+            nome: g.name || g.subject || g.nome || gid,
+            empresa: '',
+            telefone: '',
+            contato_id: '',
+            is_grupo: true,
+            mensagens_count: 0,
+            origem: 'conector',
+          }
+        }
+      }
+
+      const contatos = []
+      const grupos = []
+      for (const chave in remetentesMap) {
+        const r = remetentesMap[chave]
+        if (r.is_grupo) grupos.push(r)
+        else contatos.push(r)
+      }
+      contatos.sort((a, b) => (b.mensagens_count || 0) - (a.mensagens_count || 0))
+      grupos.sort((a, b) => (b.mensagens_count || 0) - (a.mensagens_count || 0))
 
       return e.json(200, {
-        sucesso: true,
-        phone_number_id: phoneId,
-        contatos: listaRemetentes,
-        grupos: gruposWhatsApp.map((g) => ({
-          id: String(g.id || g.group_id || g.name || ''),
-          nome: String(g.name || g.subject || g.id || 'Grupo WhatsApp'),
-        })),
+        contatos,
+        grupos,
         grupos_aviso: gruposAviso,
+        phone_number_id: phoneId,
       })
     } catch (err) {
       return e.json(500, {
-        error: err && err.message ? err.message : 'Erro ao listar contatos e grupos',
+        error: err && err.message ? err.message : 'Erro ao listar contatos e grupos do WhatsApp',
       })
     }
   },
   $apis.requireAuth(),
 )
 
-// 4. Rota para Sincronizar Mensagens Recebidas e Criar Assuntos na folha_dia (Manual sob demanda)
+// 4. Rota: buscar mensagens novas do WhatsApp e criar assuntos na folha_dia
 routerAdd(
   'POST',
   '/backend/v1/whatsapp/sincronizar',
@@ -603,26 +707,6 @@ routerAdd(
       if (!authUser || !authUser.id) return e.unauthorizedError('Autenticação necessária')
 
       const app = $app
-
-      let configRec = null
-      try {
-        configRec = app.findFirstRecordByData('configuracoes_whatsapp', 'usuario', authUser.id)
-      } catch (_) {
-        try {
-          const col = app.findCollectionByNameOrId('configuracoes_whatsapp')
-          const rec = new Record(col)
-          rec.set('usuario', authUser.id)
-          rec.set('modo_selecao', 'todos_exceto')
-          rec.set('contatos_escolhidos', '[]')
-          rec.set('contatos_ignorados', '[]')
-          rec.set('grupos_escolhidos', '[]')
-          rec.set('ultima_sincronizacao', '')
-          app.save(rec)
-          configRec = rec
-        } catch (_) {}
-      }
-
-      if (!configRec) return e.json(500, { error: 'Configuração do WhatsApp não encontrada' })
 
       // Extrai a lista de números de telefone de vários formatos de resposta do conector
       const extrairListaNumeros = (res) => {
@@ -650,6 +734,7 @@ routerAdd(
               'WhatsApp Business',
           })
         }
+
         const varrer = (node, prof) => {
           if (!node || prof > 6) return
           if (Array.isArray(node)) {
@@ -667,11 +752,15 @@ routerAdd(
               empurrar(node)
             }
             for (const k in node) {
-              if (['data', 'phone_numbers', 'numbers', 'items', 'accounts', 'results'].includes(k))
+              if (
+                ['data', 'phone_numbers', 'numbers', 'items', 'accounts', 'results'].includes(k)
+              ) {
                 varrer(node[k], prof + 1)
+              }
             }
           }
         }
+
         if (Array.isArray(res)) {
           for (const item of res) varrer(item, 0)
         } else if (typeof res === 'object') {
@@ -691,6 +780,75 @@ routerAdd(
           return true
         })
       }
+
+      // Tenta descobrir o WABA_ID (conta de negócios) a partir de QUALQUER resposta do conector
+      const extrairWabaId = (res) => {
+        if (!res || typeof res !== 'object') return ''
+        try {
+          const candidatos = []
+          if (res.data) candidatos.push(res.data)
+          if (res.error) candidatos.push(res.error)
+          for (const c of candidatos) {
+            if (typeof c === 'string') {
+              try {
+                candidatos.push(JSON.parse(c))
+              } catch (_) {}
+            } else if (c && typeof c === 'object') {
+              const w =
+                c.waba_id || c.id || c.account_id || c.business_id || c.whatsapp_business_account_id
+              if (w && String(w).length >= 8) return String(w)
+              if (Array.isArray(c.data) && c.data.length > 0) {
+                const inner = c.data[0]
+                if (inner && typeof inner === 'object') {
+                  const wi =
+                    inner.waba_id ||
+                    inner.id ||
+                    inner.account_id ||
+                    inner.business_id ||
+                    inner.whatsapp_business_account_id
+                  if (wi) return String(wi)
+                }
+              }
+            }
+          }
+        } catch (_) {}
+        return ''
+      }
+
+      // Tenta listar números pelo endpoint phone_numbers da conta de negócios (WABA)
+      const listarPorWaba = (wabaId) => {
+        if (!wabaId) return null
+        try {
+          return $connectors.execute(authUser, 'WHATSAPP_LIST_BUSINESS_ACCOUNTS', {
+            business_id: String(wabaId),
+            fields: 'id,display_phone_number,verified_name',
+            limit: 50,
+          })
+        } catch (_) {
+          return null
+        }
+      }
+
+      // Obter ou criar config do usuário
+      let configRec = null
+      try {
+        configRec = app.findFirstRecordByData('configuracoes_whatsapp', 'usuario', authUser.id)
+      } catch (_) {
+        try {
+          const col = app.findCollectionByNameOrId('configuracoes_whatsapp')
+          const rec = new Record(col)
+          rec.set('usuario', authUser.id)
+          rec.set('modo_selecao', 'todos_exceto')
+          rec.set('contatos_escolhidos', '[]')
+          rec.set('contatos_ignorados', '[]')
+          rec.set('grupos_escolhidos', '[]')
+          rec.set('ultima_sincronizacao', '')
+          app.save(rec)
+          configRec = rec
+        } catch (_) {}
+      }
+
+      if (!configRec) return e.json(500, { error: 'Configuração não encontrada' })
 
       const modoSelecao = configRec.getString('modo_selecao') || 'todos_exceto'
       if (modoSelecao === 'desligado') {
@@ -728,6 +886,7 @@ routerAdd(
       if (!phoneId) {
         let resPhones = null
         let resAlt = null
+        let resWaba = null
         try {
           resPhones = $connectors.execute(authUser, 'WHATSAPP_GET_PHONE_NUMBERS', {})
           console.log(
@@ -762,6 +921,34 @@ routerAdd(
                 errAlt && errAlt.message ? errAlt.message : String(errAlt),
               )
             }
+            // Última tentativa: lista de números pelo endpoint da conta de negócios (WABA)
+            if (!phoneId) {
+              const wabaId = extrairWabaId(resPhones) || extrairWabaId(resAlt)
+              if (wabaId) {
+                try {
+                  resWaba = listarPorWaba(wabaId)
+                  console.log(
+                    '[WhatsApp Sync] resposta exata WHATSAPP_LIST_BUSINESS_ACCOUNTS (rota manual, waba ' +
+                      wabaId +
+                      '):',
+                    JSON.stringify(resWaba).slice(0, 2000),
+                  )
+                } catch (errWaba) {
+                  console.log(
+                    '[WhatsApp Sync] WHATSAPP_LIST_BUSINESS_ACCOUNTS lançou:',
+                    errWaba && errWaba.message ? errWaba.message : String(errWaba),
+                  )
+                }
+                if (resWaba && resWaba.successful && resWaba.data) {
+                  const listaWaba = extrairListaNumeros(resWaba.data)
+                  if (listaWaba.length > 0 && listaWaba[0]?.id) {
+                    phoneId = String(listaWaba[0].id)
+                    configRec.set('phone_number_id', phoneId)
+                    app.save(configRec)
+                  }
+                }
+              }
+            }
           }
         } catch (errP) {
           console.log(
@@ -779,6 +966,8 @@ routerAdd(
             JSON.stringify(resPhones).slice(0, 1000),
             '| resAlt:',
             JSON.stringify(resAlt).slice(0, 1000),
+            '| resWaba:',
+            JSON.stringify(resWaba).slice(0, 1000),
           )
           // Fallback: se houver histórico de sincronização anterior, tentar extrair o phoneId das mensagens já sincronizadas
           try {
@@ -898,16 +1087,15 @@ routerAdd(
         }
       }
 
+      const agoraISO = new Date().toISOString()
+      const dataHojeStr = agoraISO.split('T')[0]
       const folhaCol = app.findCollectionByNameOrId('folha_dia')
       const syncCol = app.findCollectionByNameOrId('mensagens_whatsapp_sincronizadas')
       const notifCol = app.findCollectionByNameOrId('notificacoes_sistema')
 
       let criadasCount = 0
-      const detalhes = []
       const novosRemetentes = []
       let primeiroAssuntoId = ''
-      const agoraISO = new Date().toISOString()
-      const dataHojeStr = agoraISO.split('T')[0]
 
       for (const msg of mensagensRaw) {
         const messageId = String(
@@ -915,7 +1103,6 @@ routerAdd(
         )
         if (!messageId) continue
 
-        // Idempotência: já sincronizada para este usuário?
         let jaExiste = false
         try {
           app.findFirstRecordByFilter(
@@ -924,7 +1111,6 @@ routerAdd(
           )
           jaExiste = true
         } catch (_) {}
-
         if (jaExiste) continue
 
         const fromRaw = String(
@@ -1069,9 +1255,7 @@ routerAdd(
           const remetenteRotulo = isGrupo ? `${autorNome} (${grupoNome || 'Grupo'})` : autorNome
           novosRemetentes.push(remetenteRotulo)
 
-          // Radar de Reativação de Sementes:
-          // Se o contato vinculado tiver sementes ativas (estado_semente = true),
-          // despertar/marcar a semente e gerar um assunto de alerta na Folha.
+          // Radar de Reativação de Sementes (rota manual)
           if (contatoVinculado && !isGrupo) {
             try {
               const sementesContato = app.findRecordsByFilter(
@@ -1080,9 +1264,7 @@ routerAdd(
                 '-created',
                 5,
               )
-
-              for (let sIdx = 0; sIdx < sementesContato.length; sIdx++) {
-                const semRec = sementesContato[sIdx]
+              for (const semRec of sementesContato) {
                 const semCriada = semRec.getString('data_hora') || semRec.getString('created') || ''
                 let mesesDecorridoTexto = 'algum tempo'
                 if (semCriada) {
@@ -1102,7 +1284,6 @@ routerAdd(
                 const condicaoStr = semRec.getString('condicao_reativacao') || ''
                 const trechoCondicao = condicaoStr ? ` | Condição registrada: "${condicaoStr}"` : ''
 
-                // Criar assunto de alerta na Folha indicando a reativação
                 const alertaFolha = new Record(folhaCol)
                 alertaFolha.set('data', dataHojeStr)
                 alertaFolha.set('data_hora', agoraISO.slice(0, 16))
@@ -1120,13 +1301,11 @@ routerAdd(
                 alertaFolha.set('reativada_em', agoraISO)
                 app.save(alertaFolha)
 
-                // Atualizar a semente original: reativada_em
                 semRec.set('reativada_em', agoraISO)
                 app.save(semRec)
 
                 criadasCount++
 
-                // Notificação no sino dedicada à reativação de semente
                 try {
                   const notifSemente = new Record(notifCol)
                   notifSemente.set('usuario', authUser.id)
@@ -1145,23 +1324,13 @@ routerAdd(
                   notifSemente.set('lida', false)
                   app.save(notifSemente)
                 } catch (errNotifSem) {
-                  console.log('[WhatsApp Radar] Erro ao criar notificação de semente:', errNotifSem)
+                  console.log('[WhatsApp Sync Radar] Erro ao criar notificação:', errNotifSem)
                 }
               }
             } catch (errRadar) {
-              console.log('[WhatsApp Radar] Erro ao processar sementes do contato:', errRadar)
+              console.log('[WhatsApp Sync Radar] Erro ao processar sementes:', errRadar)
             }
           }
-
-          detalhes.push({
-            message_id: messageId,
-            folha_id: folhaIdGerada,
-            remetente: autorNome,
-            numero: remetenteNum,
-            is_grupo: isGrupo,
-            grupo: grupoNome,
-            contato_vinculado: contatoVinculado ? contatoVinculado.getString('nome') : null,
-          })
         }
 
         const recSync = new Record(syncCol)
@@ -1178,7 +1347,6 @@ routerAdd(
         app.save(recSync)
       }
 
-      // Notificação no sino quando houver novos assuntos criados
       if (criadasCount > 0) {
         try {
           const n = new Record(notifCol)
@@ -1208,33 +1376,35 @@ routerAdd(
           app.save(n)
         } catch (errNotif) {
           console.log(
-            '[WhatsApp] Erro ao criar notificação no sino:',
+            '[WhatsApp Sync] Erro ao criar notificação no sino:',
             errNotif && errNotif.message ? errNotif.message : errNotif,
           )
         }
       }
 
-      // Atualizar data/hora da última sincronização
       configRec.set('ultima_sincronizacao', agoraISO)
       app.save(configRec)
 
       return e.json(200, {
         sucesso: true,
-        mensagens_processadas: mensagensRaw.length,
         mensagens_novas: criadasCount,
-        detalhes: detalhes,
-        ultima_sincronizacao: agoraISO,
+        mensagens_processadas: mensagensRaw.length,
+        mensagem:
+          criadasCount > 0
+            ? `${criadasCount} novo(s) assunto(s) criado(s) na Folha do Dia.`
+            : 'Nenhuma nova mensagem pendente. Sincronização executada com sucesso.',
+        detalhes: novosRemetentes.slice(0, 10),
       })
     } catch (err) {
       return e.json(500, {
-        error: err && err.message ? err.message : 'Erro ao sincronizar mensagens',
+        error: err && err.message ? err.message : 'Erro ao sincronizar mensagens do WhatsApp',
       })
     }
   },
   $apis.requireAuth(),
 )
 
-// 5. Rota de Pós-Filtro: Ignorar Remetente
+// 5. Rota: adicionar remetente à lista de ignorados
 routerAdd(
   'POST',
   '/backend/v1/whatsapp/ignorar-remetente',
@@ -1243,12 +1413,9 @@ routerAdd(
       const authUser = e.auth
       if (!authUser || !authUser.id) return e.unauthorizedError('Autenticação necessária')
 
-      const body = e.requestInfo().body || {}
-      const remetente = String(body.remetente || '').trim()
-      const folhaId = String(body.folha_id || '').trim()
-
       const app = $app
 
+      // Obter ou criar config do usuário
       let configRec = null
       try {
         configRec = app.findFirstRecordByData('configuracoes_whatsapp', 'usuario', authUser.id)
@@ -1268,6 +1435,10 @@ routerAdd(
       }
 
       if (!configRec) return e.json(500, { error: 'Configuração não encontrada' })
+
+      const body = e.requestInfo().body
+      const remetente = String(body.remetente || '').trim()
+      const folhaId = String(body.folha_id || '').trim()
 
       let identificadorAlvo = remetente
 
@@ -1352,6 +1523,7 @@ cronAdd('sincronizar_whatsapp_diamond', '*/5 * * * *', () => {
             'WhatsApp Business',
         })
       }
+
       const varrer = (node, prof) => {
         if (!node || prof > 6) return
         if (Array.isArray(node)) {
@@ -1392,6 +1564,40 @@ cronAdd('sincronizar_whatsapp_diamond', '*/5 * * * *', () => {
         vistos[n.id] = true
         return true
       })
+    }
+
+    // Tenta descobrir o WABA_ID (conta de negócios) a partir de QUALQUER resposta do conector
+    const extrairWabaId = (res) => {
+      if (!res || typeof res !== 'object') return ''
+      try {
+        const candidatos = []
+        if (res.data) candidatos.push(res.data)
+        if (res.error) candidatos.push(res.error)
+        for (const c of candidatos) {
+          if (typeof c === 'string') {
+            try {
+              candidatos.push(JSON.parse(c))
+            } catch (_) {}
+          } else if (c && typeof c === 'object') {
+            const w =
+              c.waba_id || c.id || c.account_id || c.business_id || c.whatsapp_business_account_id
+            if (w && String(w).length >= 8) return String(w)
+            if (Array.isArray(c.data) && c.data.length > 0) {
+              const inner = c.data[0]
+              if (inner && typeof inner === 'object') {
+                const wi =
+                  inner.waba_id ||
+                  inner.id ||
+                  inner.account_id ||
+                  inner.business_id ||
+                  inner.whatsapp_business_account_id
+                if (wi) return String(wi)
+              }
+            }
+          }
+        }
+      } catch (_) {}
+      return ''
     }
 
     const folhaCol = app.findCollectionByNameOrId('folha_dia')
@@ -1465,6 +1671,7 @@ cronAdd('sincronizar_whatsapp_diamond', '*/5 * * * *', () => {
       if (!phoneId) {
         let resPhones = null
         let resAlt = null
+        let resWaba = null
         try {
           resPhones = $connectors.execute(userRecord, 'WHATSAPP_GET_PHONE_NUMBERS', {})
           console.log(
@@ -1499,6 +1706,40 @@ cronAdd('sincronizar_whatsapp_diamond', '*/5 * * * *', () => {
                 errAlt && errAlt.message ? errAlt.message : String(errAlt),
               )
             }
+            // Última tentativa: lista de números pelo endpoint da conta de negócios (WABA)
+            if (!phoneId) {
+              const wabaId = extrairWabaId(resPhones) || extrairWabaId(resAlt)
+              if (wabaId) {
+                try {
+                  resWaba = $connectors.execute(userRecord, 'WHATSAPP_LIST_BUSINESS_ACCOUNTS', {
+                    business_id: String(wabaId),
+                    fields: 'id,display_phone_number,verified_name',
+                    limit: 50,
+                  })
+                  console.log(
+                    '[WhatsApp Cron] resposta exata WHATSAPP_LIST_BUSINESS_ACCOUNTS (waba ' +
+                      wabaId +
+                      ') para ' +
+                      userId +
+                      ':',
+                    JSON.stringify(resWaba).slice(0, 2000),
+                  )
+                } catch (errWaba) {
+                  console.log(
+                    '[WhatsApp Cron] WHATSAPP_LIST_BUSINESS_ACCOUNTS lançou para ' + userId + ':',
+                    errWaba && errWaba.message ? errWaba.message : String(errWaba),
+                  )
+                }
+                if (resWaba && resWaba.successful && resWaba.data) {
+                  const listaWaba = extrairListaNumeros(resWaba.data)
+                  if (listaWaba.length > 0 && listaWaba[0]?.id) {
+                    phoneId = String(listaWaba[0].id)
+                    configRec.set('phone_number_id', phoneId)
+                    app.save(configRec)
+                  }
+                }
+              }
+            }
           }
         } catch (errP) {
           console.log(
@@ -1512,6 +1753,8 @@ cronAdd('sincronizar_whatsapp_diamond', '*/5 * * * *', () => {
             JSON.stringify(resPhones).slice(0, 1000),
             '| resAlt:',
             JSON.stringify(resAlt).slice(0, 1000),
+            '| resWaba:',
+            JSON.stringify(resWaba).slice(0, 1000),
           )
         }
       }
@@ -1596,7 +1839,6 @@ cronAdd('sincronizar_whatsapp_diamond', '*/5 * * * *', () => {
           )
           jaExiste = true
         } catch (_) {}
-
         if (jaExiste) continue
 
         const fromRaw = String(
