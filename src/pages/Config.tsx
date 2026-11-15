@@ -490,6 +490,34 @@ export default function Config() {
           {/* 3. ABA: MEMÓRIA ESTRATÉGICA & CONECTORES */}
           {/* ============================================================== */}
           <TabsContent value="preferencias" className="space-y-6 m-0">
+            {/* Atalho para o painel Estado da Memória (página /memoria) */}
+            <Card className="border-[#E5E1D8] bg-white shadow-xs">
+              <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-[#0F766E]/10 text-[#0F766E] flex items-center justify-center shrink-0">
+                    <Brain className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-[#1A1D21] block">
+                      Estado da Memória (4 camadas)
+                    </span>
+                    <span className="text-[11px] text-[#5B6470]">
+                      Totais e última atualização de Dossiês, Episódios, Memória compartilhada e
+                      Busca semântica — e consolidação manual.
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  className="bg-[#0F766E] hover:bg-[#0D5C56] text-white text-xs gap-1.5"
+                  onClick={() => (window.location.href = '/memoria')}
+                >
+                  Abrir painel
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </Button>
+              </CardContent>
+            </Card>
+
             {/* Conector OpenAI do Usuário (Gravação & Transcrição de Reuniões) */}
             <GestaoOpenAIUsuario />
 

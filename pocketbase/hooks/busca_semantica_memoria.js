@@ -433,8 +433,13 @@ Regras: use APENAS ids da lista acima; no máximo ${limite} resultados; ordene d
         }
       }
 
+      // "Só candidatos": a etapa barata rodou mas a etapa de significado não
+      // produziu resultado validado (agente falhou ou não devolveu nada).
+      const soCandidatos = resultados.length === 0 && candidatos.length > 0
+
       return e.json(200, {
         resultados,
+        so_candidatos: soCandidatos,
         observacao:
           (parsed && parsed.observacao) ||
           (resultados.length === 0
@@ -443,6 +448,7 @@ Regras: use APENAS ids da lista acima; no máximo ${limite} resultados; ordene d
               : 'Nada encontrado ainda com esse significado — tente reformular a pergunta.'
             : ''),
         total_candidatos: candidatos.length,
+        total_resultados: resultados.length,
         filtros_aplicados: filtroDesc,
       })
     } catch (err) {

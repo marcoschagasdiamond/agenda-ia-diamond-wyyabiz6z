@@ -12,6 +12,7 @@ import {
   History,
   SlidersHorizontal,
   X,
+  AlertTriangle,
   ChevronLeft,
   ChevronRight,
   CalendarDays,
@@ -31,6 +32,7 @@ import {
   type TipoFiltroBusca,
 } from '@/services/dossiesMemoria'
 import ListaDossiesMemoria from '@/components/memoria/ListaDossiesMemoria'
+import PainelEstadoMemoria from '@/components/memoria/PainelEstadoMemoria'
 import { cn } from '@/lib/utils'
 
 type AbaMemoria = 'chat' | 'dossies' | 'semantica' | 'linha_tempo'
@@ -385,6 +387,10 @@ export default function Memoria() {
   const [buscandoSemantica, setBuscandoSemantica] = useState(false)
   const [filtros, setFiltros] = useState<FiltrosBuscaSemantica>({})
   const [filtrosAplicados, setFiltrosAplicados] = useState<string[]>([])
+  const [soCandidatos, setSoCandidatos] = useState(false)
+  const [totalCandidatos, setTotalCandidatos] = useState(0)
+  const [totalResultados, setTotalResultados] = useState(0)
+  const [sinalRecargaDossies, setSinalRecargaDossies] = useState(0)
 
   useEffect(() => {
     fimRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -457,11 +463,17 @@ export default function Memoria() {
       setPerguntaSemantica(pergunta)
       setResultadosSemanticos(null)
       setObservacaoSemantica('')
+      setSoCandidatos(false)
+      setTotalCandidatos(0)
+      setTotalResultados(0)
       try {
         const res = await buscaSemanticaMemoria(pergunta, filtros)
         setResultadosSemanticos(res.resultados || [])
         setObservacaoSemantica(res.observacao || '')
         setFiltrosAplicados(res.filtros_aplicados || [])
+        setSoCandidatos(Boolean(res.so_candidatos))
+        setTotalCandidatos(res.total_candidatos || 0)
+        setTotalResultados(res.resultados?.length || 0)
         if (!res.resultados || res.resultados.length === 0) {
           toast({
             title: 'Nada encontrado por significado',
@@ -505,303 +517,330 @@ export default function Memoria() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-7.5rem)] max-w-4xl mx-auto bg-white rounded-xl border border-[#E5E1D8] shadow-xs overflow-hidden">
-      {/* Cabeçalho */}
-      <div className="p-4 border-b border-[#E5E1D8] flex items-center justify-between bg-[#FAFAF9]">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[#0F766E] flex items-center justify-center text-white shadow-sm">
-            <Brain className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-[#1A1D21]">Analista de Memória</h2>
-              <Badge
-                className="bg-emerald-50 text-emerald-700 text-[10px] border-emerald-200"
-                variant="outline"
-              >
-                Segundo cérebro · Memória em camadas
-              </Badge>
-            </div>
-            <p className="text-[11px] text-[#5B6470]">
-              Dossiês consolidados + busca por significado + dados em tempo real — citando sempre a
-              origem de cada informação.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <Button
-            variant={aba === 'chat' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setAba('chat')}
-            className={cn(
-              'text-xs h-8 gap-1 border-[#E5E1D8]',
-              aba === 'chat' && 'bg-[#0F766E] hover:bg-[#0D5C56] text-white border-transparent',
-            )}
-          >
-            <MessageSquare className="w-3.5 h-3.5" /> Conversar
-          </Button>
-          <Button
-            variant={aba === 'dossies' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setAba('dossies')}
-            className={cn(
-              'text-xs h-8 gap-1 border-[#E5E1D8]',
-              aba === 'dossies' && 'bg-[#0F766E] hover:bg-[#0D5C56] text-white border-transparent',
-            )}
-          >
-            <FolderOpen className="w-3.5 h-3.5" /> Dossiês
-          </Button>
-          <Button
-            variant={aba === 'semantica' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setAba('semantica')}
-            className={cn(
-              'text-xs h-8 gap-1 border-[#E5E1D8]',
-              aba === 'semantica' &&
-                'bg-[#0F766E] hover:bg-[#0D5C56] text-white border-transparent',
-            )}
-          >
-            <Search className="w-3.5 h-3.5" /> Busca semântica
-          </Button>
-          <Button
-            variant={aba === 'linha_tempo' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setAba('linha_tempo')}
-            className={cn(
-              'text-xs h-8 gap-1 border-[#E5E1D8]',
-              aba === 'linha_tempo' &&
-                'bg-[#0F766E] hover:bg-[#0D5C56] text-white border-transparent',
-            )}
-          >
-            <History className="w-3.5 h-3.5" /> Linha do Tempo
-          </Button>
-          {aba === 'chat' && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={novaSessao}
-              className="text-xs h-8 border-[#E5E1D8] text-[#5B6470] gap-1"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              Nova conversa
-            </Button>
-          )}
-        </div>
+    <div className="flex flex-col h-[calc(100vh-7.5rem)] max-w-4xl mx-auto">
+      {/* Painel Estado da Memória — 4 camadas, no topo da página */}
+      <div className="mb-3">
+        <PainelEstadoMemoria onConsolidado={() => setSinalRecargaDossies((v) => v + 1)} />
       </div>
 
-      {aba === 'chat' && (
-        <>
-          {/* Feed de mensagens */}
-          <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-[#F4F2EE]/40 min-h-0">
-            {mensagens.map((msg) => {
-              const isUser = msg.sender === 'user'
-              return (
-                <div
-                  key={msg.id}
-                  className={`flex items-start gap-2.5 max-w-[85%] ${isUser ? 'ml-auto flex-row-reverse' : ''}`}
+      <div className="flex flex-col flex-1 min-h-0 bg-white rounded-xl border border-[#E5E1D8] shadow-xs overflow-hidden">
+        {/* Cabeçalho */}
+        <div className="p-4 border-b border-[#E5E1D8] flex items-center justify-between bg-[#FAFAF9]">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-[#0F766E] flex items-center justify-center text-white shadow-sm">
+              <Brain className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-[#1A1D21]">Analista de Memória</h2>
+                <Badge
+                  className="bg-emerald-50 text-emerald-700 text-[10px] border-emerald-200"
+                  variant="outline"
                 >
-                  <div
-                    className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
-                      isUser ? 'bg-[#E5E1D8] text-[#1A1D21]' : 'bg-[#0F766E] text-white shadow-2xs'
-                    }`}
-                  >
-                    {isUser ? <User className="w-4 h-4" /> : <Brain className="w-4 h-4" />}
-                  </div>
-
-                  <div
-                    className={`p-3.5 rounded-2xl text-xs leading-relaxed shadow-2xs whitespace-pre-wrap ${
-                      msg.erro
-                        ? 'bg-red-50 text-red-900 border border-red-200 rounded-tl-none'
-                        : isUser
-                          ? 'bg-[#0F766E] text-white rounded-tr-none'
-                          : 'bg-white text-[#1A1D21] border border-[#E5E1D8] rounded-tl-none'
-                    }`}
-                  >
-                    {msg.content || '…'}
-                  </div>
-                </div>
-              )
-            })}
-
-            {carregando && (
-              <div className="flex items-center gap-2 text-xs text-[#5B6470] p-2 animate-pulse">
-                <Sparkles className="w-4 h-4 text-[#0F766E]" />
-                <span>Diamantina está pensando…</span>
+                  Segundo cérebro · Memória em camadas
+                </Badge>
               </div>
-            )}
-            <div ref={fimRef} />
+              <p className="text-[11px] text-[#5B6470]">
+                Dossiês consolidados + busca por significado + dados em tempo real — citando sempre
+                a origem de cada informação.
+              </p>
+            </div>
           </div>
 
-          {/* Chips de sugestões */}
-          <div className="px-4 pt-3 pb-1 bg-white border-t border-[#E5E1D8]">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Button
+              variant={aba === 'chat' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setAba('chat')}
+              className={cn(
+                'text-xs h-8 gap-1 border-[#E5E1D8]',
+                aba === 'chat' && 'bg-[#0F766E] hover:bg-[#0D5C56] text-white border-transparent',
+              )}
+            >
+              <MessageSquare className="w-3.5 h-3.5" /> Conversar
+            </Button>
+            <Button
+              variant={aba === 'dossies' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setAba('dossies')}
+              className={cn(
+                'text-xs h-8 gap-1 border-[#E5E1D8]',
+                aba === 'dossies' &&
+                  'bg-[#0F766E] hover:bg-[#0D5C56] text-white border-transparent',
+              )}
+            >
+              <FolderOpen className="w-3.5 h-3.5" /> Dossiês
+            </Button>
+            <Button
+              variant={aba === 'semantica' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setAba('semantica')}
+              className={cn(
+                'text-xs h-8 gap-1 border-[#E5E1D8]',
+                aba === 'semantica' &&
+                  'bg-[#0F766E] hover:bg-[#0D5C56] text-white border-transparent',
+              )}
+            >
+              <Search className="w-3.5 h-3.5" /> Busca semântica
+            </Button>
+            <Button
+              variant={aba === 'linha_tempo' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setAba('linha_tempo')}
+              className={cn(
+                'text-xs h-8 gap-1 border-[#E5E1D8]',
+                aba === 'linha_tempo' &&
+                  'bg-[#0F766E] hover:bg-[#0D5C56] text-white border-transparent',
+              )}
+            >
+              <History className="w-3.5 h-3.5" /> Linha do Tempo
+            </Button>
+            {aba === 'chat' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={novaSessao}
+                className="text-xs h-8 border-[#E5E1D8] text-[#5B6470] gap-1"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Nova conversa
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {aba === 'chat' && (
+          <>
+            {/* Feed de mensagens */}
+            <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-[#F4F2EE]/40 min-h-0">
+              {mensagens.map((msg) => {
+                const isUser = msg.sender === 'user'
+                return (
+                  <div
+                    key={msg.id}
+                    className={`flex items-start gap-2.5 max-w-[85%] ${isUser ? 'ml-auto flex-row-reverse' : ''}`}
+                  >
+                    <div
+                      className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
+                        isUser
+                          ? 'bg-[#E5E1D8] text-[#1A1D21]'
+                          : 'bg-[#0F766E] text-white shadow-2xs'
+                      }`}
+                    >
+                      {isUser ? <User className="w-4 h-4" /> : <Brain className="w-4 h-4" />}
+                    </div>
+
+                    <div
+                      className={`p-3.5 rounded-2xl text-xs leading-relaxed shadow-2xs whitespace-pre-wrap ${
+                        msg.erro
+                          ? 'bg-red-50 text-red-900 border border-red-200 rounded-tl-none'
+                          : isUser
+                            ? 'bg-[#0F766E] text-white rounded-tr-none'
+                            : 'bg-white text-[#1A1D21] border border-[#E5E1D8] rounded-tl-none'
+                      }`}
+                    >
+                      {msg.content || '…'}
+                    </div>
+                  </div>
+                )
+              })}
+
+              {carregando && (
+                <div className="flex items-center gap-2 text-xs text-[#5B6470] p-2 animate-pulse">
+                  <Sparkles className="w-4 h-4 text-[#0F766E]" />
+                  <span>Diamantina está pensando…</span>
+                </div>
+              )}
+              <div ref={fimRef} />
+            </div>
+
+            {/* Chips de sugestões */}
+            <div className="px-4 pt-3 pb-1 bg-white border-t border-[#E5E1D8]">
+              <div className="flex flex-wrap gap-1.5">
+                {CHIPS_SUGESTOES.map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    disabled={carregando}
+                    onClick={() => enviarPergunta(chip)}
+                    className="text-[11px] px-2.5 py-1 rounded-full border border-[#E5E1D8] bg-[#FAFAF9] text-[#5B6470] hover:bg-[#0F766E]/5 hover:border-[#0F766E]/40 hover:text-[#0F766E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Campo de envio */}
+            <div className="p-3 bg-white">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  enviarPergunta(texto)
+                }}
+                className="flex items-end gap-2"
+              >
+                <Textarea
+                  rows={2}
+                  value={texto}
+                  onChange={(e) => setTexto(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={carregando}
+                  placeholder="Pergunte sobre seus negócios: 'O que decidimos com o cliente X?', 'Quais demandas estão paradas?'…"
+                  className="text-xs resize-none border-[#E5E1D8] focus-visible:ring-1 focus-visible:ring-[#0F766E]"
+                />
+                <Button
+                  type="submit"
+                  disabled={carregando || !texto.trim()}
+                  className="bg-[#0F766E] hover:bg-[#0D5C56] text-white h-14 px-4 shrink-0 shadow-sm"
+                >
+                  {carregando ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                </Button>
+              </form>
+              <p className="text-[10px] text-[#5B6470] mt-1.5 text-center">
+                Pressione Enter para enviar. Shift + Enter para quebra de linha.
+              </p>
+            </div>
+          </>
+        )}
+
+        {aba === 'dossies' && (
+          <div className="flex-1 p-4 overflow-hidden bg-[#F4F2EE]/40 min-h-0">
+            <ListaDossiesMemoria sinalRecarga={sinalRecargaDossies} />
+          </div>
+        )}
+        {aba === 'linha_tempo' && <AbaLinhaTempo />}
+
+        {aba === 'semantica' && (
+          <div className="flex-1 p-4 overflow-y-auto bg-[#F4F2EE]/40 min-h-0 space-y-3">
+            <div>
+              <h3 className="text-sm font-bold text-[#1A1D21]">Busca por significado</h3>
+              <p className="text-[11px] text-[#5B6470]">
+                Descreva o que você lembra — mesmo sem as palavras exatas do registro. Use os
+                filtros para restringir por tipo, período, pessoa, negócio ou projeto.
+              </p>
+            </div>
+
+            <PainelFiltrosSemantica
+              filtros={filtros}
+              onChange={setFiltros}
+              onLimpar={() => setFiltros({})}
+              aplicados={filtrosAplicados}
+            />
+
             <div className="flex flex-wrap gap-1.5">
-              {CHIPS_SUGESTOES.map((chip) => (
+              {CHIPS_SEMANTICA.map((chip) => (
                 <button
                   key={chip}
                   type="button"
-                  disabled={carregando}
-                  onClick={() => enviarPergunta(chip)}
+                  disabled={buscandoSemantica}
+                  onClick={() => rodarBuscaSemantica(chip)}
                   className="text-[11px] px-2.5 py-1 rounded-full border border-[#E5E1D8] bg-[#FAFAF9] text-[#5B6470] hover:bg-[#0F766E]/5 hover:border-[#0F766E]/40 hover:text-[#0F766E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {chip}
                 </button>
               ))}
             </div>
-          </div>
-
-          {/* Campo de envio */}
-          <div className="p-3 bg-white">
             <form
               onSubmit={(e) => {
                 e.preventDefault()
-                enviarPergunta(texto)
+                rodarBuscaSemantica(perguntaSemantica)
               }}
-              className="flex items-end gap-2"
+              className="flex items-center gap-2"
             >
-              <Textarea
-                rows={2}
-                value={texto}
-                onChange={(e) => setTexto(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={carregando}
-                placeholder="Pergunte sobre seus negócios: 'O que decidimos com o cliente X?', 'Quais demandas estão paradas?'…"
-                className="text-xs resize-none border-[#E5E1D8] focus-visible:ring-1 focus-visible:ring-[#0F766E]"
+              <Input
+                value={perguntaSemantica}
+                onChange={(e) => setPerguntaSemantica(e.target.value)}
+                placeholder="Ex.: 'aquela conversa em que desistimos do preço alto'…"
+                className="text-xs h-9 bg-white border-[#E5E1D8]"
+                disabled={buscandoSemantica}
               />
               <Button
                 type="submit"
-                disabled={carregando || !texto.trim()}
-                className="bg-[#0F766E] hover:bg-[#0D5C56] text-white h-14 px-4 shrink-0 shadow-sm"
+                disabled={buscandoSemantica || !perguntaSemantica.trim()}
+                className="bg-[#0F766E] hover:bg-[#0D5C56] text-white h-9 px-4 shrink-0"
               >
-                {carregando ? (
+                {buscandoSemantica ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Send className="w-4 h-4" />
+                  <Search className="w-4 h-4" />
                 )}
               </Button>
             </form>
-            <p className="text-[10px] text-[#5B6470] mt-1.5 text-center">
-              Pressione Enter para enviar. Shift + Enter para quebra de linha.
-            </p>
-          </div>
-        </>
-      )}
 
-      {aba === 'dossies' && (
-        <div className="flex-1 p-4 overflow-hidden bg-[#F4F2EE]/40 min-h-0">
-          <ListaDossiesMemoria />
-        </div>
-      )}
-
-      {aba === 'linha_tempo' && <AbaLinhaTempo />}
-
-      {aba === 'semantica' && (
-        <div className="flex-1 p-4 overflow-y-auto bg-[#F4F2EE]/40 min-h-0 space-y-3">
-          <div>
-            <h3 className="text-sm font-bold text-[#1A1D21]">Busca por significado</h3>
-            <p className="text-[11px] text-[#5B6470]">
-              Descreva o que você lembra — mesmo sem as palavras exatas do registro. Use os filtros
-              para restringir por tipo, período, pessoa, negócio ou projeto.
-            </p>
-          </div>
-
-          <PainelFiltrosSemantica
-            filtros={filtros}
-            onChange={setFiltros}
-            onLimpar={() => setFiltros({})}
-            aplicados={filtrosAplicados}
-          />
-
-          <div className="flex flex-wrap gap-1.5">
-            {CHIPS_SEMANTICA.map((chip) => (
-              <button
-                key={chip}
-                type="button"
-                disabled={buscandoSemantica}
-                onClick={() => rodarBuscaSemantica(chip)}
-                className="text-[11px] px-2.5 py-1 rounded-full border border-[#E5E1D8] bg-[#FAFAF9] text-[#5B6470] hover:bg-[#0F766E]/5 hover:border-[#0F766E]/40 hover:text-[#0F766E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {chip}
-              </button>
-            ))}
-          </div>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              rodarBuscaSemantica(perguntaSemantica)
-            }}
-            className="flex items-center gap-2"
-          >
-            <Input
-              value={perguntaSemantica}
-              onChange={(e) => setPerguntaSemantica(e.target.value)}
-              placeholder="Ex.: 'aquela conversa em que desistimos do preço alto'…"
-              className="text-xs h-9 bg-white border-[#E5E1D8]"
-              disabled={buscandoSemantica}
-            />
-            <Button
-              type="submit"
-              disabled={buscandoSemantica || !perguntaSemantica.trim()}
-              className="bg-[#0F766E] hover:bg-[#0D5C56] text-white h-9 px-4 shrink-0"
-            >
-              {buscandoSemantica ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Search className="w-4 h-4" />
-              )}
-            </Button>
-          </form>
-
-          {resultadosSemanticos !== null && (
-            <div className="space-y-2">
-              {resultadosSemanticos.length === 0 ? (
-                <div className="text-xs text-[#5B6470] bg-white border border-[#E5E1D8] rounded-xl p-4">
-                  {observacaoSemantica || 'Nada encontrado ainda com esse significado.'}
-                </div>
-              ) : (
-                resultadosSemanticos.map((r) => (
-                  <div
-                    key={r.id}
-                    className="bg-white border border-[#E5E1D8] rounded-xl p-3 shadow-2xs"
+            {resultadosSemanticos !== null && (
+              <div className="space-y-2">
+                {/* Contador de resultados + aviso quando só a etapa de CANDIDATOS rodou */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] border-[#0F766E]/30 text-[#0F766E] bg-[#0F766E]/5"
                   >
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-xs font-semibold text-[#1A1D21]">{r.fonte}</span>
-                      <div className="flex items-center gap-1.5">
-                        <Badge
-                          variant="outline"
-                          className="text-[9px] border-[#E5E1D8] text-[#5B6470]"
-                        >
-                          {r.tipo}
-                        </Badge>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            'text-[9px]',
-                            r.confianca === 'alta'
-                              ? 'border-emerald-200 text-emerald-700 bg-emerald-50'
-                              : r.confianca === 'media'
-                                ? 'border-amber-200 text-amber-700 bg-amber-50'
-                                : 'border-[#E5E1D8] text-[#5B6470] bg-[#FAFAF9]',
-                          )}
-                        >
-                          confiança {r.confianca}
-                        </Badge>
-                      </div>
-                    </div>
-                    <p className="text-[11px] text-[#1A1D21] mt-1.5 whitespace-pre-wrap leading-relaxed">
-                      {r.trecho}
-                    </p>
-                    <p className="text-[10px] text-[#5B6470] mt-1.5 italic">
-                      {r.justificativa}
-                      {r.data ? ` · ${new Date(r.data).toLocaleDateString('pt-BR')}` : ''}
-                    </p>
+                    {totalResultados} resultado(s) · {totalCandidatos} candidato(s) avaliado(s)
+                  </Badge>
+                  {soCandidatos && (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] border-amber-300 text-amber-700 bg-amber-50 gap-1"
+                    >
+                      <AlertTriangle className="w-3 h-3" />
+                      Mostrando apenas candidatos — a etapa de significado não confirmou nenhum.
+                    </Badge>
+                  )}
+                </div>
+                {resultadosSemanticos.length === 0 ? (
+                  <div className="text-xs text-[#5B6470] bg-white border border-[#E5E1D8] rounded-xl p-4">
+                    {observacaoSemantica || 'Nada encontrado ainda com esse significado.'}
                   </div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-      )}
+                ) : (
+                  resultadosSemanticos.map((r) => (
+                    <div
+                      key={r.id}
+                      className="bg-white border border-[#E5E1D8] rounded-xl p-3 shadow-2xs"
+                    >
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-xs font-semibold text-[#1A1D21]">{r.fonte}</span>
+                        <div className="flex items-center gap-1.5">
+                          <Badge
+                            variant="outline"
+                            className="text-[9px] border-[#E5E1D8] text-[#5B6470]"
+                          >
+                            {r.tipo}
+                          </Badge>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              'text-[9px]',
+                              r.confianca === 'alta'
+                                ? 'border-emerald-200 text-emerald-700 bg-emerald-50'
+                                : r.confianca === 'media'
+                                  ? 'border-amber-200 text-amber-700 bg-amber-50'
+                                  : 'border-[#E5E1D8] text-[#5B6470] bg-[#FAFAF9]',
+                            )}
+                          >
+                            confiança {r.confianca}
+                          </Badge>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-[#1A1D21] mt-1.5 whitespace-pre-wrap leading-relaxed">
+                        {r.trecho}
+                      </p>
+                      <p className="text-[10px] text-[#5B6470] mt-1.5 italic">
+                        {r.justificativa}
+                        {r.data ? ` · ${new Date(r.data).toLocaleDateString('pt-BR')}` : ''}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

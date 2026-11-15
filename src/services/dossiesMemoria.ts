@@ -32,6 +32,9 @@ export interface DossieMemoria {
   conteudo: string
   demandas_abertas: Array<{ titulo: string; prazo?: string; prioridade?: string }>
   atualizado_em: string
+  /** Mudanças na entidade desde a última consolidação (selo "desatualizado") */
+  mudancas_desde_ultima?: number
+  desatualizado?: boolean
 }
 export interface ResultadoSemantico {
   id: string
@@ -57,7 +60,58 @@ export interface RespostaBuscaSemantica {
   resultados: ResultadoSemantico[]
   observacao: string
   total_candidatos: number
+  /** true quando só a etapa de candidatos rodou (etapa de significado sem resultado validado) */
+  so_candidatos?: boolean
   filtros_aplicados?: string[]
+}
+
+// ─────────────────────────────────────────────────────────────
+// Estado da Memória (painel das 4 camadas — hook estado_memoria.js)
+//   GET  /backend/v1/memoria/estado
+//   POST /backend/v1/memoria/consolidar
+// ─────────────────────────────────────────────────────────────
+
+export interface EstadoMemoria {
+  dossies: {
+    total: number
+    pendentes_fila: number
+    ultima_consolidacao: string
+    ultimo_dossie_nome?: string
+  }
+  episodios: {
+    total: number
+    ultimo_created: string
+    ultimo_data?: string
+  }
+  memoria_compartilhada: {
+    total: number
+    ultima_atualizacao: string
+    por_agente: Array<{ agente: string; rotulo: string; total: number }>
+  }
+  busca_semantica: {
+    modo: string
+    descricao: string
+  }
+}
+
+export async function obterEstadoMemoria(): Promise<EstadoMemoria> {
+  return (await pb.send('/backend/v1/memoria/estado', { method: 'GET' })) as EstadoMemoria
+}
+
+export async function consolidarMemoriaAgora(): Promise<{
+  sucesso: boolean
+  processados?: number
+  restantes_na_fila?: number
+  dossies_novos?: number
+  dossies_atualizados?: number
+  mensagem?: string
+  error?: string
+}> {
+  return pb.send('/backend/v1/memoria/consolidar', {
+    method: 'POST',
+    body: JSON.stringify({}),
+    headers: { 'Content-Type': 'application/json' },
+  })
 }
 
 export async function listarDossies(

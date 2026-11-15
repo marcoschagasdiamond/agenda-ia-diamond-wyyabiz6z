@@ -228,7 +228,7 @@ Devolva SOMENTE um bloco JSON puro (sem markdown) no formato:
 }
 Regras: use APENAS o que está nos registros; datas no formato dd/mm/aaaa; demandas_abertas só com demandas/cards não concluídos.`
 
-    const res = $ai.agent(AGENTE_SLUG).chat({ message: prompt, conversation: null })
+    const res = $ai.agent(AGENTE_SLUG).chat({ message: prompt, user_id: usuarioId })
     const parsed = extrairJson(res && res.content ? res.content : '')
     if (!parsed || !parsed.resumo) return { pulado: 'agente não devolveu dossiê válido' }
 
@@ -600,7 +600,7 @@ Devolva SOMENTE um bloco JSON puro (sem markdown) no formato:
 }
 Regras: use APENAS o que está nos registros; datas no formato dd/mm/aaaa; demandas_abertas só com demandas/cards não concluídos.`
 
-      const res = $ai.agent(AGENTE_SLUG).chat({ message: prompt, conversation: null })
+      const res = $ai.agent(AGENTE_SLUG).chat({ message: prompt, user_id: userId })
       const parsed = extrairJson(res && res.content ? res.content : '')
       if (!parsed || !parsed.resumo) {
         return e.json(500, {
@@ -683,29 +683,52 @@ routerAdd(
         perPage,
         (page - 1) * perPage,
       )
-      const itens = registros.map((r) => ({
-        id: r.id,
-        tipo_entidade: r.getString('tipo_entidade'),
-        entidade_id: r.getString('entidade_id'),
-        entidade_nome: r.getString('entidade_nome'),
-        nome: r.getString('nome'),
-        resumo: r.getString('resumo'),
-        conteudo: r.getString('conteudo'),
-        demandas_abertas: (() => {
+
+      // Selo "desatualizado": mudanças na(s) entidade(s) desde a última
+      // consolidação do dossiê (folha_dia / cards / demandas / eventos_card).
+      const mudancasDesde = (tipoEnt, entId, desde) => {
+        let total = 0
+        for (const colEnt of ['folha_dia', 'cards', 'demandas', 'eventos_card']) {
           try {
-            const bruto = r.getString('demandas_abertas')
-            if (!bruto || bruto === 'undefined' || bruto === 'null') return []
-            const parsed = JSON.parse(bruto)
-            return Array.isArray(parsed) ? parsed : []
-          } catch (_) {
-            return []
-          }
-        })(),
-        atualizado_em: r.getDateTime('atualizado_em')
+            total += $app.countRecords(colEnt, {
+              filter: `${tipoEnt} = "${entId}" && updated > "${desde}"`,
+            })
+          } catch (_) {}
+        }
+        return total
+      }
+
+      const itens = registros.map((r) => {
+        const atualizadoEm = r.getDateTime('atualizado_em')
           ? r.getDateTime('atualizado_em').string()
-          : '',
-        updated: r.getDateTime('updated').string(),
-      }))
+          : ''
+        const entId = r.getString('entidade_id')
+        const tipoEnt = r.getString('tipo_entidade')
+        const mudancas = atualizadoEm ? mudancasDesde(tipoEnt, entId, atualizadoEm) : 0
+        return {
+          id: r.id,
+          tipo_entidade: tipoEnt,
+          entidade_id: entId,
+          entidade_nome: r.getString('entidade_nome'),
+          nome: r.getString('nome'),
+          resumo: r.getString('resumo'),
+          conteudo: r.getString('conteudo'),
+          demandas_abertas: (() => {
+            try {
+              const bruto = r.getString('demandas_abertas')
+              if (!bruto || bruto === 'undefined' || bruto === 'null') return []
+              const parsed = JSON.parse(bruto)
+              return Array.isArray(parsed) ? parsed : []
+            } catch (_) {
+              return []
+            }
+          })(),
+          atualizado_em: atualizadoEm,
+          updated: r.getDateTime('updated').string(),
+          mudancas_desde_ultima: mudancas,
+          desatualizado: mudancas > 0,
+        }
+      })
 
       return e.json(200, { page, perPage, totalItens: itens.length, itens })
     } catch (err) {
